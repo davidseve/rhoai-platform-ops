@@ -4,13 +4,36 @@
 HELM ?= helm
 OC ?= oc
 PYTHON ?= python3
+GRAFANA_ENABLED ?= false
+
+# --- Observability Module ---
+
+.PHONY: deploy-observability
+deploy-observability: ## Deploy observability (Grafana Operator + instance)
+	$(HELM) upgrade --install obs-operators modules/observability/charts/operators --wait --timeout 10m
+	@echo "Waiting for Grafana CRDs..."
+	$(OC) wait --for=condition=Established crd grafanas.grafana.integreatly.org --timeout=120s
+	$(HELM) upgrade --install obs-grafana modules/observability/charts/grafana --wait --timeout 10m
+
+.PHONY: test-observability
+test-observability: ## Run Observability E2E tests
+	$(PYTHON) -m venv modules/observability/tests/.venv
+	modules/observability/tests/.venv/bin/pip install -q -r modules/observability/tests/requirements.txt
+	modules/observability/tests/.venv/bin/pytest modules/observability/tests/ -v; \
+	  rc=$$?; rm -rf modules/observability/tests/.venv; exit $$rc
+
+.PHONY: undeploy-observability
+undeploy-observability: ## Undeploy observability via Helm
+	-$(HELM) uninstall obs-grafana 2>/dev/null
+	-$(HELM) uninstall obs-operators 2>/dev/null
 
 # --- MaaS Module ---
 
 .PHONY: deploy-maas
 deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 	$(HELM) upgrade --install maas-operators modules/maas/charts/operators --wait --timeout 10m
-	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform --wait --timeout 15m
+	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform \
+		--set grafana.enabled=$(GRAFANA_ENABLED) --wait --timeout 15m
 	$(HELM) upgrade --install maas-model modules/maas/charts/maas-model --wait --timeout 15m
 	$(HELM) upgrade --install maas-model-fast modules/maas/charts/maas-model -f modules/maas/charts/maas-model/values-tinyllama-fast.yaml --wait --timeout 15m
 
@@ -52,6 +75,10 @@ cluster-cleanup: ## Remove ALL deployed resources from the cluster
 cluster-cleanup-maas: ## Remove only MaaS resources from the cluster
 	./scripts/cluster-cleanup.sh --yes maas
 
+.PHONY: cluster-cleanup-observability
+cluster-cleanup-observability: ## Remove only observability resources from the cluster
+	./scripts/cluster-cleanup.sh --yes observability
+
 .PHONY: cluster-cleanup-dry
 cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 	DRY_RUN=true ./scripts/cluster-cleanup.sh
@@ -59,25 +86,30 @@ cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 # --- All Modules ---
 
 .PHONY: deploy-all
-deploy-all: deploy-maas ## Deploy all enabled modules
+deploy-all: deploy-observability ## Deploy all enabled modules
+	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
 .PHONY: test-all
-test-all: test-maas ## Run all module tests
+test-all: test-observability test-maas ## Run all module tests
 
 .PHONY: undeploy-all
-undeploy-all: undeploy-maas ## Undeploy all modules
+undeploy-all: undeploy-maas undeploy-observability ## Undeploy all modules
 
 # --- Validation ---
 
 .PHONY: template
 template: ## Helm template dry-run for all charts
+	$(HELM) template obs-operators modules/observability/charts/operators
+	$(HELM) template obs-grafana modules/observability/charts/grafana
 	$(HELM) template maas-operators modules/maas/charts/operators
-	$(HELM) template maas-platform modules/maas/charts/maas-platform
+	$(HELM) template maas-platform modules/maas/charts/maas-platform --set clusterDomain=template.example.com
 	$(HELM) template maas-model modules/maas/charts/maas-model
 	$(HELM) template argocd-apps argocd/apps
 
 .PHONY: lint
 lint: ## Helm lint all charts
+	$(HELM) lint modules/observability/charts/operators
+	$(HELM) lint modules/observability/charts/grafana
 	$(HELM) lint modules/maas/charts/operators
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model

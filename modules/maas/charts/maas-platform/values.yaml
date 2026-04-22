@@ -93,8 +93,17 @@ telemetry:
 monitoring:
   enabled: true
   scrapeInterval: 30s
+  vllm:
+    enabled: true
+    modelNamespace: maas-models
 
 # PrometheusRule alerts for rate limit health
 alerting:
   enabled: true
   rejectionRateThreshold: 0.3
+
+# GrafanaDashboard CRs (requires Grafana Operator CRDs)
+grafana:
+  enabled: false
+  instanceSelector:
+    dashboards: "grafana"

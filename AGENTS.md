@@ -11,10 +11,21 @@ RHOAI Platform Operations -- a modular GitOps repository for deploying and opera
 ## Quick Commands
 
 ```bash
+# Observability module
+make deploy-observability # Helm install Grafana Operator + Grafana instance
+make test-observability   # pytest modules/observability/tests/
+make undeploy-observability # Helm uninstall observability
+
 # MaaS module
 make deploy-maas          # Helm install operators + platform + models
+make deploy-maas GRAFANA_ENABLED=true  # Include Grafana dashboards
 make test-maas            # pytest modules/maas/tests/
 make undeploy-maas        # Helm uninstall + cleanup
+
+# Full stack
+make deploy-all           # Deploy observability + MaaS (with dashboards)
+make test-all             # Run all module tests
+make undeploy-all         # Undeploy everything
 
 # ArgoCD (stable deployment)
 make deploy-argocd        # Apply app-of-apps
@@ -23,12 +34,8 @@ make status               # Check ArgoCD sync status
 # Cluster cleanup
 make cluster-cleanup      # Remove ALL resources (skip confirmation)
 make cluster-cleanup-maas # Remove only MaaS resources
+make cluster-cleanup-observability # Remove only observability resources
 make cluster-cleanup-dry  # Dry-run: show what would be deleted
-
-# All modules
-make deploy-all           # Deploy all enabled modules
-make test-all             # Run all module tests
-make undeploy-all         # Undeploy everything
 
 # Validation
 make template             # helm template for all charts (dry-run)
@@ -41,15 +48,21 @@ make lint                 # Helm lint + YAML validation
 
 ```
 modules/
+  observability/          # Grafana Operator, Grafana + OAuth, UWM, Thanos datasource
+    charts/
+      operators/          # Grafana Operator subscription, UWM ConfigMap
+      grafana/            # Grafana CR, SA, RBAC, datasource
+    tests/                # E2E tests (Grafana health, datasource, metrics)
+    docs/                 # OBSERVABILITY.md
+
   maas/                   # Models-as-a-Service (RHOAI + Kuadrant)
     charts/
       operators/          # RHOAI, Kuadrant, LeaderWorkerSet operators
-      maas-platform/      # DSCI, DSC, Gateway, Route, tiers, monitoring
+      maas-platform/      # DSCI, DSC, Gateway, Route, tiers, monitoring, vLLM PodMonitor/SLO, dashboards
       maas-model/         # LLMInferenceService, RBAC, rate limits
     tests/                # E2E tests (inference, in-cluster, governance)
     docs/                 # Architecture, Gateway, troubleshooting
 
-  observability/          # [Planned] Grafana, dashboards, PodMonitors
   benchmarks/             # [Planned] Load testing with inference-perf
   evaluation/             # [Planned] MLflow tracking server
 ```
@@ -107,7 +120,8 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **API Gateway:** Kubernetes Gateway API via Kuadrant
 - **Auth:** Kuadrant AuthPolicy with tier-based identity
 - **Rate Limiting:** Kuadrant RateLimitPolicy + TokenRateLimitPolicy
-- **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor)
+- **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
+- **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
 - **GitOps:** ArgoCD with app-of-apps pattern
 
 ## Cursor Skills
@@ -125,6 +139,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 
 - [Project Structure](docs/PROJECT-STRUCTURE.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Observability](modules/observability/docs/OBSERVABILITY.md)
 - [MaaS Architecture](modules/maas/docs/ARCHITECTURE.md)
 - [Gateway and Route](modules/maas/docs/GATEWAY-AND-ROUTE.md)
 - [ADRs](docs/adr/)

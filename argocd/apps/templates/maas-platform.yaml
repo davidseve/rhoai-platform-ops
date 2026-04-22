@@ -16,6 +16,8 @@ spec:
       parameters:
         - name: clusterDomain
           value: {{ .Values.clusterDomain }}
+        - name: grafana.enabled
+          value: "{{ .Values.modules.observability.enabled }}"
       valueFiles:
         - values.yaml
   destination:

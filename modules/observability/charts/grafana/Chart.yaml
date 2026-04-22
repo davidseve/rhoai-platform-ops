@@ -1,0 +1,5 @@
+---
+apiVersion: v2
+description: Grafana instance with OpenShift OAuth proxy and Thanos Querier datasource
+name: obs-grafana
+version: 0.1.0

@@ -1,0 +1,5 @@
+grafana:
+  enabled: true
+
+uwm:
+  enabled: true

@@ -98,7 +98,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in maas-model-fast maas-model maas-platform maas-operators; do
+  for release in maas-model-fast maas-model maas-platform maas-operators obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -109,7 +109,7 @@ cleanup_helm_releases() {
     fi
   done
   # Clean any releases stuck in pending-install / uninstalling from a previous failed run
-  for secret in $($OC get secret -n default -l owner=helm -o name 2>/dev/null | grep -E 'maas-|rhoai-' || true); do
+  for secret in $($OC get secret -n default -l owner=helm -o name 2>/dev/null | grep -E 'maas-|rhoai-|obs-' || true); do
     log "  Removing leftover Helm secret: $secret"
     run "$OC delete '$secret' -n default --ignore-not-found"
   done
@@ -252,13 +252,39 @@ cleanup_maas_operators() {
 }
 
 # ============================================================
+# Module: Observability
+# ============================================================
+cleanup_observability() {
+  log "=== Observability: Cleaning up ==="
+
+  log "Deleting Grafana CRs..."
+  run "$OC delete grafanadashboard --all -A --ignore-not-found"
+  run "$OC delete grafanadatasource --all -A --ignore-not-found"
+  run "$OC delete grafana --all -n observability --ignore-not-found"
+
+  log "Deleting Grafana Operator subscription (global)..."
+  run "$OC delete subscription grafana-operator -n openshift-operators --ignore-not-found"
+  for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep grafana-operator || true); do
+    run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
+  done
+
+  log "Deleting RBAC..."
+  run "$OC delete clusterrolebinding grafana-cluster-monitoring-view --ignore-not-found"
+  run "$OC delete clusterrole grafana-proxy-observability --ignore-not-found"
+
+  log "Deleting namespace observability..."
+  run "$OC delete ns observability --timeout=60s --ignore-not-found"
+  wait_ns_gone "observability" 90
+}
+
+# ============================================================
 # ArgoCD
 # ============================================================
 cleanup_argocd() {
   log "=== Removing ArgoCD Applications ==="
 
   log "Deleting child applications..."
-  for app in maas-model-fast maas-model maas-platform maas-operators; do
+  for app in maas-model-fast maas-model maas-platform maas-operators observability-grafana observability-operators; do
     run "$OC delete application '$app' -n openshift-gitops --ignore-not-found"
   done
 
@@ -285,6 +311,7 @@ verify_cleanup() {
     "redhat-ods-operator"
     "kuadrant-system"
     "leader-worker-set"
+    "observability"
   )
   # Add dynamic tier namespaces to verification
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
@@ -302,7 +329,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -346,16 +373,19 @@ main() {
         cleanup_argocd
         cleanup_maas
         ;;
-      # -- Add new module cases here --
+      observability)
+        cleanup_argocd
+        cleanup_observability
+        ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability" >&2
         exit 1
         ;;
     esac
   else
     cleanup_argocd
+    cleanup_observability
     cleanup_maas
-    # -- Add new module cleanup calls here --
   fi
 
   verify_cleanup

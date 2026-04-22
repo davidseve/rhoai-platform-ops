@@ -1,0 +1,3 @@
+grafana:
+  name: grafana
+  namespace: observability

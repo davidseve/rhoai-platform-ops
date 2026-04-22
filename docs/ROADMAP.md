@@ -22,22 +22,23 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 - [x] E2E tests: inference, in-cluster access, governance
 - [x] Project scaffold: .cursor rules, skills, ADRs
 
-### Phase 1: Observability
+### Phase 1: Observability (DONE)
 
 Goal: understand what usage patterns exist before setting limits.
 
-- [ ] Enable OpenShift User Workload Monitoring (if not already active)
-- [ ] Deploy Grafana Operator + instance
-- [ ] Configure Prometheus datasource (Thanos Querier)
-- [ ] Create dashboards:
-  - Platform overview (gateway requests, latency, error rates)
-  - vLLM model metrics (tokens/sec, queue depth, GPU/CPU utilization)
+- [x] Enable OpenShift User Workload Monitoring (declarative ConfigMap)
+- [x] Deploy Grafana Operator + instance (with OpenShift OAuth proxy)
+- [x] Configure Prometheus datasource (Thanos Querier via SA token)
+- [x] Create dashboards:
+  - Platform overview (gateway requests, rejection ratio, per-model/user)
+  - vLLM model metrics (tokens/sec, latency percentiles, KV cache, scheduler)
   - Per-tier usage (requests and tokens by tier)
-- [ ] Configure PodMonitor for vLLM pods
-- [ ] Set up alerting rules (PrometheusRule) for SLO violations
-- [ ] E2E tests: Grafana up, datasources connected, metrics visible
+- [x] Configure PodMonitor for vLLM pods (TLS via service-ca CA bundle)
+- [x] Set up alerting rules (PrometheusRule) for SLO violations (latency, KV cache, errors)
+- [x] E2E tests: Grafana up, datasources connected, metrics visible, dashboards exist
+- [x] ADR-0003: Grafana Operator choice (community) with COO Perses migration path
 
-**Red Hat products**: Cluster Observability Operator, OpenShift User Workload Monitoring, Grafana Operator.
+**Red Hat products**: OpenShift User Workload Monitoring, Grafana Operator (community, see [ADR-0003](adr/0003-grafana-operator.md)).
 
 **Reference**: [RHOAI 3.3 Managing Observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/managing_openshift_ai/managing-observability_managing-rhoai)
 
@@ -59,16 +60,33 @@ Goal: trace individual requests through the full stack (client -> gateway -> mod
 
 Goal: identify system limits with repeatable load tests.
 
-- [ ] Set up benchmark runner (Python script or inference-perf)
+- [ ] Set up benchmark runner based on Mooncake trace replay approach
+  - Adapt [llm-d-tuning-mooncake](https://github.com/cemigo114/llm-d-tuning-mooncake) `mooncake_replay.py` for RHOAI endpoints
+  - Support OpenAI-compatible request format with controlled prefix sharing
+  - Parameterize: concurrency, max tokens, request count, trace source
 - [ ] Define scenarios:
-  - Code assistant: long prompts, code completion patterns
-  - Cluster operations (MCP): short prompts, JSON tool call responses
+  - Code assistant: long prompts, code completion patterns (maps to Mooncake "conversation" trace -- high prefix sharing)
+  - Cluster operations (MCP): short prompts, JSON tool call responses (maps to Mooncake "toolagent" trace -- diverse prefixes)
   - Stress test: ramp to max throughput
+- [ ] Collect key metrics per request (from llm-d-tuning-mooncake methodology):
+  - TTFT (Time To First Token) at P50/P90/P99
+  - ITL (Inter-Token Latency) at P50/P99
+  - E2E latency at P50/P90
+  - Throughput (total output tokens / wall clock seconds)
+  - TPSU (Tokens Per Second per User)
+- [ ] Build results analysis tooling
+  - Adapt `analyze_results.py` to generate comparison tables (current vs baseline)
+  - Per-request JSON output for reproducibility and independent verification
 - [ ] Integrate with MLflow for result tracking
-- [ ] Create comparison reports (current vs baseline)
 - [ ] E2E tests: benchmark suite runs and logs results
 
-**Tools**: kubernetes-sigs/inference-perf, MLflow.
+**Tools**: kubernetes-sigs/inference-perf, MLflow, [llm-d-tuning-mooncake](https://github.com/cemigo114/llm-d-tuning-mooncake) (reference for trace replay and analysis scripts).
+
+**Reference insights from llm-d-tuning-mooncake**:
+- Conversation workloads (high prefix sharing) benefit most from prefix-cache-aware routing
+- Toolagent workloads (diverse prefixes) need load-balanced routing with higher defer thresholds
+- KV cache pressure becomes critical at ~6-8K input tokens -- benchmark both short (4K) and long (8K+) sequences
+- Queue depth, KV cache utilization, and cache hit rate are the metrics that correlate most with serving quality
 
 ### Phase 4: Evaluation
 
@@ -88,3 +106,4 @@ Key decisions are documented as ADRs in [docs/adr/](adr/):
 
 - [ADR-0001: Module structure and Helm-first workflow](adr/0001-module-structure.md)
 - [ADR-0002: Red Hat product priority](adr/0002-red-hat-priority.md)
+- [ADR-0003: Grafana Operator for dashboards](adr/0003-grafana-operator.md)

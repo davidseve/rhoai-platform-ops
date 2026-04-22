@@ -1,0 +1,17 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: maas-platform-overview
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    dashboards: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      {{- toYaml .Values.grafana.instanceSelector | nindent 6 }}
+  json: |
+    {{ .Files.Get "dashboards/platform-overview.json" | nindent 4 }}
+{{- end }}
