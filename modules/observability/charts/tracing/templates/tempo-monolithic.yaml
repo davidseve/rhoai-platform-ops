@@ -1,0 +1,24 @@
+---
+apiVersion: tempo.grafana.com/v1alpha1
+kind: TempoMonolithic
+metadata:
+  name: {{ .Values.tempo.name }}
+  namespace: {{ .Values.tempo.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  storage:
+    traces:
+      backend: {{ .Values.tempo.storage.backend }}
+      size: {{ .Values.tempo.storage.size }}
+  ingestion:
+    otlp:
+      grpc:
+        enabled: {{ .Values.tempo.ingestion.otlp.grpc }}
+      http:
+        enabled: {{ .Values.tempo.ingestion.otlp.http }}
+  extraConfig:
+    tempo:
+      compactor:
+        compaction:
+          block_retention: {{ .Values.tempo.retention }}

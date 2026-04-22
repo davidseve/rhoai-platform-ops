@@ -1,3 +1,7 @@
 grafana:
   name: grafana
   namespace: observability
+
+tempo:
+  enabled: false
+  url: "http://tempo-tempo:3200"

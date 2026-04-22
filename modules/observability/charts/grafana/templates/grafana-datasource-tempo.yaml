@@ -1,0 +1,26 @@
+{{- if .Values.tempo.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: tempo
+  namespace: {{ .Values.grafana.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+  datasource:
+    name: Tempo
+    type: tempo
+    access: proxy
+    url: {{ .Values.tempo.url }}
+    isDefault: false
+    jsonData:
+      tracesToMetrics:
+        datasourceUid: thanos-querier
+      nodeGraph:
+        enabled: true
+      serviceMap:
+        datasourceUid: thanos-querier
+{{- end }}

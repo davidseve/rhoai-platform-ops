@@ -1,0 +1,27 @@
+tempo:
+  name: tempo
+  namespace: observability
+  storage:
+    backend: memory       # "memory" for dev/test, "pv" for persistent
+    size: 2Gi
+  retention: 48h
+  ingestion:
+    otlp:
+      grpc: true
+      http: true
+
+collector:
+  name: maas-collector
+  namespace: observability
+  tempoEndpoint: "tempo-tempo:4317"
+  metricsPort: 8889
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+serviceMonitor:
+  enabled: true

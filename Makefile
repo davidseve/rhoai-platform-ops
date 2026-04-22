@@ -9,11 +9,17 @@ GRAFANA_ENABLED ?= false
 # --- Observability Module ---
 
 .PHONY: deploy-observability
-deploy-observability: ## Deploy observability (Grafana Operator + instance)
+deploy-observability: ## Deploy observability (operators + Grafana + tracing)
 	$(HELM) upgrade --install obs-operators modules/observability/charts/operators --wait --timeout 10m
 	@echo "Waiting for Grafana CRDs..."
 	$(OC) wait --for=condition=Established crd grafanas.grafana.integreatly.org --timeout=120s
 	$(HELM) upgrade --install obs-grafana modules/observability/charts/grafana --wait --timeout 10m
+	@echo "Waiting for Tempo/OTel CRDs..."
+	$(OC) wait --for=condition=Established crd tempomonolithics.tempo.grafana.com --timeout=120s
+	$(OC) wait --for=condition=Established crd opentelemetrycollectors.opentelemetry.io --timeout=120s
+	$(HELM) upgrade --install obs-tracing modules/observability/charts/tracing --wait --timeout 10m
+	@echo "Enabling Tempo datasource in Grafana..."
+	$(HELM) upgrade --install obs-grafana modules/observability/charts/grafana --set tempo.enabled=true --wait --timeout 10m
 
 .PHONY: test-observability
 test-observability: ## Run Observability E2E tests
@@ -24,6 +30,7 @@ test-observability: ## Run Observability E2E tests
 
 .PHONY: undeploy-observability
 undeploy-observability: ## Undeploy observability via Helm
+	-$(HELM) uninstall obs-tracing 2>/dev/null
 	-$(HELM) uninstall obs-grafana 2>/dev/null
 	-$(HELM) uninstall obs-operators 2>/dev/null
 
@@ -101,6 +108,7 @@ undeploy-all: undeploy-maas undeploy-observability ## Undeploy all modules
 template: ## Helm template dry-run for all charts
 	$(HELM) template obs-operators modules/observability/charts/operators
 	$(HELM) template obs-grafana modules/observability/charts/grafana
+	$(HELM) template obs-tracing modules/observability/charts/tracing
 	$(HELM) template maas-operators modules/maas/charts/operators
 	$(HELM) template maas-platform modules/maas/charts/maas-platform --set clusterDomain=template.example.com
 	$(HELM) template maas-model modules/maas/charts/maas-model
@@ -110,6 +118,7 @@ template: ## Helm template dry-run for all charts
 lint: ## Helm lint all charts
 	$(HELM) lint modules/observability/charts/operators
 	$(HELM) lint modules/observability/charts/grafana
+	$(HELM) lint modules/observability/charts/tracing
 	$(HELM) lint modules/maas/charts/operators
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model

@@ -3,3 +3,9 @@ grafana:
 
 uwm:
   enabled: true
+
+opentelemetry:
+  enabled: true
+
+tempo:
+  enabled: true

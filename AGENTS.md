@@ -48,11 +48,12 @@ make lint                 # Helm lint + YAML validation
 
 ```
 modules/
-  observability/          # Grafana Operator, Grafana + OAuth, UWM, Thanos datasource
+  observability/          # Grafana, Tracing (OTel + Tempo), UWM, dashboards
     charts/
-      operators/          # Grafana Operator subscription, UWM ConfigMap
-      grafana/            # Grafana CR, SA, RBAC, datasource
-    tests/                # E2E tests (Grafana health, datasource, metrics)
+      operators/          # Grafana, OTel, Tempo Operator subscriptions, UWM ConfigMap
+      grafana/            # Grafana CR, SA, RBAC, Thanos + Tempo datasources, dashboards
+      tracing/            # TempoMonolithic CR, OpenTelemetryCollector CR, ServiceMonitor
+    tests/                # E2E tests (Grafana, datasource, metrics, tracing)
     docs/                 # OBSERVABILITY.md
 
   maas/                   # Models-as-a-Service (RHOAI + Kuadrant)
@@ -121,6 +122,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Auth:** Kuadrant AuthPolicy with tier-based identity
 - **Rate Limiting:** Kuadrant RateLimitPolicy + TokenRateLimitPolicy
 - **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
+- **Tracing:** Red Hat build of OpenTelemetry + Tempo (see [ADR-0004](docs/adr/0004-tracing-stack.md))
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
 - **GitOps:** ArgoCD with app-of-apps pattern
 

@@ -87,6 +87,46 @@ The operator subscription uses channel `v5` with `Automatic` installPlanApproval
 3. Test in a staging cluster before production
 4. The E2E tests validate operator health, datasource connectivity, and dashboard existence
 
+## Distributed Tracing
+
+The module includes distributed tracing via Red Hat build of OpenTelemetry and Red Hat build of Tempo.
+
+### Architecture
+
+```
+vLLM pods (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
+  -> OTel Collector (OTLP gRPC :4317, observability namespace)
+     -> Tempo (TempoMonolithic, memory backend)
+     -> spanmetrics connector -> Prometheus (span-derived RED metrics)
+
+Grafana -> Tempo datasource (HTTP :3200) for trace exploration
+```
+
+### Components
+
+- **TempoMonolithic CR** (`tempo.grafana.com/v1alpha1`): trace storage with memory backend (configurable to PV). OTLP gRPC + HTTP ingestion enabled.
+- **OpenTelemetryCollector CR** (`opentelemetry.io/v1beta1`): receives OTLP traces, exports to Tempo, derives span metrics via `spanmetrics` connector.
+- **ServiceMonitor**: scrapes OTel Collector Prometheus endpoint for span-derived metrics.
+- **Tempo GrafanaDatasource**: connects Grafana to Tempo for trace exploration with service map and node graph.
+- **Traces Dashboard**: service map, latency distribution (from spanmetrics), recent traces table, request rate by service.
+
+### vLLM Tracing
+
+Tracing on model pods is opt-in (`tracing.enabled: false` by default in `maas-model/values.yaml`). When enabled, the following env vars are set on the vLLM container:
+
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: points to the OTel Collector (`http://maas-collector-collector.observability.svc:4317`)
+- `OTEL_SERVICE_NAME`: defaults to the model's `servedName`
+- `OTEL_TRACES_EXPORTER`: `otlp`
+
+**Risk**: The current CPU image (`vllm-cpu-openai-ubi9:0.3`) may lack OTEL Python packages. Tracing will only produce spans once a vLLM image with OTEL dependencies is deployed.
+
+### Operators
+
+- **Red Hat build of OpenTelemetry**: `opentelemetry-product` subscription in `openshift-opentelemetry-operator` namespace (channel `stable`, `redhat-operators`)
+- **Red Hat build of Tempo**: `tempo-product` subscription in `openshift-tempo-operator` namespace (channel `stable`, `redhat-operators`)
+
+See [ADR-0004](../../../docs/adr/0004-tracing-stack.md) for the decision rationale.
+
 ## Cleanup
 
 ```bash

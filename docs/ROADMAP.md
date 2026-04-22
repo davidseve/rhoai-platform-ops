@@ -42,19 +42,33 @@ Goal: understand what usage patterns exist before setting limits.
 
 **Reference**: [RHOAI 3.3 Managing Observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/managing_openshift_ai/managing-observability_managing-rhoai)
 
-### Phase 2: Traceability
+### Phase 2: Traceability (DONE)
 
 Goal: trace individual requests through the full stack (client -> gateway -> model).
 
-- [ ] Deploy Red Hat build of OpenTelemetry Collector
-- [ ] Deploy Red Hat build of Tempo for trace storage
-- [ ] Configure TelemetryPolicy on Kuadrant gateway
-- [ ] Configure vLLM OpenTelemetry integration (OTEL_EXPORTER_OTLP_ENDPOINT)
-- [ ] Add Tempo datasource to Grafana
-- [ ] Create trace exploration dashboard
-- [ ] E2E tests: traces visible for inference requests
+- [x] Deploy Red Hat build of OpenTelemetry Collector (OTel Operator + Collector CR)
+- [x] Deploy Red Hat build of Tempo for trace storage (Tempo Operator + TempoMonolithic CR)
+- [x] Configure vLLM OpenTelemetry integration (OTEL env vars, opt-in via `tracing.enabled`)
+- [x] Add Tempo datasource to Grafana (GrafanaDatasource CR with service map + node graph)
+- [x] Create trace exploration dashboard (service map, latency, recent traces, request rate)
+- [x] OTel Collector spanmetrics connector (derives RED metrics from traces)
+- [x] ServiceMonitor for OTel Collector metrics
+- [x] E2E tests: operator CSVs, Tempo/Collector pods, datasource, trace visibility
+- [x] ADR-0004: Tracing stack choice (Red Hat OTel + Tempo)
+- [ ] Configure TelemetryPolicy on Kuadrant gateway (deferred to Phase 2b)
 
 **Red Hat products**: Red Hat build of OpenTelemetry, Red Hat build of Tempo.
+
+**Reference**: [OBSERVABILITY.md](../modules/observability/docs/OBSERVABILITY.md#distributed-tracing)
+
+### Phase 2b: Traceability Enhancements
+
+Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context.
+
+- [ ] Gateway/Envoy distributed tracing (Istio `Telemetry` CR for Envoy -> OTel Collector)
+- [ ] Persistent Tempo storage (switch from memory to PV/S3 backend)
+- [ ] Token-level vLLM tracing (fine-grained per-token spans, requires newer vLLM image)
+- [ ] Trace-based SLO alerts (PrometheusRule from spanmetrics-derived data)
 
 ### Phase 3: Benchmarks
 
@@ -107,3 +121,4 @@ Key decisions are documented as ADRs in [docs/adr/](adr/):
 - [ADR-0001: Module structure and Helm-first workflow](adr/0001-module-structure.md)
 - [ADR-0002: Red Hat product priority](adr/0002-red-hat-priority.md)
 - [ADR-0003: Grafana Operator for dashboards](adr/0003-grafana-operator.md)
+- [ADR-0004: Tracing stack (OTel + Tempo)](adr/0004-tracing-stack.md)

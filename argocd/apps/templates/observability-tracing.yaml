@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: observability-grafana
+  name: observability-tracing
   namespace: openshift-gitops
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -11,13 +11,10 @@ spec:
   source:
     repoURL: {{ .Values.repoURL }}
     targetRevision: {{ .Values.targetRevision }}
-    path: modules/observability/charts/grafana
+    path: modules/observability/charts/tracing
     helm:
       valueFiles:
         - values.yaml
-      parameters:
-        - name: tempo.enabled
-          value: "{{ .Values.modules.observability.enabled }}"
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -36,8 +33,12 @@ spec:
         factor: 2
         maxDuration: 15m
   ignoreDifferences:
-    - group: grafana.integreatly.org
-      kind: Grafana
+    - group: tempo.grafana.com
+      kind: TempoMonolithic
+      jsonPointers:
+        - /spec
+    - group: opentelemetry.io
+      kind: OpenTelemetryCollector
       jsonPointers:
         - /spec
 {{- end }}

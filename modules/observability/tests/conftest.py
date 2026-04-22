@@ -78,6 +78,16 @@ def thanos_url():
 
 
 @pytest.fixture(scope="session")
+def tempo_url():
+    return "http://tempo-tempo:3200"
+
+
+@pytest.fixture(scope="session")
+def collector_namespace():
+    return "observability"
+
+
+@pytest.fixture(scope="session")
 def grafana_sa_token(oc):
     """Read the Grafana SA token from the cluster."""
     import base64

@@ -1,5 +1,5 @@
 ---
 apiVersion: v2
-description: Grafana Operator subscription and User Workload Monitoring enablement
+description: Grafana, OpenTelemetry, and Tempo Operator subscriptions with User Workload Monitoring enablement
 name: obs-operators
 version: 0.1.0
