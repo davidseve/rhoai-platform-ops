@@ -1,0 +1,11 @@
+apiVersion: opendatahub.io/v1alpha
+kind: OdhDashboardConfig
+metadata:
+  name: odh-dashboard-config
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  dashboardConfig:
+    genAiStudio: {{ .Values.dashboard.genAiStudio }}
+    modelAsService: {{ .Values.dashboard.modelAsService }}

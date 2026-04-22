@@ -1,0 +1,92 @@
+# rhoai-platform-ops Makefile
+# Per-module targets for Helm-first workflow + ArgoCD stable deployment.
+
+HELM ?= helm
+OC ?= oc
+PYTHON ?= python3
+
+# --- MaaS Module ---
+
+.PHONY: deploy-maas
+deploy-maas: ## Deploy MaaS operators + platform + models via Helm
+	$(HELM) upgrade --install maas-operators modules/maas/charts/operators --wait --timeout 10m
+	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform --wait --timeout 15m
+	$(HELM) upgrade --install maas-model modules/maas/charts/maas-model --wait --timeout 15m
+	$(HELM) upgrade --install maas-model-fast modules/maas/charts/maas-model -f modules/maas/charts/maas-model/values-tinyllama-fast.yaml --wait --timeout 15m
+
+.PHONY: test-maas
+test-maas: ## Run MaaS E2E tests
+	$(PYTHON) -m venv modules/maas/tests/.venv
+	modules/maas/tests/.venv/bin/pip install -q -r modules/maas/tests/requirements.txt
+	modules/maas/tests/.venv/bin/pytest modules/maas/tests/ -v; \
+	  rc=$$?; rm -rf modules/maas/tests/.venv; exit $$rc
+
+.PHONY: undeploy-maas
+undeploy-maas: ## Undeploy MaaS via Helm
+	-$(HELM) uninstall maas-model-fast 2>/dev/null
+	-$(HELM) uninstall maas-model 2>/dev/null
+	-$(HELM) uninstall maas-platform 2>/dev/null
+	-$(HELM) uninstall maas-operators 2>/dev/null
+
+# --- ArgoCD (Stable Deployment) ---
+
+.PHONY: deploy-argocd
+deploy-argocd: ## Deploy app-of-apps via ArgoCD
+	$(OC) apply -f argocd/app-of-apps.yaml
+
+.PHONY: status
+status: ## Check ArgoCD application sync status
+	$(OC) get applications.argoproj.io -n openshift-gitops
+
+.PHONY: undeploy-argocd
+undeploy-argocd: ## Remove app-of-apps
+	$(OC) delete -f argocd/app-of-apps.yaml --ignore-not-found
+
+# --- Cluster Cleanup ---
+
+.PHONY: cluster-cleanup
+cluster-cleanup: ## Remove ALL deployed resources from the cluster
+	./scripts/cluster-cleanup.sh --yes
+
+.PHONY: cluster-cleanup-maas
+cluster-cleanup-maas: ## Remove only MaaS resources from the cluster
+	./scripts/cluster-cleanup.sh --yes maas
+
+.PHONY: cluster-cleanup-dry
+cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
+	DRY_RUN=true ./scripts/cluster-cleanup.sh
+
+# --- All Modules ---
+
+.PHONY: deploy-all
+deploy-all: deploy-maas ## Deploy all enabled modules
+
+.PHONY: test-all
+test-all: test-maas ## Run all module tests
+
+.PHONY: undeploy-all
+undeploy-all: undeploy-maas ## Undeploy all modules
+
+# --- Validation ---
+
+.PHONY: template
+template: ## Helm template dry-run for all charts
+	$(HELM) template maas-operators modules/maas/charts/operators
+	$(HELM) template maas-platform modules/maas/charts/maas-platform
+	$(HELM) template maas-model modules/maas/charts/maas-model
+	$(HELM) template argocd-apps argocd/apps
+
+.PHONY: lint
+lint: ## Helm lint all charts
+	$(HELM) lint modules/maas/charts/operators
+	$(HELM) lint modules/maas/charts/maas-platform
+	$(HELM) lint modules/maas/charts/maas-model
+	$(HELM) lint argocd/apps
+
+# --- Help ---
+
+.PHONY: help
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+.DEFAULT_GOAL := help

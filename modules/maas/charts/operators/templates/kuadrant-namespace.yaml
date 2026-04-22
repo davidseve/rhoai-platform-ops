@@ -1,0 +1,6 @@
+{{- if .Values.connectivityLink.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.connectivityLink.namespace }}
+{{- end }}

@@ -1,0 +1,25 @@
+{{- if .Values.tiers }}
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: {{ .Values.global.name }}-rate-limits
+  namespace: {{ .Values.global.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: {{ .Values.global.name }}-kserve-route
+  limits:
+    {{- range $tier, $cfg := .Values.tiers }}
+    {{ $tier }}:
+      rates:
+        {{- toYaml $cfg.requestRates | nindent 8 }}
+      when:
+        - predicate: |
+            auth.identity.tier == "{{ $tier }}"
+      counters:
+        - expression: auth.identity.userid
+    {{- end }}
+{{- end }}

@@ -1,0 +1,4 @@
+apiVersion: v2
+name: rhoai-platform-ops
+description: ArgoCD app-of-apps for RHOAI Platform Operations
+version: 0.1.0

@@ -1,0 +1,52 @@
+global:
+  name: tinyllama-fast
+  namespace: maas-models
+
+mode: llminferenceservice
+
+namespace:
+  create: false
+
+model:
+  storageUri: "oci://quay.io/rh-aiservices-bu/tinyllama:1.0"
+  servedName: "tinyllama-fast"
+  maxModelLen: 2048
+
+images:
+  vllm:
+    repository: "quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
+    tag: "0.3"
+
+resources:
+  requests:
+    cpu: "2"
+    memory: "4Gi"
+  limits:
+    cpu: "8"
+    memory: "8Gi"
+
+llminferenceservice:
+  replicas: 1
+  gateway:
+    name: maas-default-gateway
+    namespace: openshift-ingress
+
+rbac:
+  enabled: true
+
+# Generous rate limits (compared to tinyllama-test)
+tiers:
+  free:
+    requestRates:
+      - limit: 100
+        window: 1m
+    tokenRates:
+      - limit: 10000
+        window: 1m
+  premium:
+    requestRates:
+      - limit: 500
+        window: 1m
+    tokenRates:
+      - limit: 100000
+        window: 1m

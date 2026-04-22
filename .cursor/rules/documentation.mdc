@@ -1,0 +1,71 @@
+---
+description: "Documentation conventions: short READMEs, detailed docs, ADRs."
+globs:
+  - "docs/**/*.md"
+  - "**/README.md"
+  - "AGENTS.md"
+---
+
+# Documentation Conventions
+
+## README Files
+
+READMEs are short and actionable:
+1. One-paragraph description
+2. Prerequisites
+3. Quick deploy (copy-paste commands)
+4. Quick test (copy-paste commands)
+5. Link to detailed docs
+
+Do NOT put architectural explanations, trade-offs, or decision rationale in READMEs.
+
+## Detailed Documentation
+
+Deep explanations go in:
+- `docs/<topic>.md` for cross-module topics
+- `modules/<name>/docs/` for module-specific documentation
+
+Include:
+- Why decisions were made (not just what)
+- Red Hat documentation URLs as references
+- Diagrams where they clarify architecture
+- Version-specific notes (e.g., "RHOAI 3.3 requires...")
+
+## Architecture Decision Records
+
+Every non-obvious decision gets an ADR in `docs/adr/NNNN-<title>.md`.
+
+ADR template:
+```markdown
+# ADR-NNNN: <Title>
+
+## Status
+Accepted | Superseded by ADR-MMMM
+
+## Context
+<What motivated this decision?>
+
+## Options Considered
+### Option 1: <Name>
+- Pros: ...
+- Cons: ...
+
+## Decision
+<What we chose and why>
+
+## Consequences
+- Positive: ...
+- Negative: ...
+```
+
+ADRs are critical for:
+- RHOAI version upgrades (understanding why current config exists)
+- Onboarding (understanding project history)
+- Revisiting decisions when constraints change
+
+## Red Hat References
+
+When referencing Red Hat products, always include the official documentation URL:
+```markdown
+See [RHOAI 3.3 Observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/managing_openshift_ai/managing-observability_managing-rhoai)
+```

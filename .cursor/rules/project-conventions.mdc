@@ -1,0 +1,79 @@
+---
+description: "Core project conventions for rhoai-platform-ops: structure, naming, workflow, priorities."
+alwaysApply: true
+---
+
+# Project Conventions
+
+## Module Structure
+
+Each module lives in `modules/<name>/` with three subdirectories:
+- `charts/` -- Helm charts (one or more per module)
+- `tests/` -- pytest test suite with `conftest.py`, `requirements.txt`, `pytest.ini`
+- `docs/` -- Module-specific documentation
+
+ArgoCD Application templates go in `argocd/apps/templates/` with a module enable guard:
+```yaml
+{{- if .Values.modules.<name>.enabled }}
+```
+
+## Helm-First Workflow
+
+Every chart must be testable with `helm template` before adding it to ArgoCD.
+
+1. Develop and validate with `helm template modules/<name>/charts/<chart>`
+2. Test on-cluster with `helm install` directly
+3. Once stable, add ArgoCD Application template and enable in `argocd/apps/values.yaml`
+
+## Red Hat Priority
+
+Always prioritize Red Hat products and official Red Hat documentation:
+- RHOAI (Red Hat OpenShift AI) for model serving
+- Kuadrant / RHCL (Red Hat Connectivity Link) for API governance
+- Red Hat build of OpenTelemetry for tracing
+- Red Hat build of Tempo for trace storage
+- Cluster Observability Operator for monitoring
+
+Use community projects only when Red Hat does not cover the need.
+
+## Testing
+
+Every change needs tests. Tests must be:
+- **Idempotent**: runnable N times without cleanup between runs
+- **Robust**: no dependency on execution order between modules
+- **Easy to execute**: `make test-<module>` from the repo root
+
+## Architecture Decision Records
+
+Non-obvious decisions get an ADR in `docs/adr/NNNN-<title>.md`. Use the `adr` skill to create them.
+
+## YAML Style
+
+- 2-space indentation for all YAML files
+- Helm templates use `{{ .Values. }}` (not `{{ $.Values. }}` unless inside a range)
+- Include comments for non-obvious values in `values.yaml`
+
+## AGENTS.md is the Source of Truth
+
+`AGENTS.md` is the project context file for AI agents. It MUST be updated whenever:
+- A new Cursor skill is created or removed (update the "Cursor Skills" section)
+- A new module is added (update "Architecture" and "Quick Commands" sections)
+- A new Makefile target is added (update "Quick Commands" section)
+- Key conventions change (update the relevant section)
+
+This is not optional. Treat `AGENTS.md` the same way you treat updating imports after adding a new file.
+
+## Cluster Cleanup Script
+
+`scripts/cluster-cleanup.sh` removes all deployed resources from the cluster. It MUST be updated whenever:
+- A new module is added (add a `cleanup_<module>` function)
+- A module creates new namespaces or CRDs
+- A module adds resources with finalizers
+- Operator subscriptions change
+
+## Naming
+
+- Module directories: lowercase, hyphen-separated (e.g., `maas`, `observability`)
+- Helm chart directories: lowercase, hyphen-separated
+- Test files: `test_NN_<description>.py` (numeric prefix for ordering)
+- ArgoCD app templates: `<module>-<component>.yaml`

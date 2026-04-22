@@ -1,0 +1,16 @@
+clusterDomain: CHANGE_ME
+repoURL: https://github.com/davidseve/rhoai-platform-ops.git
+targetRevision: main
+
+modules:
+  maas:
+    enabled: true
+    models:
+      tinyllama-test:
+        enabled: true
+      tinyllama-fast:
+        enabled: true
+  observability:
+    enabled: false
+  evaluation:
+    enabled: false
