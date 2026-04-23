@@ -143,7 +143,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
-        { "refId": "A", "expr": "topk(10, sum by(user) (rate(authorized_calls[5m])))", "legendFormat": "{{user}}" }
+        { "refId": "A", "expr": "topk(10, sum by(user) (label_replace(rate(authorized_calls[5m]), \"user\", \"$1\", \"user\", \"(.*)-[0-9a-f]{8}$\")))", "legendFormat": "{{user}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
