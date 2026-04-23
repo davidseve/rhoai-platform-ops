@@ -131,7 +131,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [
-        { "refId": "A", "expr": "sum by(limitador_namespace) (rate(authorized_calls[5m]))", "legendFormat": "{{limitador_namespace}}" }
+        { "refId": "A", "expr": "label_replace(sum by(limitador_namespace) (rate(authorized_calls[5m])), \"model\", \"$1\", \"limitador_namespace\", \".*/(.*)-kserve-route\")", "legendFormat": "{{model}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }

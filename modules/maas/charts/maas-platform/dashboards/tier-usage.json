@@ -126,7 +126,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
-        { "refId": "A", "expr": "sum by(tier, limitador_namespace) (rate(authorized_calls[5m]))", "legendFormat": "{{tier}} / {{limitador_namespace}}" }
+        { "refId": "A", "expr": "label_replace(sum by(tier, limitador_namespace) (rate(authorized_calls[5m])), \"model\", \"$1\", \"limitador_namespace\", \".*/(.*)-kserve-route\")", "legendFormat": "{{tier}} / {{model}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
