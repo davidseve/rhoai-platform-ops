@@ -51,13 +51,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "thanos-querier" },
-          "expr": "histogram_quantile(0.5, sum(rate(traces_spanmetrics_latency_bucket[5m])) by (le, service_name))",
+          "expr": "histogram_quantile(0.5, sum(rate(traces_span_metrics_duration_milliseconds_bucket[5m])) by (le, service_name))",
           "legendFormat": "{{ service_name }} P50",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "thanos-querier" },
-          "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket[5m])) by (le, service_name))",
+          "expr": "histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_milliseconds_bucket[5m])) by (le, service_name))",
           "legendFormat": "{{ service_name }} P99",
           "refId": "B"
         }
@@ -108,7 +108,7 @@
       "id": 4,
       "targets": [
         {
-          "expr": "sum(rate(traces_spanmetrics_calls_total[5m])) by (service_name, span_kind)",
+          "expr": "sum(rate(traces_span_metrics_calls_total[5m])) by (service_name, span_kind)",
           "legendFormat": "{{ service_name }} ({{ span_kind }})",
           "refId": "A"
         }

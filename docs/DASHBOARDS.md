@@ -33,7 +33,7 @@ REQUESTS=200 CONCURRENCY=4 DELAY=0.5 make generate-traffic
 MODELS=tinyllama-test make generate-traffic
 ```
 
-The script automatically discovers the cluster domain, obtains a MaaS token, and sends varied prompts (short and long) to both models in round-robin. Wait 1-2 minutes after completion for metrics to propagate through the Prometheus scrape cycle.
+The script automatically discovers the cluster domain, obtains a MaaS token, and sends varied prompts (short and long) to both models in round-robin. For each request, it also emits an OTLP trace span to the collector (via port-forward) representing the gateway-to-model flow. Wait 1-2 minutes after completion for metrics to propagate through the Prometheus scrape cycle; traces appear in Tempo within seconds.
 
 ### Environment variables
 
@@ -44,6 +44,7 @@ The script automatically discovers the cluster domain, obtains a MaaS token, and
 | `DELAY` | 1 | Seconds between requests per worker |
 | `MODELS` | `tinyllama-test,tinyllama-fast` | Comma-separated model names |
 | `MAX_TOKENS` | 30 | Max tokens per completion request |
+| `EMIT_TRACES` | `true` | Send OTLP traces to collector for each request |
 
 ## Dashboard Inventory
 
@@ -104,16 +105,16 @@ Compares resource consumption between free and premium tiers -- useful for capac
 
 **Location**: Dashboards > Trace Exploration
 
-Visualizes distributed traces collected by the OpenTelemetry Collector and stored in Tempo. This dashboard only shows data when vLLM pods are emitting traces (requires a vLLM image with OTEL packages).
+Visualizes distributed traces collected by the OpenTelemetry Collector and stored in Tempo. The traffic generator emits OTLP traces for each inference request, producing two spans per trace: a `maas-gateway` span (representing the gateway hop) and a `vllm-<model>` span (representing model inference). When a vLLM image with native OTEL support is available, real model-level traces will replace the synthetic ones.
 
 | Panel | What it shows | What to look for |
 |-------|---------------|------------------|
-| Service Map | Graph of services and their connections | Shows request flow between components |
-| Latency Distribution (from spanmetrics) | Histogram of request latencies from spans | Derived from traces, not Prometheus scraping |
-| Recent Traces | Table of most recent traces with service and duration | Click a trace ID to drill into spans |
-| Request Rate by Service (from spanmetrics) | Per-service request throughput from spans | Shows which services handle the most traffic |
+| Service Map | Graph of services and their connections | Shows `maas-gateway` -> `vllm-<model>` request flow |
+| Latency Distribution (from spanmetrics) | Histogram of request latencies from spans | Derived from traces, reflects actual inference times |
+| Recent Traces | Table of most recent traces with service and duration | Click a trace ID to drill into the gateway + inference spans |
+| Request Rate by Service (from spanmetrics) | Per-service request throughput from spans | Shows traffic split between `maas-gateway` and each model |
 
-**Note**: The Trace Exploration dashboard relies on the `spanmetrics` connector in the OTel Collector to derive metrics from traces. If no traces are flowing (because vLLM lacks OTEL packages), these panels will be empty. See the [ROADMAP](ROADMAP.md) for the high-priority item to resolve this.
+**Note**: Until vLLM images include native OTEL packages (see [ROADMAP](ROADMAP.md)), the traffic generator produces the traces. Set `EMIT_TRACES=false` to disable trace emission.
 
 ## Exploring Traces in Grafana
 
@@ -124,7 +125,7 @@ Beyond the dashboard, Grafana's **Explore** view provides interactive trace sear
 1. In Grafana, click the compass icon (**Explore**) in the left sidebar
 2. Select **Tempo** as the datasource (top-left dropdown)
 3. Use the **Search** tab to filter traces:
-   - **Service Name**: filter by model name (e.g., `tinyllama-test`) or `maas-collector`
+   - **Service Name**: filter by `maas-gateway`, `vllm-tinyllama-test`, etc.
    - **Span Name**: filter by operation
    - **Duration**: find slow requests (e.g., `> 5s`)
    - **Tags**: filter by custom attributes
@@ -133,9 +134,9 @@ Beyond the dashboard, Grafana's **Explore** view provides interactive trace sear
 ### Read a trace waterfall
 
 Each trace shows:
-- **Root span**: the entry point (gateway or vLLM depending on what's instrumented)
-- **Child spans**: nested operations within each service
-- **Duration bars**: visual representation of time spent in each span
+- **Root span** (`maas-gateway`): the API gateway entry point with `http.route`, `http.status_code`, and `model.name`
+- **Child span** (`vllm-<model>`): the inference operation with `model.name` and `gen_ai.request.max_tokens`
+- **Duration bars**: visual representation of time spent in each span (inference is nested inside the gateway span)
 - **Tags/attributes**: metadata like HTTP status, model name, token counts
 
 ### Service map
