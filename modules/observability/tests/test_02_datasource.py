@@ -30,10 +30,10 @@ def test_thanos_returns_data(oc, grafana_sa_token):
 
 
 def test_vllm_metrics_discoverable(oc, grafana_sa_token):
-    """At least one vllm: metric is discoverable via Thanos.
+    """At least one kserve_vllm: metric is discoverable via Thanos.
 
-    This is the metric discovery step that catches name mismatches
-    before they hit dashboards or alerts.
+    KServe wraps vLLM metrics with the kserve_vllm: prefix.
+    This catches metric name mismatches before they hit dashboards or alerts.
     """
     token = grafana_sa_token
     result = oc(

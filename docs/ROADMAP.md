@@ -65,6 +65,9 @@ Goal: trace individual requests through the full stack (client -> gateway -> mod
 
 Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context.
 
+> **HIGH PRIORITY -- vLLM OTEL image**: The current CPU image (`vllm-cpu-openai-ubi9:0.3`) does not include `opentelemetry-sdk` or `opentelemetry-exporter-otlp` Python packages. Without these, the `OTEL_TRACES_EXPORTER=otlp` env var is silently ignored and no traces flow from vLLM to the OTel Collector. This blocks the `--run-tracing` E2E tests, the Trace Exploration dashboard, and end-to-end trace visibility. **Action**: find or build a CPU vLLM image that includes OTEL dependencies (or confirm a newer upstream image ships them). This is the single remaining blocker to unify Phase 1 (metrics) and Phase 2 (traces) into a complete observability picture.
+
+- [ ] **Find/build CPU vLLM image with OpenTelemetry packages** (blocker for all tracing items below)
 - [ ] Gateway/Envoy distributed tracing (Istio `Telemetry` CR for Envoy -> OTel Collector)
 - [ ] Persistent Tempo storage (switch from memory to PV/S3 backend)
 - [ ] Token-level vLLM tracing (fine-grained per-token spans, requires newer vLLM image)

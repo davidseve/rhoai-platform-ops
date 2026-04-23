@@ -108,13 +108,13 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Token Usage by Tier (vLLM)",
-      "description": "Generation tokens per tier (requires TelemetryPolicy tier labels on vLLM metrics)",
+      "title": "Token Throughput by Model (vLLM)",
+      "description": "Generation and prompt tokens per model",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [
-        { "refId": "A", "expr": "sum by(tier) (rate(vllm:generation_tokens_total[5m]))", "legendFormat": "{{tier}} gen tokens/s" },
-        { "refId": "B", "expr": "sum by(tier) (rate(vllm:prompt_tokens_total[5m]))", "legendFormat": "{{tier}} prompt tokens/s" }
+        { "refId": "A", "expr": "sum by(model_name) (rate(kserve_vllm:generation_tokens_total[5m]))", "legendFormat": "{{model_name}} gen tokens/s" },
+        { "refId": "B", "expr": "sum by(model_name) (rate(kserve_vllm:prompt_tokens_total[5m]))", "legendFormat": "{{model_name}} prompt tokens/s" }
       ],
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
@@ -126,7 +126,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
-        { "refId": "A", "expr": "sum by(tier, model) (rate(authorized_calls[5m]))", "legendFormat": "{{tier}} / {{model}}" }
+        { "refId": "A", "expr": "sum by(tier, limitador_namespace) (rate(authorized_calls[5m]))", "legendFormat": "{{tier}} / {{limitador_namespace}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }

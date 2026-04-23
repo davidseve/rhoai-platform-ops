@@ -1,0 +1,169 @@
+# Dashboards and Trace Exploration
+
+How to access Grafana, understand each dashboard, explore distributed traces, and generate traffic to populate everything.
+
+## Accessing Grafana
+
+Grafana is protected by an OpenShift OAuth proxy. Only authenticated cluster users can access it.
+
+```bash
+# Get the Grafana URL
+oc get route grafana-route -n observability -o jsonpath='https://{.spec.host}'
+```
+
+1. Open the URL in a browser
+2. Click **Log in with OpenShift**
+3. Authenticate with your cluster credentials
+4. You will be redirected to the Grafana home page
+
+The OAuth proxy enforces that the user has `get` permission on the Grafana Route in the `observability` namespace.
+
+## Generating Traffic
+
+Dashboards need real inference traffic to show meaningful data. Use the built-in traffic generator:
+
+```bash
+# Default: 50 requests, 2 workers, 1s delay, both models
+make generate-traffic
+
+# Heavy load: 200 requests, 4 concurrent, 0.5s delay
+REQUESTS=200 CONCURRENCY=4 DELAY=0.5 make generate-traffic
+
+# Single model only
+MODELS=tinyllama-test make generate-traffic
+```
+
+The script automatically discovers the cluster domain, obtains a MaaS token, and sends varied prompts (short and long) to both models in round-robin. Wait 1-2 minutes after completion for metrics to propagate through the Prometheus scrape cycle.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REQUESTS` | 50 | Total number of inference requests |
+| `CONCURRENCY` | 2 | Parallel workers sending requests |
+| `DELAY` | 1 | Seconds between requests per worker |
+| `MODELS` | `tinyllama-test,tinyllama-fast` | Comma-separated model names |
+| `MAX_TOKENS` | 30 | Max tokens per completion request |
+
+## Dashboard Inventory
+
+Four dashboards are deployed. Three live in the MaaS module (gated by `grafana.enabled`), one in the observability module (gated by `tempo.enabled`).
+
+### 1. MaaS Platform Overview
+
+**Location**: Dashboards > MaaS Platform Overview
+
+Provides a high-level view of the API gateway traffic -- how many requests are flowing, how many are being rejected, and which models/users are active.
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| Authorized Requests/sec | Successful requests passing through Kuadrant | Should show ~2 req/s during traffic generation |
+| Limited Requests/sec | Requests rejected by rate limits | Non-zero after sustained traffic exceeds limits |
+| Rejection Ratio | Percentage of requests being rate-limited | Spikes indicate rate limit policies are active |
+| Active Connections | Current open connections to the gateway | Matches concurrency level during load |
+| Authorized vs Limited Calls Over Time | Time series of accepted vs rejected | Visualizes rate limit behavior over time |
+| Rejection Ratio Over Time | Time series of rejection percentage | Correlates with bursts of traffic |
+| Calls by Model | Per-model breakdown of requests | Both models should appear with similar volumes |
+| Calls by User | Per-user/tier breakdown | Shows which tier is generating traffic |
+
+### 2. vLLM Inference Metrics
+
+**Location**: Dashboards > vLLM Inference Metrics
+
+Deep dive into model serving performance -- latency, throughput, and resource utilization at the vLLM engine level.
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| Generation Token Throughput (TPS) | Output tokens produced per second | Non-zero during and shortly after traffic |
+| Prompt Token Throughput (TPS) | Input tokens processed per second | Varies with prompt length (short vs long) |
+| Scheduler State | Running, waiting, and swapped request counts | `running` should be non-zero during load |
+| KV Cache Utilization | Percentage of GPU/CPU KV cache in use | Non-zero means the model is actively serving |
+| Processed Requests by Finish Reason | Breakdown of completed vs stopped requests | Most should show `stop` (normal completion) |
+| Request Prompt Length Distribution | Histogram of input prompt lengths | Should show varied lengths from the generator |
+| E2E Request Latency | End-to-end latency percentiles (P50/P90/P99) | Shows model serving performance |
+| TTFT (Time To First Token) | Latency until first token is generated | Key metric for interactive responsiveness |
+| TPOT (Time Per Output Token) | Latency per generated token | Shows decoding efficiency |
+
+### 3. MaaS Per-Tier Usage
+
+**Location**: Dashboards > MaaS Per-Tier Usage
+
+Compares resource consumption between free and premium tiers -- useful for capacity planning and validating rate limit policies.
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| Free Tier Requests/sec | Request rate for the free tier | Traffic volume for the default tier |
+| Premium Tier Requests/sec | Request rate for the premium tier | Traffic from premium-tier users |
+| Free Tier Rate Limited/sec | Rate-limited requests for free tier | Shows if free tier is hitting limits |
+| Premium Tier Rate Limited/sec | Rate-limited requests for premium tier | Premium should have higher limits |
+| Authorized/Limited Calls by Tier | Stacked comparison of tiers | Visualizes tier policy differences |
+| Token Usage by Tier (vLLM) | Token consumption split by tier | Tracks actual resource consumption |
+| Calls by Tier and Model | Cross-reference tier and model | Shows which tier uses which model most |
+
+### 4. Trace Exploration
+
+**Location**: Dashboards > Trace Exploration
+
+Visualizes distributed traces collected by the OpenTelemetry Collector and stored in Tempo. This dashboard only shows data when vLLM pods are emitting traces (requires a vLLM image with OTEL packages).
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| Service Map | Graph of services and their connections | Shows request flow between components |
+| Latency Distribution (from spanmetrics) | Histogram of request latencies from spans | Derived from traces, not Prometheus scraping |
+| Recent Traces | Table of most recent traces with service and duration | Click a trace ID to drill into spans |
+| Request Rate by Service (from spanmetrics) | Per-service request throughput from spans | Shows which services handle the most traffic |
+
+**Note**: The Trace Exploration dashboard relies on the `spanmetrics` connector in the OTel Collector to derive metrics from traces. If no traces are flowing (because vLLM lacks OTEL packages), these panels will be empty. See the [ROADMAP](ROADMAP.md) for the high-priority item to resolve this.
+
+## Exploring Traces in Grafana
+
+Beyond the dashboard, Grafana's **Explore** view provides interactive trace search and drill-down via the Tempo datasource.
+
+### Search for traces
+
+1. In Grafana, click the compass icon (**Explore**) in the left sidebar
+2. Select **Tempo** as the datasource (top-left dropdown)
+3. Use the **Search** tab to filter traces:
+   - **Service Name**: filter by model name (e.g., `tinyllama-test`) or `maas-collector`
+   - **Span Name**: filter by operation
+   - **Duration**: find slow requests (e.g., `> 5s`)
+   - **Tags**: filter by custom attributes
+4. Click a trace to see its full span tree
+
+### Read a trace waterfall
+
+Each trace shows:
+- **Root span**: the entry point (gateway or vLLM depending on what's instrumented)
+- **Child spans**: nested operations within each service
+- **Duration bars**: visual representation of time spent in each span
+- **Tags/attributes**: metadata like HTTP status, model name, token counts
+
+### Service map
+
+The **Node Graph** panel in the Trace Exploration dashboard (or in Explore > Tempo > Service Map) shows:
+- Nodes for each service emitting traces
+- Edges showing request flow between services
+- Latency and error rate on each edge
+
+### Traces to metrics correlation
+
+The Tempo datasource is configured with `tracesToMetrics` pointing to Thanos Querier. This means:
+- From a trace span, click **"Related metrics"** to jump to Prometheus metrics for that service
+- Correlate a slow trace with CPU/memory/KV cache metrics at that point in time
+
+## Metrics Propagation Timing
+
+After generating traffic, metrics appear in dashboards at different speeds:
+
+| Source | Delay | Why |
+|--------|-------|-----|
+| vLLM metrics (via PodMonitor) | 30-60s | Prometheus scrape interval + Thanos propagation |
+| Gateway metrics (Kuadrant/Envoy) | 15-30s | Scraped from platform monitoring |
+| Trace-derived metrics (spanmetrics) | 5-15s | Near real-time from OTel Collector |
+| Traces in Tempo | 1-5s | OTLP push, near-instant storage |
+
+If panels remain empty after 2 minutes of traffic, check:
+1. `oc get pods -n maas-models` -- are model pods running?
+2. `oc get pods -n observability` -- are Grafana, Collector, Tempo running?
+3. `oc get podmonitor -n maas-models` -- does the PodMonitor exist?
+4. `oc get grafanadatasource -n observability` -- are datasources created?

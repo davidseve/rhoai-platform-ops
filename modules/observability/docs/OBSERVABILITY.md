@@ -50,17 +50,17 @@ No `insecureSkipVerify` -- proper certificate validation against the OpenShift s
 
 ## Metric Contract
 
-vLLM metric names used in dashboards and alerts (prefix `vllm:`):
-- `vllm:generation_tokens_total`
-- `vllm:prompt_tokens_total`
-- `vllm:e2e_request_latency_seconds_bucket`
-- `vllm:time_to_first_token_seconds_bucket`
-- `vllm:time_per_output_token_seconds_bucket`
-- `vllm:num_requests_running` / `waiting` / `swapped`
-- `vllm:gpu_cache_usage_perc` / `cpu_cache_usage_perc`
-- `vllm:request_success_total`
+vLLM metric names used in dashboards and alerts (prefix `kserve_vllm:`):
+- `kserve_vllm:generation_tokens_total`
+- `kserve_vllm:prompt_tokens_total`
+- `kserve_vllm:e2e_request_latency_seconds_bucket`
+- `kserve_vllm:time_to_first_token_seconds_bucket`
+- `kserve_vllm:time_per_output_token_seconds_bucket`
+- `kserve_vllm:num_requests_running` / `waiting` / `swapped`
+- `kserve_vllm:gpu_cache_usage_perc` / `cpu_cache_usage_perc`
+- `kserve_vllm:request_success_total`
 
-Metric names may change between vLLM versions. The E2E test `test_02_datasource.py::test_vllm_metrics_discoverable` queries actual metrics from Thanos at deploy time to catch mismatches early.
+The `kserve_vllm:` prefix is applied by KServe when it wraps vLLM. Metric names may change between vLLM/KServe versions. The E2E test `test_02_datasource.py::test_vllm_metrics_discoverable` queries actual metrics from Thanos at deploy time to catch mismatches early.
 
 ## Deployment
 

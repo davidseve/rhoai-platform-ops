@@ -72,6 +72,12 @@ status: ## Check ArgoCD application sync status
 undeploy-argocd: ## Remove app-of-apps
 	$(OC) delete -f argocd/app-of-apps.yaml --ignore-not-found
 
+# --- Traffic Generation ---
+
+.PHONY: generate-traffic
+generate-traffic: ## Generate inference traffic for dashboard population
+	bash scripts/generate-traffic.sh
+
 # --- Cluster Cleanup ---
 
 .PHONY: cluster-cleanup
