@@ -60,12 +60,13 @@ Provides a high-level view of the API gateway traffic -- how many requests are f
 |-------|---------------|------------------|
 | Authorized Requests/sec | Successful requests passing through Kuadrant | Should show ~2 req/s during traffic generation |
 | Limited Requests/sec | Requests rejected by rate limits | Non-zero after sustained traffic exceeds limits |
+| Gateway 5xx/sec | Server errors from the HAProxy ingress layer | Should be 0; any non-zero value indicates auth or backend failures |
 | Rejection Ratio | Percentage of requests being rate-limited | Spikes indicate rate limit policies are active |
-| Active Connections | Current open connections to the gateway | Matches concurrency level during load |
-| Authorized vs Limited Calls Over Time | Time series of accepted vs rejected | Visualizes rate limit behavior over time |
+| Total Requests (5m) | Sum of authorized + limited requests over 5m window | Overall traffic volume |
+| Authorized vs Limited vs 5xx Over Time | Time series of accepted, rejected, and 5xx errors | Visualizes rate limit behavior and error spikes |
 | Rejection Ratio Over Time | Time series of rejection percentage | Correlates with bursts of traffic |
 | Calls by Model | Per-model breakdown of requests | Both models should appear with similar volumes |
-| Calls by User | Per-user/tier breakdown | Shows which tier is generating traffic |
+| Calls by User | Per-user breakdown (hash suffix stripped) | Shows which users are generating traffic |
 
 ### 2. vLLM Inference Metrics
 
@@ -168,3 +169,32 @@ If panels remain empty after 2 minutes of traffic, check:
 2. `oc get pods -n observability` -- are Grafana, Collector, Tempo running?
 3. `oc get podmonitor -n maas-models` -- does the PodMonitor exist?
 4. `oc get grafanadatasource -n observability` -- are datasources created?
+
+## Gateway 5xx Errors
+
+### What causes them
+
+Gateway 5xx errors originate from the Kuadrant/Envoy auth evaluation layer, **not** from vLLM. They occur when the gateway cannot process the authentication chain (TokenReview + tier lookup to MaaS API) fast enough under high-concurrency bursts. vLLM pod logs will show only `200 OK` during these events.
+
+### Where to see them
+
+| Source | How to check |
+|--------|-------------|
+| **Dashboard** | "MaaS Platform Overview" > "Gateway 5xx/sec" stat and "Authorized vs Limited vs 5xx Over Time" chart |
+| **Prometheus alerts** | `MaaSGateway5xxErrors` (any 5xx for 2min), `MaaSGateway5xxCritical` (>5% error rate for 5min) |
+| **HAProxy metric** | `haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}` |
+| **Kuadrant/Authorino logs** | `oc logs -n kuadrant-system deployment/authorino --tail=100` |
+| **Envoy access logs** | `oc logs -n openshift-ingress deployment/router-default --tail=100 \| grep 5` |
+
+### Production mitigations
+
+- **Limit client concurrency**: Keep `CONCURRENCY` at 2 or lower for the traffic generator. In production, use client-side rate limiting or a queue
+- **AuthPolicy cache TTLs**: Identity cache is 600s, tier cache is 300s, authorization cache is 60s. These reduce repeated TokenReview calls
+- **Authorino resources**: Ensure the Authorino deployment has adequate CPU/memory and consider an HPA
+- **Retry with backoff**: Clients should implement retry with exponential backoff for 5xx responses
+
+### About the port-forward in generate-traffic.sh
+
+The traffic generator uses `oc port-forward` to send OTLP traces to the OTel Collector from your local machine. This is a **dev-only workaround** because the script runs outside the cluster and cannot reach the collector service directly.
+
+In production, traces are emitted by application pods running inside the cluster (vLLM with OTEL packages, or gateway with Istio Telemetry). They connect directly to the collector service (`maas-collector-collector.observability.svc:4317`) without any port-forward.

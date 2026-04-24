@@ -127,6 +127,46 @@ Tracing on model pods is opt-in (`tracing.enabled: false` by default in `maas-mo
 
 See [ADR-0004](../../../docs/adr/0004-tracing-stack.md) for the decision rationale.
 
+## Alerting
+
+Two PrometheusRule resources define the alert rules:
+
+### Gateway alerts (`maas-alerts` in `kuadrant-system`)
+
+| Alert | Severity | Condition | Meaning |
+|-------|----------|-----------|---------|
+| MaaSLimitadorDown | critical | `limitador_up == 0` for 1m | Rate limiter is completely down |
+| MaaSHighRejectionRate | warning | Rejection ratio > 30% for 5m | Rate limits are rejecting a large fraction of traffic |
+| MaaSDatastorePartitioned | critical | `datastore_partitioned == 1` for 1m | Limitador lost its backing store |
+| MaaSGateway5xxErrors | warning | Any 5xx from HAProxy for 2m | Gateway returning server errors (auth evaluation failures) |
+| MaaSGateway5xxCritical | critical | 5xx ratio > 5% for 5m | Sustained gateway error rate -- possible auth service overload |
+
+### vLLM SLO alerts (`maas-vllm-slo` in `maas-models`)
+
+| Alert | Severity | Condition | Meaning |
+|-------|----------|-----------|---------|
+| MaaSHighP99Latency | warning | P99 e2e latency > 30s for 5m | Model inference is too slow |
+| MaaSKVCacheNearFull | warning | KV cache > 90% for 5m | Model is approaching memory limits |
+| MaaSHighErrorRate | critical | vLLM error rate > 0 for 5m | Model is returning inference errors |
+
+## Production Considerations
+
+### Gateway 5xx errors
+
+Gateway 5xx errors originate from the Kuadrant/Envoy auth evaluation layer during high-concurrency bursts. The authentication chain (Kubernetes TokenReview + tier lookup HTTP call to MaaS API) is synchronous per request. Under burst traffic, these calls can timeout, causing 500 responses at the HAProxy ingress layer.
+
+**Key metric**: `haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}`
+
+**Mitigations**:
+- Ensure Authorino has adequate CPU/memory resources
+- AuthPolicy cache TTLs reduce repeated auth calls (identity: 600s, tier: 300s, authorization: 60s)
+- Client-side rate limiting and retry with exponential backoff
+- Consider an HPA for the Authorino deployment in high-traffic environments
+
+### Trace pipeline (port-forward vs in-cluster)
+
+The `generate-traffic.sh` script uses `oc port-forward` to reach the OTel Collector from outside the cluster. This is dev-only tooling. In production, application pods emit traces directly to the collector service (`maas-collector-collector.observability.svc:4317`) from within the cluster.
+
 ## Cleanup
 
 ```bash

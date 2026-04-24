@@ -30,7 +30,7 @@
       "type": "stat",
       "title": "Authorized Requests/sec",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
       "targets": [
         { "refId": "A", "expr": "sum(rate(authorized_calls[5m]))", "legendFormat": "Authorized", "instant": true }
       ],
@@ -47,7 +47,7 @@
       "type": "stat",
       "title": "Limited Requests/sec",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
       "targets": [
         { "refId": "A", "expr": "sum(rate(limited_calls[5m]))", "legendFormat": "Limited", "instant": true }
       ],
@@ -60,11 +60,28 @@
       }
     },
     {
+      "id": 9,
+      "type": "stat",
+      "title": "Gateway 5xx/sec",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(haproxy_server_http_responses_total{route=\"data-science-gateway\", code=\"5xx\"}[5m]))", "legendFormat": "5xx", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps", "decimals": 2, "noValue": "0",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.01 }] }
+        }
+      }
+    },
+    {
       "id": 3,
       "type": "stat",
       "title": "Rejection Ratio",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "gridPos": { "h": 4, "w": 5, "x": 15, "y": 0 },
       "targets": [
         { "refId": "A", "expr": "sum(rate(limited_calls[5m])) / (sum(rate(authorized_calls[5m])) + sum(rate(limited_calls[5m])))", "legendFormat": "Rejection %", "instant": true }
       ],
@@ -81,7 +98,7 @@
       "type": "stat",
       "title": "Total Requests (5m)",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
       "targets": [
         { "refId": "A", "expr": "sum(increase(authorized_calls[5m])) + sum(increase(limited_calls[5m]))", "legendFormat": "Total", "instant": true }
       ],
@@ -96,12 +113,13 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Authorized vs Limited Calls Over Time",
+      "title": "Authorized vs Limited vs 5xx Over Time",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "targets": [
         { "refId": "A", "expr": "sum(rate(authorized_calls[5m]))", "legendFormat": "Authorized" },
-        { "refId": "B", "expr": "sum(rate(limited_calls[5m]))", "legendFormat": "Limited" }
+        { "refId": "B", "expr": "sum(rate(limited_calls[5m]))", "legendFormat": "Limited (429)" },
+        { "refId": "C", "expr": "sum(rate(haproxy_server_http_responses_total{route=\"data-science-gateway\", code=\"5xx\"}[5m]))", "legendFormat": "Gateway 5xx" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }

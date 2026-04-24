@@ -83,7 +83,11 @@ fi
 echo "Token obtained (expires in 60m)"
 echo ""
 
-# ── OTLP trace port-forward ──────────────────────────────────────
+# ── OTLP trace port-forward (dev-only) ───────────────────────────
+# This port-forward is needed because the script runs outside the cluster
+# and cannot reach the OTel Collector service directly. In production,
+# application pods emit traces from inside the cluster to the collector
+# service (maas-collector-collector.observability.svc:4317) -- no port-forward.
 TMPDIR=$(mktemp -d)
 PF_PID=""
 
