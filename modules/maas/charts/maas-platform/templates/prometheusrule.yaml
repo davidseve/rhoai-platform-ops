@@ -45,30 +45,26 @@ spec:
 
     - name: maas-gateway-errors
       rules:
-        - alert: MaaSGateway5xxErrors
+        - alert: MaaSGatewayErrors
           expr: |
-            sum(rate(
-              haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}
-            [5m])) > 0
+            sum(rate(kuadrant_errors[5m])) > 0
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "MaaS gateway returning 5xx errors"
-            description: "The MaaS gateway is returning server errors at {{ "{{ $value | humanize }}" }} req/s. Check Kuadrant/Authorino logs for auth evaluation failures."
+            summary: "MaaS gateway returning errors (WASM auth timeout)"
+            description: "The Kuadrant WASM filter is erroring at {{ "{{ $value | humanize }}" }} req/s. Likely the 200ms auth-service timeout is being exceeded under concurrent load."
 
-        - alert: MaaSGateway5xxCritical
+        - alert: MaaSGatewayErrorsCritical
           expr: |
-            sum(rate(
-              haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}
-            [5m]))
-            / sum(rate(
-              haproxy_server_http_responses_total{route="data-science-gateway"}
-            [5m])) > 0.05
+            sum(rate(kuadrant_errors[5m]))
+            / (sum(rate(kuadrant_allowed[5m]))
+             + sum(rate(kuadrant_denied[5m]))
+             + sum(rate(kuadrant_errors[5m]))) > 0.05
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "MaaS gateway 5xx rate exceeds 5%"
-            description: "More than 5% of gateway requests are returning server errors. Possible auth service overload or backend failure."
+            summary: "MaaS gateway error rate exceeds 5%"
+            description: "More than 5% of gateway requests are failing due to WASM auth timeouts. This indicates the auth service cannot respond within 200ms."
 {{- end }}

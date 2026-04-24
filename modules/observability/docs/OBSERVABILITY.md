@@ -138,8 +138,8 @@ Two PrometheusRule resources define the alert rules:
 | MaaSLimitadorDown | critical | `limitador_up == 0` for 1m | Rate limiter is completely down |
 | MaaSHighRejectionRate | warning | Rejection ratio > 30% for 5m | Rate limits are rejecting a large fraction of traffic |
 | MaaSDatastorePartitioned | critical | `datastore_partitioned == 1` for 1m | Limitador lost its backing store |
-| MaaSGateway5xxErrors | warning | Any 5xx from HAProxy for 2m | Gateway returning server errors (auth evaluation failures) |
-| MaaSGateway5xxCritical | critical | 5xx ratio > 5% for 5m | Sustained gateway error rate -- possible auth service overload |
+| MaaSGatewayErrors | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms |
+| MaaSGatewayErrorsCritical | critical | Error ratio > 5% for 5m | Sustained gateway error rate -- auth service cannot respond in time |
 
 ### vLLM SLO alerts (`maas-vllm-slo` in `maas-models`)
 
@@ -156,8 +156,9 @@ Two PrometheusRule resources define the alert rules:
 Gateway 5xx errors come from the **Kuadrant WASM filter** in Envoy, not from vLLM or Authorino directly. The WASM plugin's `auth-service` timeout is hardcoded to **200ms** by the Kuadrant operator. When auth evaluation (TokenReview + tier lookup) exceeds 200ms under concurrent load, the WASM filter times out and returns 500 (`failureMode: deny`). Authorino itself succeeds, but the WASM filter has already given up.
 
 **Key metrics**:
-- `haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}` -- HAProxy-level 5xx count
-- `wasmcustom.kuadrant.errors` (Envoy stat) -- WASM filter error count
+- `kuadrant_errors` -- WASM filter error count (scraped from Envoy gateway pod, available in Prometheus/Thanos)
+- `kuadrant_allowed` / `kuadrant_denied` -- successful and rate-limited requests for context
+- Note: `haproxy_server_http_responses_total` does NOT work for MaaS because the `maas-default-gateway` route is **passthrough** (HAProxy can't see HTTP status codes)
 
 **Root cause**: The 200ms WASM auth timeout is not configurable via AuthPolicy or WasmPlugin (Kuadrant operator reconciles it back). With `CONCURRENCY=2` all requests pass; with `CONCURRENCY>=4` roughly 50% fail.
 

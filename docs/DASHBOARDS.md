@@ -60,7 +60,7 @@ Provides a high-level view of the API gateway traffic -- how many requests are f
 |-------|---------------|------------------|
 | Authorized Requests/sec | Successful requests passing through Kuadrant | Should show ~2 req/s during traffic generation |
 | Limited Requests/sec | Requests rejected by rate limits | Non-zero after sustained traffic exceeds limits |
-| Gateway 5xx/sec | Server errors from the HAProxy ingress layer | Should be 0; any non-zero value indicates auth or backend failures |
+| Gateway Errors/sec | WASM auth timeout errors (Kuadrant) | Should be 0; non-zero means auth evaluation exceeded the 200ms WASM timeout |
 | Rejection Ratio | Percentage of requests being rate-limited | Spikes indicate rate limit policies are active |
 | Total Requests (5m) | Sum of authorized + limited requests over 5m window | Overall traffic volume |
 | Authorized vs Limited vs 5xx Over Time | Time series of accepted, rejected, and 5xx errors | Visualizes rate limit behavior and error spikes |
@@ -188,9 +188,9 @@ Evidence:
 
 | Source | How to check |
 |--------|-------------|
-| **Dashboard** | "MaaS Platform Overview" > "Gateway 5xx/sec" stat and "Authorized vs Limited vs 5xx Over Time" chart |
-| **Prometheus alerts** | `MaaSGateway5xxErrors` (any 5xx for 2min), `MaaSGateway5xxCritical` (>5% error rate for 5min) |
-| **HAProxy metric** | `haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}` |
+| **Dashboard** | "MaaS Platform Overview" > "Gateway Errors/sec" stat and "Authorized vs Limited vs 5xx Over Time" chart |
+| **Prometheus alerts** | `MaaSGatewayErrors` (any errors for 2min), `MaaSGatewayErrorsCritical` (>5% error rate for 5min) |
+| **Kuadrant metric** | `kuadrant_errors` (scraped from Envoy gateway pod via istio-pod-monitor) |
 | **Envoy WASM stats** | `oc exec -n openshift-ingress <gateway-pod> -c istio-proxy -- pilot-agent request GET stats \| grep kuadrant` |
 | **Kuadrant/Authorino logs** | `oc logs -n kuadrant-system deployment/authorino --tail=100` |
 | **Envoy access logs** | `oc logs -n openshift-ingress <gateway-pod> -c istio-proxy --tail=100 \| grep 500` |
