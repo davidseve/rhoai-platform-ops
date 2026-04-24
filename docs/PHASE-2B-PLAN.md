@@ -105,11 +105,11 @@ tempo:
       secretName: tempo-s3-credentials
 ```
 
-2. Update `tempo-monolithic.yaml` template with conditional blocks:
-   - `backend: memory` -- current behavior (no changes)
-   - `backend: pv` -- add `volumeClaimTemplate` with the configured `size`
-   - `backend: s3` -- add `s3` block with endpoint/bucket/secret reference (for ODF/MinIO)
-3. Default remains `memory` so existing deployments are unaffected
+1. Update `tempo-monolithic.yaml` template with conditional blocks:
+  - `backend: memory` -- current behavior (no changes)
+  - `backend: pv` -- add `volumeClaimTemplate` with the configured `size`
+  - `backend: s3` -- add `s3` block with endpoint/bucket/secret reference (for ODF/MinIO)
+2. Default remains `memory` so existing deployments are unaffected
 
 ### Validation
 
@@ -124,8 +124,8 @@ Deploy with `backend: pv`, restart Tempo pod, verify traces survive the restart.
 ### Implementation
 
 1. Update the vLLM command args in `modules/maas/charts/maas-model/templates/llm-inference-service.yaml`:
-   - Add `--otlp-traces-endpoint` arg (in addition to the env vars) when `tracing.enabled` -- this enables vLLM's internal instrumentation for per-step spans
-   - Add `--collect-detailed-traces` arg for token-level granularity (available in vLLM >= 0.6)
+  - Add `--otlp-traces-endpoint` arg (in addition to the env vars) when `tracing.enabled` -- this enables vLLM's internal instrumentation for per-step spans
+  - Add `--collect-detailed-traces` arg for token-level granularity (available in vLLM >= 0.6)
 2. Add `tracing.detailed` flag in `maas-model/values.yaml` (default `false`):
 
 ```yaml
@@ -135,7 +135,7 @@ tracing:
   otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
 ```
 
-3. This is opt-in on top of opt-in -- `tracing.enabled` must also be true
+1. This is opt-in on top of opt-in -- `tracing.enabled` must also be true
 
 ### Validation
 
@@ -161,7 +161,7 @@ Enable both flags, send inference request, verify Tempo shows child spans within
     expr: rate(traces_spanmetrics_calls_total) drop below threshold
 ```
 
-2. Gate behind `alerting.enabled` in `modules/observability/charts/tracing/values.yaml`:
+1. Gate behind `alerting.enabled` in `modules/observability/charts/tracing/values.yaml`:
 
 ```yaml
 alerting:
@@ -170,7 +170,7 @@ alerting:
   errorRateThreshold: 0.05  # 5%
 ```
 
-3. Add test assertion in `test_03_tracing.py` for the PrometheusRule existence
+1. Add test assertion in `test_03_tracing.py` for the PrometheusRule existence
 
 ### Validation
 
@@ -180,21 +180,23 @@ Deploy with alerting enabled, verify PrometheusRule exists and alert expressions
 
 ## Files Changed (Summary)
 
-| Action | File | Description |
-|--------|------|-------------|
-| New | `modules/maas/images/vllm-cpu-otel/Containerfile` | vLLM CPU image with OTel packages |
-| New | `modules/maas/charts/maas-platform/templates/envoy-tracing.yaml` | Gateway Envoy OTLP tracing |
-| New | `modules/observability/charts/tracing/templates/prometheusrule-spanmetrics.yaml` | Spanmetrics SLO alerts |
-| Modified | `modules/maas/charts/maas-model/values.yaml` | Image tag + `tracing.detailed` |
-| Modified | `modules/maas/charts/maas-model/templates/llm-inference-service.yaml` | `--otlp-traces-endpoint` + `--collect-detailed-traces` args |
-| Modified | `modules/maas/charts/maas-platform/values.yaml` | `tracing.gateway.enabled` |
-| Modified | `modules/observability/charts/tracing/values.yaml` | S3 storage config + alerting config |
-| Modified | `modules/observability/charts/tracing/templates/tempo-monolithic.yaml` | PV/S3 conditionals |
-| Modified | `modules/observability/tests/test_03_tracing.py` | New assertions |
-| Modified | `docs/ROADMAP.md` | Mark Phase 2b items done |
-| Modified | `docs/adr/0004-tracing-stack.md` | Update deferred decisions |
-| Modified | `modules/observability/docs/OBSERVABILITY.md` | Document new capabilities |
-| Modified | `Makefile` | `build-vllm-cpu-otel` target |
+
+| Action   | File                                                                             | Description                                                 |
+| -------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| New      | `modules/maas/images/vllm-cpu-otel/Containerfile`                                | vLLM CPU image with OTel packages                           |
+| New      | `modules/maas/charts/maas-platform/templates/envoy-tracing.yaml`                 | Gateway Envoy OTLP tracing                                  |
+| New      | `modules/observability/charts/tracing/templates/prometheusrule-spanmetrics.yaml` | Spanmetrics SLO alerts                                      |
+| Modified | `modules/maas/charts/maas-model/values.yaml`                                     | Image tag + `tracing.detailed`                              |
+| Modified | `modules/maas/charts/maas-model/templates/llm-inference-service.yaml`            | `--otlp-traces-endpoint` + `--collect-detailed-traces` args |
+| Modified | `modules/maas/charts/maas-platform/values.yaml`                                  | `tracing.gateway.enabled`                                   |
+| Modified | `modules/observability/charts/tracing/values.yaml`                               | S3 storage config + alerting config                         |
+| Modified | `modules/observability/charts/tracing/templates/tempo-monolithic.yaml`           | PV/S3 conditionals                                          |
+| Modified | `modules/observability/tests/test_03_tracing.py`                                 | New assertions                                              |
+| Modified | `docs/ROADMAP.md`                                                                | Mark Phase 2b items done                                    |
+| Modified | `docs/adr/0004-tracing-stack.md`                                                 | Update deferred decisions                                   |
+| Modified | `modules/observability/docs/OBSERVABILITY.md`                                    | Document new capabilities                                   |
+| Modified | `Makefile`                                                                       | `build-vllm-cpu-otel` target                                |
+
 
 ## References
 
@@ -202,3 +204,4 @@ Deploy with alerting enabled, verify PrometheusRule exists and alert expressions
 - [vLLM OTel PR #34466](https://github.com/vllm-project/vllm/pull/34466) -- OTel added to default requirements (Feb 2026)
 - [vLLM OpenTelemetry docs](https://docs.vllm.ai/en/v0.9.0/examples/online_serving/opentelemetry.html)
 - [rh-aiservices-bu/llm-on-openshift CPU Containerfile](https://github.com/rh-aiservices-bu/llm-on-openshift/blob/main/llm-servers/vllm/cpu/Containerfile)
+

@@ -138,9 +138,9 @@ Two PrometheusRule resources define the alert rules:
 | MaaSLimitadorDown | critical | `limitador_up == 0` for 1m | Rate limiter is completely down |
 | MaaSHighRejectionRate | warning | Rejection ratio > 30% for 5m | Rate limits are rejecting a large fraction of traffic |
 | MaaSDatastorePartitioned | critical | `datastore_partitioned == 1` for 1m | Limitador lost its backing store |
-| MaaSGatewayAuthTimeout | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms |
-| MaaSBackend5xx | warning | Any `istio_requests_total{response_code=~"5.."}` for 2m | vLLM/backend returning server errors |
-| MaaSGatewayErrorsCritical | critical | Combined error ratio > 5% for 5m | Sustained error rate from auth timeouts + backend failures |
+| MaaSGatewayAuthTimeout | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms (deployed to `openshift-ingress`) |
+| MaaSBackend5xx | warning | Any `istio_requests_total{response_code=~"5.."}` for 2m | vLLM/backend returning server errors (deployed to `openshift-ingress`) |
+| MaaSGatewayErrorsCritical | critical | Combined error ratio > 5% for 5m | Sustained error rate from auth timeouts + backend failures (deployed to `openshift-ingress`) |
 
 ### vLLM SLO alerts (`maas-vllm-slo` in `maas-models`)
 
@@ -152,22 +152,27 @@ Two PrometheusRule resources define the alert rules:
 
 ## Production Considerations
 
-### Gateway 5xx errors
+### Gateway errors
 
-Gateway 5xx errors come from the **Kuadrant WASM filter** in Envoy, not from vLLM or Authorino directly. The WASM plugin's `auth-service` timeout is hardcoded to **200ms** by the Kuadrant operator. When auth evaluation (TokenReview + tier lookup) exceeds 200ms under concurrent load, the WASM filter times out and returns 500 (`failureMode: deny`). Authorino itself succeeds, but the WASM filter has already given up.
+There are **two sources** of 5xx errors through the MaaS gateway:
 
-**Key metrics**:
-- `kuadrant_errors` -- WASM filter error count (scraped from Envoy gateway pod, available in Prometheus/Thanos)
-- `kuadrant_allowed` / `kuadrant_denied` -- successful and rate-limited requests for context
-- Note: `haproxy_server_http_responses_total` does NOT work for MaaS because the `maas-default-gateway` route is **passthrough** (HAProxy can't see HTTP status codes)
+1. **Auth Timeout (WASM filter)**: The Kuadrant WASM filter has a hardcoded 200ms `auth-service` timeout. Under concurrent load or cold auth cache, auth evaluation exceeds this limit and the filter returns 500 (`failureMode: deny`). Tracked by `kuadrant_errors`.
+2. **Backend errors (vLLM)**: Requests that pass auth but vLLM returns 5xx (overload, OOM). Tracked by `istio_requests_total{response_code=~"5.."}`.
 
-**Root cause**: The 200ms WASM auth timeout is not configurable via AuthPolicy or WasmPlugin (Kuadrant operator reconciles it back). With `CONCURRENCY=2` all requests pass; with `CONCURRENCY>=4` roughly 50% fail.
+**Key metrics** (all in `namespace=openshift-ingress`):
+- `kuadrant_errors` -- WASM filter errors (auth timeout → 500)
+- `kuadrant_allowed` / `kuadrant_denied` -- successful and rate-limited requests
+- `istio_requests_total{source_workload="maas-default-gateway-openshift-default", response_code=~"5.."}` -- backend 5xx
+- Note: `haproxy_server_http_responses_total` does NOT work because the `maas-default-gateway` route uses **TLS passthrough**
+
+**Alert namespace**: Gateway alerts (`maas-gateway-alerts`) are deployed to `openshift-ingress` (not `kuadrant-system`) because all gateway metrics have `namespace=openshift-ingress`. Prometheus namespace label enforcement requires alerts to be in the same namespace as the metrics they query.
 
 **Mitigations**:
 - Keep client concurrency within what the auth chain can handle in 200ms
 - Ensure Authorino has adequate CPU/memory so auth completes quickly
 - AuthPolicy cache TTLs reduce repeated auth calls (identity: 600s, tier: 300s, authorization: 60s)
-- Client-side retry with exponential backoff for transient 500s
+- Scale vLLM replicas if backend 5xx errors appear under load
+- Client-side retry with exponential backoff for transient 5xx
 - **Upstream fix needed**: Kuadrant should make the WASM auth-service timeout configurable
 
 ### Trace pipeline (port-forward vs in-cluster)
