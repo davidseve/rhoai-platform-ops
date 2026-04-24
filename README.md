@@ -53,6 +53,8 @@ make deploy-argocd
 
 Enable/disable modules in `argocd/apps/values.yaml` under `modules:`.
 
+**Completed phases:** Phase 0 (MaaS core), Phase 1 (Observability), Phase 2 (Traceability). See [ROADMAP.md](docs/ROADMAP.md) for the full plan.
+
 ## Documentation
 
 

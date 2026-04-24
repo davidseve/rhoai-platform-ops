@@ -45,7 +45,7 @@ Use **Option 1: Red Hat build of OpenTelemetry + Red Hat build of Tempo**.
 
 ### Deferred decisions
 
-- **Gateway/Envoy tracing**: Requires Istio `Telemetry` CR to configure Envoy -> OTel Collector. Deferred because Service Mesh 3 (Sail Operator) interaction with `serviceMesh.managementState: Removed` in DSCI needs investigation.
+- **Gateway/Envoy tracing**: Native gateway-level tracing via Kuadrant `EnvoyExtensionPolicy` or Istio `Telemetry` CR. Deferred to Phase 2b (see [PHASE-2B-PLAN.md](../PHASE-2B-PLAN.md)). The traffic generator emits synthetic OTLP traces as a workaround until native gateway instrumentation is available.
 - **Persistent Tempo storage**: Memory backend is sufficient for dev/test. Production requires S3-compatible storage (MinIO or ODF).
 - **Token-level vLLM tracing**: Requires a newer vLLM image with OTEL Python packages. Current CPU image lacks these.
 

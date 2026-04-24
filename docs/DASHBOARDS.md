@@ -40,7 +40,7 @@ The script automatically discovers the cluster domain, obtains a MaaS token, and
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REQUESTS` | 50 | Total number of inference requests |
-| `CONCURRENCY` | 2 | Parallel workers sending requests (keep <=2, see [Gateway 5xx Errors](#gateway-5xx-errors)) |
+| `CONCURRENCY` | 2 | Parallel workers sending requests (keep <=2, see [Gateway Errors](#gateway-errors)) |
 | `DELAY` | 1 | Seconds between requests per worker |
 | `MODELS` | `tinyllama-test,tinyllama-fast` | Comma-separated model names |
 | `MAX_TOKENS` | 30 | Max tokens per completion request |
@@ -60,10 +60,10 @@ Provides a high-level view of the API gateway traffic -- how many requests are f
 |-------|---------------|------------------|
 | Authorized Requests/sec | Successful requests passing through Kuadrant | Should show ~2 req/s during traffic generation |
 | Limited Requests/sec | Requests rejected by rate limits | Non-zero after sustained traffic exceeds limits |
-| Gateway Errors/sec | WASM auth timeout errors (Kuadrant) | Should be 0; non-zero means auth evaluation exceeded the 200ms WASM timeout |
+| Error Rate/sec | Combined auth timeout + backend 5xx errors | Should be 0; non-zero means WASM auth timeout or vLLM backend failures |
 | Rejection Ratio | Percentage of requests being rate-limited | Spikes indicate rate limit policies are active |
-| Total Requests (5m) | Sum of authorized + limited requests over 5m window | Overall traffic volume |
-| Authorized vs Limited vs 5xx Over Time | Time series of accepted, rejected, and 5xx errors | Visualizes rate limit behavior and error spikes |
+| Total Requests (5m) | Sum of authorized + limited + auth-timeout requests over 5m window | Overall gateway-side traffic volume |
+| Request Outcomes Over Time | Time series: Authorized, Rate Limited (429), Auth Timeout (500), Backend Error (5xx) | Visualizes all four request outcomes separately |
 | Rejection Ratio Over Time | Time series of rejection percentage | Correlates with bursts of traffic |
 | Calls by Model | Per-model breakdown of requests | Both models should appear with similar volumes |
 | Calls by User | Per-user breakdown (hash suffix stripped) | Shows which users are generating traffic |

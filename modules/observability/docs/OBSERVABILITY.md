@@ -129,18 +129,23 @@ See [ADR-0004](../../../docs/adr/0004-tracing-stack.md) for the decision rationa
 
 ## Alerting
 
-Two PrometheusRule resources define the alert rules:
+Three PrometheusRule resources define the alert rules. Gateway alerts must be in `openshift-ingress` because Prometheus enforces namespace labels and all gateway metrics (`kuadrant_*`, `istio_requests_total`) live in that namespace.
 
-### Gateway alerts (`maas-alerts` in `kuadrant-system`)
+### Rate-limit alerts (`maas-alerts` in `kuadrant-system`)
 
 | Alert | Severity | Condition | Meaning |
 |-------|----------|-----------|---------|
 | MaaSLimitadorDown | critical | `limitador_up == 0` for 1m | Rate limiter is completely down |
 | MaaSHighRejectionRate | warning | Rejection ratio > 30% for 5m | Rate limits are rejecting a large fraction of traffic |
 | MaaSDatastorePartitioned | critical | `datastore_partitioned == 1` for 1m | Limitador lost its backing store |
-| MaaSGatewayAuthTimeout | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms (deployed to `openshift-ingress`) |
-| MaaSBackend5xx | warning | Any `istio_requests_total{response_code=~"5.."}` for 2m | vLLM/backend returning server errors (deployed to `openshift-ingress`) |
-| MaaSGatewayErrorsCritical | critical | Combined error ratio > 5% for 5m | Sustained error rate from auth timeouts + backend failures (deployed to `openshift-ingress`) |
+
+### Gateway error alerts (`maas-gateway-alerts` in `openshift-ingress`)
+
+| Alert | Severity | Condition | Meaning |
+|-------|----------|-----------|---------|
+| MaaSGatewayAuthTimeout | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms |
+| MaaSBackend5xx | warning | Any `istio_requests_total{response_code=~"5.."}` for 2m | vLLM/backend returning server errors |
+| MaaSGatewayErrorsCritical | critical | Combined error ratio > 5% for 5m | Sustained error rate from auth timeouts + backend failures |
 
 ### vLLM SLO alerts (`maas-vllm-slo` in `maas-models`)
 

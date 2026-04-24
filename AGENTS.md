@@ -6,7 +6,7 @@ This file provides guidance to AI coding agents (Cursor, Claude Code, etc.) when
 
 RHOAI Platform Operations -- a modular GitOps repository for deploying and operating Red Hat OpenShift AI (RHOAI) infrastructure. Each module (MaaS, observability, benchmarks, evaluation) is independently deployable via Helm or ArgoCD. The project prioritizes Red Hat products, Helm-first validation, idempotent tests, and Architecture Decision Records for every non-obvious choice.
 
-**Maturity:** MVP (MaaS module production-ready; other modules in progress)
+**Maturity:** MaaS and observability modules deployed and tested; benchmarks and evaluation modules planned
 
 ## Quick Commands
 
