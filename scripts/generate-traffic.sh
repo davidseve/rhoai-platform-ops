@@ -11,12 +11,18 @@
 #
 # Environment variables:
 #   REQUESTS     Total requests to send (default: 50)
-#   CONCURRENCY  Parallel workers (default: 2)
+#   CONCURRENCY  Parallel workers (default: 2; keep <=2 to avoid gateway 500s)
 #   DELAY        Seconds between requests per worker (default: 1)
 #   MODELS       Comma-separated model list (default: tinyllama-test,tinyllama-fast)
 #   MAX_TOKENS   Max tokens per request (default: 30)
 #   EMIT_TRACES  Send OTLP traces to collector (default: true)
 #   COLLECTOR_HOST  OTel collector host:port for OTLP HTTP (default: auto via port-forward)
+#
+# NOTE on CONCURRENCY: The Kuadrant WASM filter has a hardcoded auth-service
+# timeout of 200ms. Under high concurrency (>=4 workers), the auth evaluation
+# chain (TokenReview + tier lookup) can exceed this limit, causing 500 errors
+# from the WASM filter (not from vLLM). Keep CONCURRENCY<=2 until Kuadrant
+# makes this timeout configurable. See docs/DASHBOARDS.md for details.
 
 set -euo pipefail
 

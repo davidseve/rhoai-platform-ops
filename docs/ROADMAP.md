@@ -63,17 +63,18 @@ Goal: trace individual requests through the full stack (client -> gateway -> mod
 
 **Reference**: [OBSERVABILITY.md](../modules/observability/docs/OBSERVABILITY.md#distributed-tracing)
 
-### Phase 2b: Traceability Enhancements
+### Phase 2b: Traceability Enhancements (PLANNED)
 
-Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context.
+Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context and [PHASE-2B-PLAN.md](PHASE-2B-PLAN.md) for the detailed implementation plan with approach decisions, file changes, and validation steps.
 
-> **HIGH PRIORITY -- vLLM OTEL image**: The current CPU image (`vllm-cpu-openai-ubi9:0.3`) does not include `opentelemetry-sdk` or `opentelemetry-exporter-otlp` Python packages. Without these, the `OTEL_TRACES_EXPORTER=otlp` env var is silently ignored and no traces flow from vLLM to the OTel Collector. This blocks the `--run-tracing` E2E tests, the Trace Exploration dashboard, and end-to-end trace visibility. **Action**: find or build a CPU vLLM image that includes OTEL dependencies (or confirm a newer upstream image ships them). This is the single remaining blocker to unify Phase 1 (metrics) and Phase 2 (traces) into a complete observability picture.
+> **BLOCKER -- vLLM OTEL image**: The current CPU image (`vllm-cpu-openai-ubi9:0.3`) lacks `opentelemetry-sdk` / `opentelemetry-exporter-otlp`. Upstream vLLM merged OTel into default requirements in [PR #34466](https://github.com/vllm-project/vllm/pull/34466) (Feb 2026). The plan recommends extending the existing image with a `pip install` layer (Option A) rather than bumping the full fork.
 
 - **Find/build CPU vLLM image with OpenTelemetry packages** (blocker for all tracing items below)
-- Gateway/Envoy distributed tracing (Istio `Telemetry` CR for Envoy -> OTel Collector)
+- Gateway/Envoy distributed tracing (Kuadrant `EnvoyExtensionPolicy` for Envoy -> OTel Collector; does NOT require Istio)
 - Persistent Tempo storage (switch from memory to PV/S3 backend)
-- Token-level vLLM tracing (fine-grained per-token spans, requires newer vLLM image)
-- Trace-based SLO alerts (PrometheusRule from spanmetrics-derived data)
+- Token-level vLLM tracing (fine-grained per-token spans via `--collect-detailed-traces`)
+- Trace-based SLO alerts (PrometheusRule from spanmetrics-derived `traces_spanmetrics_latency_bucket` / `traces_spanmetrics_calls_total`)
+- **Kuadrant WASM auth timeout (blocker for high concurrency)**: The Kuadrant WASM filter's `auth-service` timeout is hardcoded to 200ms by the operator and cannot be configured via AuthPolicy or WasmPlugin. Under concurrent load (>=4 parallel requests), auth evaluation (TokenReview + tier lookup) exceeds 200ms, causing 500 errors. **Action**: file upstream Kuadrant issue to make the WASM auth-service timeout configurable; as a workaround, keep client concurrency at 2 or lower
 - **Gateway production hardening**: tune Authorino resource limits and HPA, evaluate connection pooling for the auth evaluation chain (TokenReview + tier lookup), add client retry guidance to API docs
 
 ### Phase 3: Benchmarks

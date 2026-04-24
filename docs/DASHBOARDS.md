@@ -40,7 +40,7 @@ The script automatically discovers the cluster domain, obtains a MaaS token, and
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `REQUESTS` | 50 | Total number of inference requests |
-| `CONCURRENCY` | 2 | Parallel workers sending requests |
+| `CONCURRENCY` | 2 | Parallel workers sending requests (keep <=2, see [Gateway 5xx Errors](#gateway-5xx-errors)) |
 | `DELAY` | 1 | Seconds between requests per worker |
 | `MODELS` | `tinyllama-test,tinyllama-fast` | Comma-separated model names |
 | `MAX_TOKENS` | 30 | Max tokens per completion request |
@@ -174,7 +174,15 @@ If panels remain empty after 2 minutes of traffic, check:
 
 ### What causes them
 
-Gateway 5xx errors originate from the Kuadrant/Envoy auth evaluation layer, **not** from vLLM. They occur when the gateway cannot process the authentication chain (TokenReview + tier lookup to MaaS API) fast enough under high-concurrency bursts. vLLM pod logs will show only `200 OK` during these events.
+Gateway 5xx errors originate from the **Kuadrant WASM filter** in Envoy, **not** from vLLM or Authorino. The root cause is the WASM plugin's `auth-service` timeout, which is hardcoded to **200ms** by the Kuadrant operator.
+
+The authentication chain (TokenReview + tier HTTP callback to MaaS API) can exceed 200ms under concurrent load. When this happens, the WASM filter times out and -- because `failureMode: deny` -- returns a 500 error to the client. Authorino itself succeeds (logs show `"authorized":true`), but the WASM filter has already given up waiting.
+
+Evidence:
+- Envoy stat `wasmcustom.kuadrant.errors` counts WASM-level errors (these are the 500s)
+- Envoy access logs show 500 responses with exactly ~200ms duration and upstream `"-"` (request never reached vLLM)
+- Envoy logs show `"Span buffer full (100), dropping oldest span"` warnings from the Kuadrant WASM plugin under load
+- With `CONCURRENCY=2`, all requests succeed. With `CONCURRENCY=4`, roughly 50% get 500s
 
 ### Where to see them
 
@@ -183,14 +191,16 @@ Gateway 5xx errors originate from the Kuadrant/Envoy auth evaluation layer, **no
 | **Dashboard** | "MaaS Platform Overview" > "Gateway 5xx/sec" stat and "Authorized vs Limited vs 5xx Over Time" chart |
 | **Prometheus alerts** | `MaaSGateway5xxErrors` (any 5xx for 2min), `MaaSGateway5xxCritical` (>5% error rate for 5min) |
 | **HAProxy metric** | `haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}` |
+| **Envoy WASM stats** | `oc exec -n openshift-ingress <gateway-pod> -c istio-proxy -- pilot-agent request GET stats \| grep kuadrant` |
 | **Kuadrant/Authorino logs** | `oc logs -n kuadrant-system deployment/authorino --tail=100` |
-| **Envoy access logs** | `oc logs -n openshift-ingress deployment/router-default --tail=100 \| grep 5` |
+| **Envoy access logs** | `oc logs -n openshift-ingress <gateway-pod> -c istio-proxy --tail=100 \| grep 500` |
 
 ### Production mitigations
 
-- **Limit client concurrency**: Keep `CONCURRENCY` at 2 or lower for the traffic generator. In production, use client-side rate limiting or a queue
-- **AuthPolicy cache TTLs**: Identity cache is 600s, tier cache is 300s, authorization cache is 60s. These reduce repeated TokenReview calls
-- **Authorino resources**: Ensure the Authorino deployment has adequate CPU/memory and consider an HPA
+- **Limit client concurrency**: Keep `CONCURRENCY` at 2 or lower for the traffic generator. In production, implement client-side rate limiting or a queue to avoid bursting above what the auth chain can handle in 200ms
+- **Kuadrant WASM auth timeout**: The 200ms auth-service timeout is hardcoded by the Kuadrant operator and cannot be changed via AuthPolicy or WasmPlugin (it gets reconciled back). Upstream Kuadrant issue needed to make this configurable
+- **AuthPolicy cache TTLs**: Identity cache is 600s, tier cache is 300s, authorization cache is 60s. Cached auth evaluations respond faster, reducing the chance of hitting the 200ms timeout
+- **Authorino resources**: Ensure the Authorino deployment has adequate CPU/memory so auth evaluation completes within 200ms even under load
 - **Retry with backoff**: Clients should implement retry with exponential backoff for 5xx responses
 
 ### About the port-forward in generate-traffic.sh

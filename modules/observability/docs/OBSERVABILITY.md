@@ -153,15 +153,20 @@ Two PrometheusRule resources define the alert rules:
 
 ### Gateway 5xx errors
 
-Gateway 5xx errors originate from the Kuadrant/Envoy auth evaluation layer during high-concurrency bursts. The authentication chain (Kubernetes TokenReview + tier lookup HTTP call to MaaS API) is synchronous per request. Under burst traffic, these calls can timeout, causing 500 responses at the HAProxy ingress layer.
+Gateway 5xx errors come from the **Kuadrant WASM filter** in Envoy, not from vLLM or Authorino directly. The WASM plugin's `auth-service` timeout is hardcoded to **200ms** by the Kuadrant operator. When auth evaluation (TokenReview + tier lookup) exceeds 200ms under concurrent load, the WASM filter times out and returns 500 (`failureMode: deny`). Authorino itself succeeds, but the WASM filter has already given up.
 
-**Key metric**: `haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}`
+**Key metrics**:
+- `haproxy_server_http_responses_total{route="data-science-gateway", code="5xx"}` -- HAProxy-level 5xx count
+- `wasmcustom.kuadrant.errors` (Envoy stat) -- WASM filter error count
+
+**Root cause**: The 200ms WASM auth timeout is not configurable via AuthPolicy or WasmPlugin (Kuadrant operator reconciles it back). With `CONCURRENCY=2` all requests pass; with `CONCURRENCY>=4` roughly 50% fail.
 
 **Mitigations**:
-- Ensure Authorino has adequate CPU/memory resources
+- Keep client concurrency within what the auth chain can handle in 200ms
+- Ensure Authorino has adequate CPU/memory so auth completes quickly
 - AuthPolicy cache TTLs reduce repeated auth calls (identity: 600s, tier: 300s, authorization: 60s)
-- Client-side rate limiting and retry with exponential backoff
-- Consider an HPA for the Authorino deployment in high-traffic environments
+- Client-side retry with exponential backoff for transient 500s
+- **Upstream fix needed**: Kuadrant should make the WASM auth-service timeout configurable
 
 ### Trace pipeline (port-forward vs in-cluster)
 

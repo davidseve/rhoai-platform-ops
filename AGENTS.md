@@ -30,6 +30,9 @@ make undeploy-all         # Undeploy everything
 # ArgoCD (stable deployment)
 make deploy-argocd        # Apply app-of-apps
 make status               # Check ArgoCD sync status
+make argocd-branch-current # Point ArgoCD manifests to the current git branch
+make argocd-branch-main   # Point ArgoCD manifests back to main
+make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit branch
 
 # Cluster cleanup
 make cluster-cleanup      # Remove ALL resources (skip confirmation)
@@ -136,6 +139,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - `cluster-bootstrap` -- Bootstrap a fresh cluster: deploy all modules in order and run tests to validate
 - `cluster-cleanup` -- Remove all deployed resources from the cluster (reverse order, handles stuck finalizers)
 - `push-and-pr` -- Push changes to a new branch and create a pull request
+- `switch-argocd-branch` -- Point ArgoCD app-of-apps and child apps to `main` or the current working branch
 
 ## Detailed Documentation
 
