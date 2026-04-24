@@ -50,17 +50,17 @@ No `insecureSkipVerify` -- proper certificate validation against the OpenShift s
 
 ## Metric Contract
 
-vLLM metric names used in dashboards and alerts (prefix `vllm:`):
-- `vllm:generation_tokens_total`
-- `vllm:prompt_tokens_total`
-- `vllm:e2e_request_latency_seconds_bucket`
-- `vllm:time_to_first_token_seconds_bucket`
-- `vllm:time_per_output_token_seconds_bucket`
-- `vllm:num_requests_running` / `waiting` / `swapped`
-- `vllm:gpu_cache_usage_perc` / `cpu_cache_usage_perc`
-- `vllm:request_success_total`
+vLLM metric names used in dashboards and alerts (prefix `kserve_vllm:`):
+- `kserve_vllm:generation_tokens_total`
+- `kserve_vllm:prompt_tokens_total`
+- `kserve_vllm:e2e_request_latency_seconds_bucket`
+- `kserve_vllm:time_to_first_token_seconds_bucket`
+- `kserve_vllm:time_per_output_token_seconds_bucket`
+- `kserve_vllm:num_requests_running` / `waiting` / `swapped`
+- `kserve_vllm:gpu_cache_usage_perc` / `cpu_cache_usage_perc`
+- `kserve_vllm:request_success_total`
 
-Metric names may change between vLLM versions. The E2E test `test_02_datasource.py::test_vllm_metrics_discoverable` queries actual metrics from Thanos at deploy time to catch mismatches early.
+The `kserve_vllm:` prefix is applied by KServe when it wraps vLLM. Metric names may change between vLLM/KServe versions. The E2E test `test_02_datasource.py::test_vllm_metrics_discoverable` queries actual metrics from Thanos at deploy time to catch mismatches early.
 
 ## Deployment
 
@@ -86,6 +86,103 @@ The operator subscription uses channel `v5` with `Automatic` installPlanApproval
 2. Verify dashboard JSON compatibility
 3. Test in a staging cluster before production
 4. The E2E tests validate operator health, datasource connectivity, and dashboard existence
+
+## Distributed Tracing
+
+The module includes distributed tracing via Red Hat build of OpenTelemetry and Red Hat build of Tempo.
+
+### Architecture
+
+```
+vLLM pods (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT)
+  -> OTel Collector (OTLP gRPC :4317, observability namespace)
+     -> Tempo (TempoMonolithic, memory backend)
+     -> spanmetrics connector -> Prometheus (span-derived RED metrics)
+
+Grafana -> Tempo datasource (HTTP :3200) for trace exploration
+```
+
+### Components
+
+- **TempoMonolithic CR** (`tempo.grafana.com/v1alpha1`): trace storage with memory backend (configurable to PV). OTLP gRPC + HTTP ingestion enabled.
+- **OpenTelemetryCollector CR** (`opentelemetry.io/v1beta1`): receives OTLP traces, exports to Tempo, derives span metrics via `spanmetrics` connector.
+- **ServiceMonitor**: scrapes OTel Collector Prometheus endpoint for span-derived metrics.
+- **Tempo GrafanaDatasource**: connects Grafana to Tempo for trace exploration with service map and node graph.
+- **Traces Dashboard**: service map, latency distribution (from spanmetrics), recent traces table, request rate by service.
+
+### vLLM Tracing
+
+Tracing on model pods is opt-in (`tracing.enabled: false` by default in `maas-model/values.yaml`). When enabled, the following env vars are set on the vLLM container:
+
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: points to the OTel Collector (`http://maas-collector-collector.observability.svc:4317`)
+- `OTEL_SERVICE_NAME`: defaults to the model's `servedName`
+- `OTEL_TRACES_EXPORTER`: `otlp`
+
+**Risk**: The current CPU image (`vllm-cpu-openai-ubi9:0.3`) may lack OTEL Python packages. Tracing will only produce spans once a vLLM image with OTEL dependencies is deployed.
+
+### Operators
+
+- **Red Hat build of OpenTelemetry**: `opentelemetry-product` subscription in `openshift-opentelemetry-operator` namespace (channel `stable`, `redhat-operators`)
+- **Red Hat build of Tempo**: `tempo-product` subscription in `openshift-tempo-operator` namespace (channel `stable`, `redhat-operators`)
+
+See [ADR-0004](../../../docs/adr/0004-tracing-stack.md) for the decision rationale.
+
+## Alerting
+
+Three PrometheusRule resources define the alert rules. Gateway alerts must be in `openshift-ingress` because Prometheus enforces namespace labels and all gateway metrics (`kuadrant_*`, `istio_requests_total`) live in that namespace.
+
+### Rate-limit alerts (`maas-alerts` in `kuadrant-system`)
+
+| Alert | Severity | Condition | Meaning |
+|-------|----------|-----------|---------|
+| MaaSLimitadorDown | critical | `limitador_up == 0` for 1m | Rate limiter is completely down |
+| MaaSHighRejectionRate | warning | Rejection ratio > 30% for 5m | Rate limits are rejecting a large fraction of traffic |
+| MaaSDatastorePartitioned | critical | `datastore_partitioned == 1` for 1m | Limitador lost its backing store |
+
+### Gateway error alerts (`maas-gateway-alerts` in `openshift-ingress`)
+
+| Alert | Severity | Condition | Meaning |
+|-------|----------|-----------|---------|
+| MaaSGatewayAuthTimeout | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms |
+| MaaSBackend5xx | warning | Any `istio_requests_total{response_code=~"5.."}` for 2m | vLLM/backend returning server errors |
+| MaaSGatewayErrorsCritical | critical | Combined error ratio > 5% for 5m | Sustained error rate from auth timeouts + backend failures |
+
+### vLLM SLO alerts (`maas-vllm-slo` in `maas-models`)
+
+| Alert | Severity | Condition | Meaning |
+|-------|----------|-----------|---------|
+| MaaSHighP99Latency | warning | P99 e2e latency > 30s for 5m | Model inference is too slow |
+| MaaSKVCacheNearFull | warning | KV cache > 90% for 5m | Model is approaching memory limits |
+| MaaSHighErrorRate | critical | vLLM error rate > 0 for 5m | Model is returning inference errors |
+
+## Production Considerations
+
+### Gateway errors
+
+There are **two sources** of 5xx errors through the MaaS gateway:
+
+1. **Auth Timeout (WASM filter)**: The Kuadrant WASM filter has a hardcoded 200ms `auth-service` timeout. Under concurrent load or cold auth cache, auth evaluation exceeds this limit and the filter returns 500 (`failureMode: deny`). Tracked by `kuadrant_errors`.
+2. **Backend errors (vLLM)**: Requests that pass auth but vLLM returns 5xx (overload, OOM). Tracked by `istio_requests_total{response_code=~"5.."}`.
+
+**Key metrics** (all in `namespace=openshift-ingress`):
+- `kuadrant_errors` -- WASM filter errors (auth timeout → 500)
+- `kuadrant_allowed` / `kuadrant_denied` -- successful and rate-limited requests
+- `istio_requests_total{source_workload="maas-default-gateway-openshift-default", response_code=~"5.."}` -- backend 5xx
+- Note: `haproxy_server_http_responses_total` does NOT work because the `maas-default-gateway` route uses **TLS passthrough**
+
+**Alert namespace**: Gateway alerts (`maas-gateway-alerts`) are deployed to `openshift-ingress` (not `kuadrant-system`) because all gateway metrics have `namespace=openshift-ingress`. Prometheus namespace label enforcement requires alerts to be in the same namespace as the metrics they query.
+
+**Mitigations**:
+- Keep client concurrency within what the auth chain can handle in 200ms
+- Ensure Authorino has adequate CPU/memory so auth completes quickly
+- AuthPolicy cache TTLs reduce repeated auth calls (identity: 600s, tier: 300s, authorization: 60s)
+- Scale vLLM replicas if backend 5xx errors appear under load
+- Client-side retry with exponential backoff for transient 5xx
+- **Upstream fix needed**: Kuadrant should make the WASM auth-service timeout configurable
+
+### Trace pipeline (port-forward vs in-cluster)
+
+The `generate-traffic.sh` script uses `oc port-forward` to reach the OTel Collector from outside the cluster. This is dev-only tooling. In production, application pods emit traces directly to the collector service (`maas-collector-collector.observability.svc:4317`) from within the cluster.
 
 ## Cleanup
 

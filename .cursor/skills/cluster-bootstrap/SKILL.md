@@ -122,7 +122,7 @@ Wait for all ArgoCD Applications to reach `Synced` + `Healthy`. The apps deploy
 in wave order (operators -> platform -> models) with automatic retries.
 
 ```bash
-for app in maas-operators maas-platform maas-model maas-model-fast; do
+for app in observability-operators observability-grafana observability-tracing maas-operators maas-platform maas-model maas-model-fast; do
   echo "Waiting for $app..."
   oc wait application "$app" -n openshift-gitops \
     --for=jsonpath='{.status.health.status}'=Healthy \
@@ -366,6 +366,10 @@ Keep the wave ordering: operators (wave 0) -> platform (wave 1) -> workloads (wa
   yet. Pre-create with `oc create ns redhat-ods-applications`
 - **ArgoCD "remote repository is empty"**: The git repo has no commits. Fall back to
   Helm mode or push the code first
+- **OTel/Tempo CRD not found**: Operator hasn't finished installing. Check if
+  InstallPlan needs approval: `oc get installplan -n openshift-opentelemetry-operator`
+  and `oc get installplan -n openshift-tempo-operator`. Patch with
+  `oc patch installplan <name> -n <ns> --type merge -p '{"spec":{"approved":true}}'`
 - **KServe webhook unavailable**: DSC is not Ready yet; wait and retry
 - **Pod ImagePullBackOff**: Verify image pull secrets and registry access
 - **Gateway not ready**: Check Kuadrant readiness hook logs

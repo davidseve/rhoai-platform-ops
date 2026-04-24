@@ -6,7 +6,7 @@ This file provides guidance to AI coding agents (Cursor, Claude Code, etc.) when
 
 RHOAI Platform Operations -- a modular GitOps repository for deploying and operating Red Hat OpenShift AI (RHOAI) infrastructure. Each module (MaaS, observability, benchmarks, evaluation) is independently deployable via Helm or ArgoCD. The project prioritizes Red Hat products, Helm-first validation, idempotent tests, and Architecture Decision Records for every non-obvious choice.
 
-**Maturity:** MVP (MaaS module production-ready; other modules in progress)
+**Maturity:** MaaS and observability modules deployed and tested; benchmarks and evaluation modules planned
 
 ## Quick Commands
 
@@ -30,6 +30,9 @@ make undeploy-all         # Undeploy everything
 # ArgoCD (stable deployment)
 make deploy-argocd        # Apply app-of-apps
 make status               # Check ArgoCD sync status
+make argocd-branch-current # Point ArgoCD manifests to the current git branch
+make argocd-branch-main   # Point ArgoCD manifests back to main
+make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit branch
 
 # Cluster cleanup
 make cluster-cleanup      # Remove ALL resources (skip confirmation)
@@ -48,11 +51,12 @@ make lint                 # Helm lint + YAML validation
 
 ```
 modules/
-  observability/          # Grafana Operator, Grafana + OAuth, UWM, Thanos datasource
+  observability/          # Grafana, Tracing (OTel + Tempo), UWM, dashboards
     charts/
-      operators/          # Grafana Operator subscription, UWM ConfigMap
-      grafana/            # Grafana CR, SA, RBAC, datasource
-    tests/                # E2E tests (Grafana health, datasource, metrics)
+      operators/          # Grafana, OTel, Tempo Operator subscriptions, UWM ConfigMap
+      grafana/            # Grafana CR, SA, RBAC, Thanos + Tempo datasources, dashboards
+      tracing/            # TempoMonolithic CR, OpenTelemetryCollector CR, ServiceMonitor
+    tests/                # E2E tests (Grafana, datasource, metrics, tracing)
     docs/                 # OBSERVABILITY.md
 
   maas/                   # Models-as-a-Service (RHOAI + Kuadrant)
@@ -121,6 +125,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Auth:** Kuadrant AuthPolicy with tier-based identity
 - **Rate Limiting:** Kuadrant RateLimitPolicy + TokenRateLimitPolicy
 - **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
+- **Tracing:** Red Hat build of OpenTelemetry + Tempo (see [ADR-0004](docs/adr/0004-tracing-stack.md))
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
 - **GitOps:** ArgoCD with app-of-apps pattern
 
@@ -134,6 +139,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - `cluster-bootstrap` -- Bootstrap a fresh cluster: deploy all modules in order and run tests to validate
 - `cluster-cleanup` -- Remove all deployed resources from the cluster (reverse order, handles stuck finalizers)
 - `push-and-pr` -- Push changes to a new branch and create a pull request
+- `switch-argocd-branch` -- Point ArgoCD app-of-apps and child apps to `main` or the current working branch
 
 ## Detailed Documentation
 

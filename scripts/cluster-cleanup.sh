@@ -98,7 +98,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in maas-model-fast maas-model maas-platform maas-operators obs-grafana obs-operators; do
+  for release in maas-model-fast maas-model maas-platform maas-operators obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -257,6 +257,10 @@ cleanup_maas_operators() {
 cleanup_observability() {
   log "=== Observability: Cleaning up ==="
 
+  log "Deleting tracing CRs..."
+  run "$OC delete opentelemetrycollector --all -n observability --ignore-not-found"
+  run "$OC delete tempomonolithic --all -n observability --ignore-not-found"
+
   log "Deleting Grafana CRs..."
   run "$OC delete grafanadashboard --all -A --ignore-not-found"
   run "$OC delete grafanadatasource --all -A --ignore-not-found"
@@ -268,6 +272,16 @@ cleanup_observability() {
     run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
   done
 
+  log "Deleting OpenTelemetry Operator..."
+  run "$OC delete subscription --all -n openshift-opentelemetry-operator --ignore-not-found"
+  run "$OC delete csv --all -n openshift-opentelemetry-operator --ignore-not-found"
+  run "$OC delete operatorgroup --all -n openshift-opentelemetry-operator --ignore-not-found"
+
+  log "Deleting Tempo Operator..."
+  run "$OC delete subscription --all -n openshift-tempo-operator --ignore-not-found"
+  run "$OC delete csv --all -n openshift-tempo-operator --ignore-not-found"
+  run "$OC delete operatorgroup --all -n openshift-tempo-operator --ignore-not-found"
+
   log "Deleting RBAC..."
   run "$OC delete clusterrolebinding grafana-cluster-monitoring-view --ignore-not-found"
   run "$OC delete clusterrole grafana-proxy-observability --ignore-not-found"
@@ -275,6 +289,12 @@ cleanup_observability() {
   log "Deleting namespace observability..."
   run "$OC delete ns observability --timeout=60s --ignore-not-found"
   wait_ns_gone "observability" 90
+
+  log "Deleting operator namespaces..."
+  run "$OC delete ns openshift-opentelemetry-operator --timeout=60s --ignore-not-found"
+  run "$OC delete ns openshift-tempo-operator --timeout=60s --ignore-not-found"
+  wait_ns_gone "openshift-opentelemetry-operator" 60
+  wait_ns_gone "openshift-tempo-operator" 60
 }
 
 # ============================================================
@@ -284,7 +304,7 @@ cleanup_argocd() {
   log "=== Removing ArgoCD Applications ==="
 
   log "Deleting child applications..."
-  for app in maas-model-fast maas-model maas-platform maas-operators observability-grafana observability-operators; do
+  for app in maas-model-fast maas-model maas-platform maas-operators observability-tracing observability-grafana observability-operators; do
     run "$OC delete application '$app' -n openshift-gitops --ignore-not-found"
   done
 
@@ -312,6 +332,8 @@ verify_cleanup() {
     "kuadrant-system"
     "leader-worker-set"
     "observability"
+    "openshift-opentelemetry-operator"
+    "openshift-tempo-operator"
   )
   # Add dynamic tier namespaces to verification
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do

@@ -33,6 +33,11 @@ llminferenceservice:
     name: maas-default-gateway
     namespace: openshift-ingress
 
+tracing:
+  enabled: false
+  otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
+  serviceName: ""   # defaults to model servedName
+
 rbac:
   enabled: true
 

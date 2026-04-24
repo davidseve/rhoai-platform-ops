@@ -1,0 +1,65 @@
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: {{ .Values.collector.name }}
+  namespace: {{ .Values.collector.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  mode: deployment
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc: {}
+          http: {}
+    processors:
+      batch:
+        send_batch_size: 1024
+        timeout: 5s
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+    connectors:
+      spanmetrics:
+        histogram:
+          explicit:
+            buckets: [100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s]
+        dimensions:
+          - name: http.method
+          - name: http.status_code
+          - name: http.route
+          - name: rpc.method
+        exemplars:
+          enabled: true
+        dimensions_cache_size: 1000
+        aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+        metrics_flush_interval: 15s
+    exporters:
+      otlp/tempo:
+        endpoint: {{ .Values.collector.tempoEndpoint | quote }}
+        tls:
+          insecure: true
+      prometheus:
+        endpoint: "0.0.0.0:{{ .Values.collector.metricsPort }}"
+        resource_to_telemetry_conversion:
+          enabled: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/tempo, spanmetrics]
+        metrics:
+          receivers: [otlp, spanmetrics]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]
+  resources:
+    limits:
+      cpu: {{ .Values.collector.resources.limits.cpu }}
+      memory: {{ .Values.collector.resources.limits.memory }}
+    requests:
+      cpu: {{ .Values.collector.resources.requests.cpu }}
+      memory: {{ .Values.collector.resources.requests.memory }}

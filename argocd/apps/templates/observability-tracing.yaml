@@ -1,23 +1,20 @@
-{{- if and .Values.modules.maas.enabled (index .Values.modules.maas.models "tinyllama-fast").enabled }}
+{{- if .Values.modules.observability.enabled }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: maas-model-fast
+  name: observability-tracing
   namespace: openshift-gitops
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
   source:
     repoURL: {{ .Values.repoURL }}
     targetRevision: {{ .Values.targetRevision }}
-    path: modules/maas/charts/maas-model
+    path: modules/observability/charts/tracing
     helm:
       valueFiles:
-        - values-tinyllama-fast.yaml
-      parameters:
-        - name: tracing.enabled
-          value: "{{ .Values.modules.observability.enabled }}"
+        - values.yaml
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -36,9 +33,12 @@ spec:
         factor: 2
         maxDuration: 15m
   ignoreDifferences:
-    - group: serving.kserve.io
-      kind: LLMInferenceService
+    - group: tempo.grafana.com
+      kind: TempoMonolithic
       jsonPointers:
-        - /metadata/annotations
+        - /spec
+    - group: opentelemetry.io
+      kind: OpenTelemetryCollector
+      jsonPointers:
         - /spec
 {{- end }}
