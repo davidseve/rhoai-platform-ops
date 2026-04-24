@@ -138,8 +138,9 @@ Two PrometheusRule resources define the alert rules:
 | MaaSLimitadorDown | critical | `limitador_up == 0` for 1m | Rate limiter is completely down |
 | MaaSHighRejectionRate | warning | Rejection ratio > 30% for 5m | Rate limits are rejecting a large fraction of traffic |
 | MaaSDatastorePartitioned | critical | `datastore_partitioned == 1` for 1m | Limitador lost its backing store |
-| MaaSGatewayErrors | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms |
-| MaaSGatewayErrorsCritical | critical | Error ratio > 5% for 5m | Sustained gateway error rate -- auth service cannot respond in time |
+| MaaSGatewayAuthTimeout | warning | Any `kuadrant_errors` for 2m | WASM auth timeout -- auth evaluation exceeded 200ms |
+| MaaSBackend5xx | warning | Any `istio_requests_total{response_code=~"5.."}` for 2m | vLLM/backend returning server errors |
+| MaaSGatewayErrorsCritical | critical | Combined error ratio > 5% for 5m | Sustained error rate from auth timeouts + backend failures |
 
 ### vLLM SLO alerts (`maas-vllm-slo` in `maas-models`)
 

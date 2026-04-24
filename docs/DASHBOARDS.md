@@ -170,37 +170,45 @@ If panels remain empty after 2 minutes of traffic, check:
 3. `oc get podmonitor -n maas-models` -- does the PodMonitor exist?
 4. `oc get grafanadatasource -n observability` -- are datasources created?
 
-## Gateway 5xx Errors
+## Gateway Errors
 
-### What causes them
+There are **two distinct sources** of 5xx errors in the MaaS gateway. The dashboard tracks both separately.
 
-Gateway 5xx errors originate from the **Kuadrant WASM filter** in Envoy, **not** from vLLM or Authorino. The root cause is the WASM plugin's `auth-service` timeout, which is hardcoded to **200ms** by the Kuadrant operator.
+### Type 1: Auth Timeout (WASM filter)
 
-The authentication chain (TokenReview + tier HTTP callback to MaaS API) can exceed 200ms under concurrent load. When this happens, the WASM filter times out and -- because `failureMode: deny` -- returns a 500 error to the client. Authorino itself succeeds (logs show `"authorized":true`), but the WASM filter has already given up waiting.
+The Kuadrant WASM filter in Envoy has a hardcoded `auth-service` timeout of **200ms** (`failureMode: deny`). The authentication chain (TokenReview + tier HTTP callback to MaaS API) can exceed 200ms under concurrent load or when auth caches are cold. When this happens, the WASM filter returns 500 -- the request **never reaches vLLM**.
 
 Evidence:
-- Envoy stat `wasmcustom.kuadrant.errors` counts WASM-level errors (these are the 500s)
-- Envoy access logs show 500 responses with exactly ~200ms duration and upstream `"-"` (request never reached vLLM)
-- Envoy logs show `"Span buffer full (100), dropping oldest span"` warnings from the Kuadrant WASM plugin under load
-- With `CONCURRENCY=2`, all requests succeed. With `CONCURRENCY=4`, roughly 50% get 500s
+- `kuadrant_errors` metric counts these (scraped from Envoy gateway pod via istio-pod-monitor)
+- Envoy access logs show 500 responses with exactly ~200ms duration and upstream `"-"`
+- With `CONCURRENCY<=2` and warm cache, no auth timeouts occur
+
+### Type 2: Backend Error (vLLM)
+
+Even when requests pass auth+ratelimit, vLLM itself can return 5xx (e.g. overloaded, OOM, model errors). These are tracked by `istio_requests_total{source_workload="maas-default-gateway-openshift-default", response_code=~"5.."}`.
+
+### Why HAProxy metrics don't work
+
+The `maas-default-gateway` OpenShift Route uses **TLS passthrough**. HAProxy cannot see HTTP status codes for passthrough routes, so `haproxy_server_http_responses_total` is always empty for MaaS traffic.
 
 ### Where to see them
 
 | Source | How to check |
 |--------|-------------|
-| **Dashboard** | "MaaS Platform Overview" > "Gateway Errors/sec" stat and "Authorized vs Limited vs 5xx Over Time" chart |
-| **Prometheus alerts** | `MaaSGatewayErrors` (any errors for 2min), `MaaSGatewayErrorsCritical` (>5% error rate for 5min) |
-| **Kuadrant metric** | `kuadrant_errors` (scraped from Envoy gateway pod via istio-pod-monitor) |
+| **Dashboard** | "MaaS Platform Overview" > "Error Rate/sec" stat (combined) and "Request Outcomes Over Time" chart (separated by type) |
+| **Prometheus alerts** | `MaaSGatewayAuthTimeout` (WASM errors 2min), `MaaSBackend5xx` (vLLM errors 2min), `MaaSGatewayErrorsCritical` (combined >5% for 5min) |
+| **Auth timeout metric** | `kuadrant_errors` |
+| **Backend error metric** | `istio_requests_total{source_workload="maas-default-gateway-openshift-default", response_code=~"5.."}` |
 | **Envoy WASM stats** | `oc exec -n openshift-ingress <gateway-pod> -c istio-proxy -- pilot-agent request GET stats \| grep kuadrant` |
-| **Kuadrant/Authorino logs** | `oc logs -n kuadrant-system deployment/authorino --tail=100` |
 | **Envoy access logs** | `oc logs -n openshift-ingress <gateway-pod> -c istio-proxy --tail=100 \| grep 500` |
 
 ### Production mitigations
 
-- **Limit client concurrency**: Keep `CONCURRENCY` at 2 or lower for the traffic generator. In production, implement client-side rate limiting or a queue to avoid bursting above what the auth chain can handle in 200ms
-- **Kuadrant WASM auth timeout**: The 200ms auth-service timeout is hardcoded by the Kuadrant operator and cannot be changed via AuthPolicy or WasmPlugin (it gets reconciled back). Upstream Kuadrant issue needed to make this configurable
-- **AuthPolicy cache TTLs**: Identity cache is 600s, tier cache is 300s, authorization cache is 60s. Cached auth evaluations respond faster, reducing the chance of hitting the 200ms timeout
-- **Authorino resources**: Ensure the Authorino deployment has adequate CPU/memory so auth evaluation completes within 200ms even under load
+- **Limit client concurrency**: Keep `CONCURRENCY<=2` for the traffic generator. In production, implement client-side rate limiting to avoid bursting above what the auth chain can handle in 200ms
+- **Kuadrant WASM auth timeout**: The 200ms is hardcoded by the Kuadrant operator (`WasmPlugin` gets reconciled back). Upstream Kuadrant issue needed to make this configurable
+- **AuthPolicy cache TTLs**: Identity cache 600s, tier cache 300s, authorization cache 60s. Cached auth evaluations are fast enough to avoid the 200ms timeout
+- **Authorino resources**: Ensure adequate CPU/memory so auth evaluation completes within 200ms under load
+- **vLLM scaling**: Monitor backend errors; if vLLM returns 5xx under load, scale replicas or increase resources
 - **Retry with backoff**: Clients should implement retry with exponential backoff for 5xx responses
 
 ### About the port-forward in generate-traffic.sh
