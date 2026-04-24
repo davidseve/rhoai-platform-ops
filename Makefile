@@ -19,8 +19,7 @@ deploy-observability: ## Deploy observability (operators + Grafana + tracing)
 	$(OC) wait --for=condition=Established crd tempomonolithics.tempo.grafana.com --timeout=120s
 	$(OC) wait --for=condition=Established crd opentelemetrycollectors.opentelemetry.io --timeout=120s
 	$(HELM) upgrade --install obs-tracing modules/observability/charts/tracing --wait --timeout 10m
-	@echo "Enabling Tempo datasource in Grafana..."
-	$(HELM) upgrade --install obs-grafana modules/observability/charts/grafana --set tempo.enabled=true --wait --timeout 10m
+	$(HELM) upgrade --install obs-grafana modules/observability/charts/grafana --wait --timeout 10m
 
 .PHONY: test-observability
 test-observability: ## Run Observability E2E tests
