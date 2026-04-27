@@ -11,6 +11,6 @@ modules:
       tinyllama-fast:
         enabled: true
   observability:
-    enabled: false
+    enabled: true
   evaluation:
     enabled: false
