@@ -15,6 +15,7 @@
 set -euo pipefail
 
 OC="${OC:-oc}"
+ARGOCD="${ARGOCD:-argocd}"
 DRY_RUN="${DRY_RUN:-false}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-120}"
 CONFIRM="${CONFIRM:-false}"
@@ -90,7 +91,7 @@ force_delete_ns() {
 }
 
 # ============================================================
-# Module: MaaS -- Models (wave 2)
+# Helm releases (from helm-first workflow)
 # ============================================================
 cleanup_helm_releases() {
   log "=== Removing Helm releases (if any) ==="
@@ -108,155 +109,89 @@ cleanup_helm_releases() {
       run "$OC delete secret -n default -l name='$release',owner=helm --ignore-not-found"
     fi
   done
-  # Clean any releases stuck in pending-install / uninstalling from a previous failed run
   for secret in $($OC get secret -n default -l owner=helm -o name 2>/dev/null | grep -E 'maas-|rhoai-|obs-' || true); do
     log "  Removing leftover Helm secret: $secret"
     run "$OC delete '$secret' -n default --ignore-not-found"
   done
 }
 
-cleanup_maas_models() {
-  log "=== MaaS: Cleaning up models (wave 2) ==="
+# ============================================================
+# Module: MaaS -- residual resources (not managed by ArgoCD)
+# ============================================================
+cleanup_maas_residual() {
+  log "=== MaaS: Cleaning up residual resources ==="
 
   local model_ns="maas-models"
   local gateway_ns="openshift-ingress"
+  local kuadrant_ns="kuadrant-system"
 
+  # LLMInferenceService can have stuck finalizers
   if $OC get ns "$model_ns" &>/dev/null; then
-    log "Clearing LLMInferenceService finalizers in $model_ns..."
+    log "Clearing LLMInferenceService finalizers..."
     for lis in $($OC get llminferenceservice -n "$model_ns" -o name 2>/dev/null); do
       run "$OC patch '$lis' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
-
-    log "Deleting LLMInferenceService resources..."
     run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
-
-    log "Deleting rate limit policies..."
-    run "$OC delete ratelimitpolicy --all -n '$model_ns' --timeout=30s --ignore-not-found"
-    run "$OC delete tokenratelimitpolicy --all -n '$model_ns' --timeout=30s --ignore-not-found"
-
-    log "Deleting RBAC resources..."
-    run "$OC delete rolebinding --all -n '$model_ns' --timeout=10s --ignore-not-found"
-    run "$OC delete role --all -n '$model_ns' --timeout=10s --ignore-not-found"
   fi
 
-  log "Cleaning up cleanup-authn-hook resources in $gateway_ns..."
-  run "$OC delete job patch-gateway-authn -n '$gateway_ns' --ignore-not-found"
-  run "$OC delete job -l argocd.argoproj.io/hook=PostSync -n '$gateway_ns' --ignore-not-found"
-  run "$OC delete rolebinding patch-gateway-authn -n '$gateway_ns' --ignore-not-found"
-  run "$OC delete role patch-gateway-authn -n '$gateway_ns' --ignore-not-found"
-  run "$OC delete sa patch-gateway-authn -n '$gateway_ns' --ignore-not-found"
-
-  log "Deleting namespace $model_ns..."
-  run "$OC delete ns '$model_ns' --timeout=60s --ignore-not-found"
-  wait_ns_gone "$model_ns" 90
-}
-
-# ============================================================
-# Module: MaaS -- Platform (wave 1)
-# ============================================================
-cleanup_maas_platform() {
-  log "=== MaaS: Cleaning up platform (wave 1) ==="
-
-  local gateway_ns="openshift-ingress"
-  local kuadrant_ns="kuadrant-system"
-
-  log "Deleting Route and Gateway..."
-  run "$OC delete route maas-default-gateway -n '$gateway_ns' --ignore-not-found"
-  run "$OC delete gateway maas-default-gateway -n '$gateway_ns' --ignore-not-found"
-  run "$OC delete gatewayclass openshift-default --ignore-not-found"
-  run "$OC delete gatewayclass kuadrant-multi-cluster-gateway-instance-per-cluster --ignore-not-found"
-
-  log "Deleting TelemetryPolicy..."
-  run "$OC delete telemetrypolicy -n '$gateway_ns' --all --ignore-not-found"
-
-  log "Deleting monitoring resources..."
-  run "$OC delete servicemonitor -n '$kuadrant_ns' --all --ignore-not-found"
-  run "$OC delete prometheusrule -n '$kuadrant_ns' --all --ignore-not-found"
-
-  log "Deleting Limitador patch..."
-  run "$OC delete limitador limitador -n '$kuadrant_ns' --ignore-not-found"
-
-  log "Deleting Kuadrant readiness hook resources..."
-  run "$OC delete job -l argocd.argoproj.io/hook=PostSync -n '$kuadrant_ns' --ignore-not-found"
-  run "$OC delete clusterrolebinding kuadrant-readiness-check --ignore-not-found"
-  run "$OC delete clusterrole kuadrant-readiness-check --ignore-not-found"
-  run "$OC delete sa kuadrant-readiness-check -n '$kuadrant_ns' --ignore-not-found"
-
-  log "Deleting tier-to-group-mapping ConfigMap..."
-  run "$OC delete configmap tier-to-group-mapping -n redhat-ods-applications --ignore-not-found"
-
-  log "Deleting OdhDashboardConfig..."
-  run "$OC delete odhdashboardconfig -n redhat-ods-applications --all --ignore-not-found"
-
+  # DataScienceCluster / DSCInitialization can block namespace deletion
   log "Deleting DataScienceCluster and DSCInitialization..."
   run "$OC delete datasciencecluster --all --timeout=120s --ignore-not-found"
   run "$OC delete dscinitialization --all --timeout=120s --ignore-not-found"
 
-  log "Deleting OpenShift Groups (resource-policy: keep)..."
-  for group in $($OC get group -o name 2>/dev/null | grep 'tier-'); do
-    run "$OC delete '$group' --ignore-not-found"
-  done
-
-  log "Deleting gateway tier namespaces (created by AuthPolicy)..."
-  for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-'); do
-    run "$OC delete '$ns' --timeout=60s --ignore-not-found"
-  done
-  for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-'); do
-    local tier_ns
-    tier_ns=$(echo "$ns" | sed 's|namespace/||')
-    wait_ns_gone "$tier_ns" 60
-  done
-}
-
-# ============================================================
-# Module: MaaS -- Operators (wave 0)
-# ============================================================
-cleanup_maas_operators() {
-  log "=== MaaS: Cleaning up operators (wave 0) ==="
-
+  # Kuadrant CR must be deleted before its operator namespace
   log "Deleting Kuadrant CR..."
-  run "$OC delete kuadrant --all -n kuadrant-system --timeout=60s --ignore-not-found"
+  run "$OC delete kuadrant --all -n '$kuadrant_ns' --timeout=60s --ignore-not-found"
 
+  # LeaderWorkerSetOperator CR
   log "Deleting LeaderWorkerSetOperator CR..."
   run "$OC delete leaderworkersetoperator --all --timeout=60s --ignore-not-found"
 
-  log "Deleting operator subscriptions..."
-  run "$OC delete subscription --all -n redhat-ods-operator --ignore-not-found"
-  run "$OC delete subscription --all -n kuadrant-system --ignore-not-found"
-  run "$OC delete subscription --all -n leader-worker-set --ignore-not-found"
+  # GatewayClass left behind (cluster-scoped, not always pruned)
+  log "Deleting GatewayClasses..."
+  run "$OC delete gatewayclass openshift-default --ignore-not-found"
+  run "$OC delete gatewayclass kuadrant-multi-cluster-gateway-instance-per-cluster --ignore-not-found"
 
-  log "Deleting CSVs..."
-  run "$OC delete csv --all -n redhat-ods-operator --ignore-not-found"
-  run "$OC delete csv --all -n kuadrant-system --ignore-not-found"
-  run "$OC delete csv --all -n leader-worker-set --ignore-not-found"
+  # Gateway tier namespaces (created dynamically by AuthPolicy, not in chart)
+  log "Deleting gateway tier namespaces..."
+  for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-'); do
+    run "$OC delete '$ns' --timeout=60s --ignore-not-found"
+  done
 
-  log "Deleting OperatorGroups..."
-  run "$OC delete operatorgroup --all -n redhat-ods-operator --ignore-not-found"
-  run "$OC delete operatorgroup --all -n kuadrant-system --ignore-not-found"
-  run "$OC delete operatorgroup --all -n leader-worker-set --ignore-not-found"
+  # Operator subscriptions / CSVs (in operator namespaces, not chart-managed)
+  log "Deleting operator subscriptions and CSVs..."
+  for ns in redhat-ods-operator kuadrant-system leader-worker-set; do
+    run "$OC delete subscription --all -n '$ns' --ignore-not-found"
+    run "$OC delete csv --all -n '$ns' --ignore-not-found"
+    run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
+  done
 
-  log "Deleting RHOAI-managed namespaces..."
-  run "$OC delete ns redhat-ods-applications --timeout=120s --ignore-not-found"
-  run "$OC delete ns redhat-ods-monitoring --timeout=60s --ignore-not-found"
+  # Namespaces
+  log "Deleting namespaces..."
+  for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
+            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
+    run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
+  done
 
-  log "Deleting operator namespaces..."
-  run "$OC delete ns redhat-ods-operator --timeout=60s --ignore-not-found"
-  run "$OC delete ns kuadrant-system --timeout=60s --ignore-not-found"
-  run "$OC delete ns leader-worker-set --timeout=60s --ignore-not-found"
+  # Wait for namespace termination
+  for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
+            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
+    wait_ns_gone "$ns" 120
+  done
 
-  wait_ns_gone "redhat-ods-applications" 120
-  wait_ns_gone "redhat-ods-monitoring" 90
-  wait_ns_gone "redhat-ods-operator" 90
-  wait_ns_gone "kuadrant-system" 90
-  wait_ns_gone "leader-worker-set" 60
+  # Dynamic tier namespaces
+  for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
+    wait_ns_gone "$ns" 60
+  done
 }
 
 # ============================================================
-# Module: Observability
+# Module: Observability -- residual resources
 # ============================================================
-cleanup_observability() {
-  log "=== Observability: Cleaning up ==="
+cleanup_observability_residual() {
+  log "=== Observability: Cleaning up residual resources ==="
 
+  # CRs with potential finalizers
   log "Deleting tracing CRs..."
   run "$OC delete opentelemetrycollector --all -n observability --ignore-not-found"
   run "$OC delete tempomonolithic --all -n observability --ignore-not-found"
@@ -266,53 +201,117 @@ cleanup_observability() {
   run "$OC delete grafanadatasource --all -A --ignore-not-found"
   run "$OC delete grafana --all -n observability --ignore-not-found"
 
+  # Grafana Operator is installed globally (not in a chart-managed namespace)
   log "Deleting Grafana Operator subscription (global)..."
   run "$OC delete subscription grafana-operator -n openshift-operators --ignore-not-found"
   for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep grafana-operator || true); do
     run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
   done
 
-  log "Deleting OpenTelemetry Operator..."
-  run "$OC delete subscription --all -n openshift-opentelemetry-operator --ignore-not-found"
-  run "$OC delete csv --all -n openshift-opentelemetry-operator --ignore-not-found"
-  run "$OC delete operatorgroup --all -n openshift-opentelemetry-operator --ignore-not-found"
+  # Operator subscriptions / CSVs in operator namespaces
+  for ns in openshift-opentelemetry-operator openshift-tempo-operator; do
+    run "$OC delete subscription --all -n '$ns' --ignore-not-found"
+    run "$OC delete csv --all -n '$ns' --ignore-not-found"
+    run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
+  done
 
-  log "Deleting Tempo Operator..."
-  run "$OC delete subscription --all -n openshift-tempo-operator --ignore-not-found"
-  run "$OC delete csv --all -n openshift-tempo-operator --ignore-not-found"
-  run "$OC delete operatorgroup --all -n openshift-tempo-operator --ignore-not-found"
-
-  log "Deleting RBAC..."
+  # Cluster-scoped RBAC
   run "$OC delete clusterrolebinding grafana-cluster-monitoring-view --ignore-not-found"
   run "$OC delete clusterrole grafana-proxy-observability --ignore-not-found"
 
-  log "Deleting namespace observability..."
-  run "$OC delete ns observability --timeout=60s --ignore-not-found"
-  wait_ns_gone "observability" 90
-
-  log "Deleting operator namespaces..."
-  run "$OC delete ns openshift-opentelemetry-operator --timeout=60s --ignore-not-found"
-  run "$OC delete ns openshift-tempo-operator --timeout=60s --ignore-not-found"
-  wait_ns_gone "openshift-opentelemetry-operator" 60
-  wait_ns_gone "openshift-tempo-operator" 60
+  # Namespaces
+  for ns in observability openshift-opentelemetry-operator openshift-tempo-operator; do
+    run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
+  done
+  for ns in observability openshift-opentelemetry-operator openshift-tempo-operator; do
+    wait_ns_gone "$ns" 90
+  done
 }
 
 # ============================================================
 # ArgoCD
 # ============================================================
+
+argocd_login() {
+  if [[ "$DRY_RUN" == "true" ]]; then return 0; fi
+
+  local server
+  server=$($OC get route openshift-gitops-server -n openshift-gitops -o jsonpath='{.spec.host}' 2>/dev/null || true)
+  if [[ -z "$server" ]]; then
+    warn "ArgoCD route not found -- falling back to oc delete"
+    return 1
+  fi
+
+  local password
+  password=$($OC get secret openshift-gitops-cluster -n openshift-gitops -o jsonpath='{.data.admin\.password}' 2>/dev/null | base64 -d || true)
+
+  if $ARGOCD login "$server" --username admin --password "$password" --grpc-web --insecure >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # ArgoCD on OpenShift: try --sso + oc token
+  if $ARGOCD login "$server" --grpc-web --insecure --header "Authorization: Bearer $($OC whoami -t)" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  warn "ArgoCD login failed -- falling back to oc delete"
+  return 1
+}
+
+wait_argocd_app_gone() {
+  local app="$1"
+  local timeout="${2:-120}"
+  if [[ "$DRY_RUN" == "true" ]]; then return 0; fi
+  local elapsed=0
+  while $ARGOCD app get "$app" >/dev/null 2>&1; do
+    if (( elapsed >= timeout )); then
+      warn "ArgoCD app $app still exists after ${timeout}s"
+      return 1
+    fi
+    sleep 5
+    (( elapsed += 5 ))
+  done
+}
+
 cleanup_argocd() {
   log "=== Removing ArgoCD Applications ==="
 
-  log "Deleting child applications..."
-  for app in maas-model-fast maas-model maas-platform maas-operators observability-tracing observability-grafana observability-operators; do
-    run "$OC delete application '$app' -n openshift-gitops --ignore-not-found"
+  if ! command -v "$ARGOCD" &>/dev/null || ! argocd_login; then
+    log "Using oc to delete ArgoCD applications (no cascade)..."
+    for app in maas-model-fast maas-model maas-platform maas-operators \
+               observability-tracing observability-grafana observability-operators \
+               rhoai-platform-ops; do
+      run "$OC delete application '$app' -n openshift-gitops --ignore-not-found"
+    done
+    sleep 10
+    return
+  fi
+
+  log "Logged into ArgoCD, using cascade delete..."
+
+  # 1. Delete app-of-apps first to stop child recreation
+  log "Deleting app-of-apps (cascade)..."
+  run "$ARGOCD app delete rhoai-platform-ops --cascade --grpc-web -y"
+  wait_argocd_app_gone "rhoai-platform-ops" 30
+
+  # 2. Delete child apps with cascade -- ArgoCD will remove managed resources
+  local apps=(
+    maas-model-fast maas-model maas-platform maas-operators
+    observability-tracing observability-grafana observability-operators
+  )
+  for app in "${apps[@]}"; do
+    if $ARGOCD app get "$app" >/dev/null 2>&1; then
+      log "  Deleting $app (cascade)..."
+      run "$ARGOCD app delete '$app' --cascade --grpc-web -y"
+    fi
   done
 
-  log "Deleting app-of-apps..."
-  run "$OC delete application rhoai-platform-ops -n openshift-gitops --ignore-not-found"
+  # 3. Wait for all apps to terminate
+  for app in "${apps[@]}"; do
+    wait_argocd_app_gone "$app" 120
+  done
 
-  log "Waiting for ArgoCD apps to be removed..."
-  sleep 5
+  log "All ArgoCD applications removed."
 }
 
 # ============================================================
@@ -371,12 +370,6 @@ verify_cleanup() {
 # Then add the function call to main() below.
 # ============================================================
 
-cleanup_maas() {
-  cleanup_maas_models
-  cleanup_maas_platform
-  cleanup_maas_operators
-}
-
 main() {
   log "Starting cluster cleanup (DRY_RUN=$DRY_RUN)"
 
@@ -387,27 +380,25 @@ main() {
 
   confirm_or_exit
 
+  # 1. Remove Helm releases (if any from helm-first workflow)
   cleanup_helm_releases
 
+  # 2. Delete ArgoCD applications (cascade removes chart-managed resources)
+  cleanup_argocd
+
+  # 3. Clean residual resources not managed by ArgoCD charts
   if [[ -n "$MODULE" ]]; then
     case "$MODULE" in
-      maas)
-        cleanup_argocd
-        cleanup_maas
-        ;;
-      observability)
-        cleanup_argocd
-        cleanup_observability
-        ;;
+      maas)          cleanup_maas_residual ;;
+      observability) cleanup_observability_residual ;;
       *)
         echo "ERROR: Unknown module '$MODULE'. Available: maas, observability" >&2
         exit 1
         ;;
     esac
   else
-    cleanup_argocd
-    cleanup_observability
-    cleanup_maas
+    cleanup_observability_residual
+    cleanup_maas_residual
   fi
 
   verify_cleanup
