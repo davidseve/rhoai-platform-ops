@@ -62,6 +62,11 @@ syncPolicy:
   syncOptions:
     - CreateNamespace=true
     - ServerSideApply=true
-    - RespectIgnoreDifferences=true
     - SkipDryRunOnMissingResource=true
 ```
+
+Only add `RespectIgnoreDifferences=true` and `ignoreDifferences` when a
+specific resource causes a persistent sync-loop (e.g. CRD version conversion,
+operator-injected fields). Current known cases:
+- `DSCInitialization /spec` (v1/v2 CRD conversion)
+- `Grafana /spec/version` (operator injects image digest)

@@ -1,7 +1,3 @@
-# Cluster domain (e.g. apps.ocp.sandbox808.opentlc.com)
-# Required for Route host: maas.<clusterDomain>
-clusterDomain: ""
-
 datasciencecluster:
   name: default-dsc
   components:
@@ -42,6 +38,8 @@ gateway:
   enabled: true
   name: maas-default-gateway
   namespace: openshift-ingress
+  className: openshift-default
+  authPolicyName: maas-default-gateway-authn
   # TLS secret for the Gateway listener.
   # passthrough mode (default): use the cluster wildcard cert
   #   bare-metal: router-certs-default

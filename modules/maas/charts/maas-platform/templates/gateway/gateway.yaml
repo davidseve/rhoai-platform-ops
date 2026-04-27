@@ -7,7 +7,7 @@ metadata:
   annotations:
     security.opendatahub.io/authorino-tls-bootstrap: "true"
 spec:
-  gatewayClassName: openshift-default
+  gatewayClassName: {{ .Values.gateway.className }}
   listeners:
   - name: https
     port: 443

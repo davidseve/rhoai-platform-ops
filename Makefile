@@ -132,7 +132,7 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template obs-grafana modules/observability/charts/grafana
 	$(HELM) template obs-tracing modules/observability/charts/tracing
 	$(HELM) template maas-operators modules/maas/charts/operators
-	$(HELM) template maas-platform modules/maas/charts/maas-platform --set clusterDomain=template.example.com
+	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
 	$(HELM) template argocd-apps argocd/apps
 

@@ -36,5 +36,5 @@ spec:
     - group: grafana.integreatly.org
       kind: Grafana
       jsonPointers:
-        - /spec
+        - /spec/version
 {{- end }}

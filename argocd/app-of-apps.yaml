@@ -9,10 +9,6 @@ spec:
     repoURL: https://github.com/davidseve/rhoai-platform-ops.git
     targetRevision: main
     path: argocd/apps
-    helm:
-      parameters:
-        - name: clusterDomain
-          value: apps.ocp.sandbox877.opentlc.com
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

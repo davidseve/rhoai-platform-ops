@@ -1,9 +1,9 @@
-{{- if eq .Values.mode "llminferenceservice" }}
+{{- if .Values.gateway.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
+  namespace: {{ .Values.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -12,7 +12,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
+  namespace: {{ .Values.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -25,14 +25,14 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
+  namespace: {{ .Values.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 subjects:
 - kind: ServiceAccount
   name: patch-gateway-authn
-  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
+  namespace: {{ .Values.gateway.namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -42,7 +42,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
+  namespace: {{ .Values.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -61,8 +61,8 @@ spec:
         - -c
         - |
           set -euo pipefail
-          POLICY="{{ .Values.llminferenceservice.gateway.name }}-authn"
-          NS="{{ .Values.llminferenceservice.gateway.namespace }}"
+          POLICY="{{ .Values.gateway.authPolicyName }}"
+          NS="{{ .Values.gateway.namespace }}"
 
           echo "Waiting for $POLICY to exist..."
           for i in $(seq 1 12); do
@@ -77,7 +77,7 @@ spec:
                 "authentication": {
                   "service-accounts": {
                     "kubernetesTokenReview": {
-                      "audiences": ["https://kubernetes.default.svc", "{{ .Values.llminferenceservice.gateway.name }}-sa"]
+                      "audiences": ["https://kubernetes.default.svc", "{{ .Values.gateway.name }}-sa"]
                     },
                     "cache": {
                       "key": {"selector": "context.request.http.headers.authorization.@case:lower"},
