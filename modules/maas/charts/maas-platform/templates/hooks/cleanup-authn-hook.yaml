@@ -67,7 +67,13 @@ spec:
           echo "Waiting for AuthPolicy targeting $GW_NAME..."
           POLICY=""
           for i in $(seq 1 24); do
-            POLICY=$(oc get authpolicy -n "$NS" -o jsonpath="{range .items[?(@.spec.targetRef.name=='$GW_NAME')]}{.metadata.name}{end}" 2>/dev/null || true)
+            for ap in $(oc get authpolicy -n "$NS" -o name 2>/dev/null); do
+              TARGET=$(oc get "$ap" -n "$NS" -o jsonpath='{.spec.targetRef.name}' 2>/dev/null || true)
+              if [ "$TARGET" = "$GW_NAME" ]; then
+                POLICY="${ap#*/}"
+                break
+              fi
+            done
             if [ -n "$POLICY" ]; then break; fi
             echo "  attempt $i/24 - no AuthPolicy found yet"; sleep 10
           done
