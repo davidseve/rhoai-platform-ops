@@ -12,7 +12,7 @@ spec:
     helm:
       parameters:
         - name: clusterDomain
-          value: apps.ocp.sandbox877.opentlc.com
+          value: apps.ocp.sandbox2930.opentlc.com
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

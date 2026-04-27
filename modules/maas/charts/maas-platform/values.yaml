@@ -43,7 +43,7 @@ gateway:
   name: maas-default-gateway
   namespace: openshift-ingress
   className: openshift-default
-  authPolicyName: gateway-auth-policy
+  authPolicyName: maas-default-gateway-authn
   # TLS secret for the Gateway listener.
   # passthrough mode (default): use the cluster wildcard cert
   #   bare-metal: router-certs-default
