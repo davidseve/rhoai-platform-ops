@@ -20,6 +20,8 @@ spec:
 
 The key setting is `serviceMesh: Removed` — without it, RHOAI installs its own Istio, which conflicts with the Istio that Kuadrant deploys via Service Mesh 3.
 
+**Important**: The DSCI CRD has two served versions (v1 storage=false, v2 storage=true). The template must use `apiVersion: dscinitialization.opendatahub.io/v2` and include operator-defaulted fields (`monitoring.metrics: {}`, `trustedCABundle.customCABundle: ""`) to minimize drift. Even so, the v1/v2 conversion layer can cause ArgoCD to report OutOfSync, requiring `ignoreDifferences` on `/spec`.
+
 ### DataScienceCluster (DSC)
 
 The DSC controls which RHOAI components are installed. We explicitly set every component to keep only what we need:
@@ -33,27 +35,31 @@ New RHOAI versions may add components. It's good practice to explicitly declare 
 
 Configures the RHOAI dashboard UI features. We enable `genAiStudio` and `modelAsService`.
 
-## ArgoCD ignoreDifferences
+## ArgoCD ignoreDifferences — Audit Results
 
-The RHOAI operator adds internal fields (annotations, status, defaulted spec values) to these resources after creation. This is normal operator behavior, but ArgoCD sees it as drift and would sync-loop without `ignoreDifferences`:
+We performed a fresh-cluster audit (April 2026) removing all `ignoreDifferences` entries and validating one by one which cause actual sync-loops. Results:
 
-```yaml
-ignoreDifferences:
-  - group: dscinitialization.opendatahub.io
-    kind: DSCInitialization
-    jsonPointers:
-      - /spec
-  - group: datasciencecluster.opendatahub.io
-    kind: DataScienceCluster
-    jsonPointers:
-      - /spec/components
-  - group: opendatahub.io
-    kind: OdhDashboardConfig
-    jsonPointers:
-      - /spec
-```
+### Unnecessary (removed) — 8 of 10 rules
 
-This tells ArgoCD to ignore operator-added fields. Our desired state (from the Helm templates) is applied correctly on creation and respected by the operator — `ignoreDifferences` only prevents ArgoCD from fighting over fields the operator enriches afterward.
+| App | Resource | jsonPointers | Why unnecessary |
+|-----|----------|-------------|-----------------|
+| maas-operators | Subscription | /spec/startingCSV, /status | ServerSideApply handles OLM mutations |
+| maas-operators | OperatorGroup | /metadata/annotations | No drift observed |
+| maas-platform | DataScienceCluster | /spec/components | No drift with ServerSideApply |
+| maas-platform | OdhDashboardConfig | /spec | No drift with ServerSideApply |
+| maas-platform | Gateway | /metadata/annotations | No drift observed |
+| maas-model(s) | LLMInferenceService | /metadata/annotations, /spec | No drift observed |
+| observability-operators | Subscription | /spec/startingCSV, /status | Same as maas-operators |
+| observability-tracing | TempoMonolithic, OTelCollector | /spec | No drift observed |
+
+### Necessary (kept, narrowed) — 2 rules
+
+| App | Resource | jsonPointers | Why necessary |
+|-----|----------|-------------|---------------|
+| maas-platform | DSCInitialization | /spec | CRD v1/v2 conversion layer causes ArgoCD drift even when spec matches live state. Template uses v2 with operator defaults to minimize drift, but the conversion still triggers OutOfSync. |
+| observability-grafana | Grafana | /spec/version | Grafana operator injects the resolved image digest into `spec.version` after creation. This value changes with each operator release and cannot be hardcoded in the template. |
+
+**Key takeaway**: `ServerSideApply` (enabled as a syncOption) handles most operator-mutated fields correctly. The two remaining cases are a CRD version conversion issue (DSCI) and an operator-injected field (Grafana image digest).
 
 ## Real GitOps Friction Point: AuthPolicy
 
@@ -70,5 +76,5 @@ The one genuine conflict is the `AuthPolicy` created by `odh-model-controller`. 
 
 | RHOAI Version | DSCI/DSC/Dashboard | AuthPolicy conflict |
 | ------------- | ------------------ | ------------------- |
-| 3.3.1         | Works fine via Helm + ignoreDifferences | PostSync hook required |
+| 3.3.1         | Works fine via Helm + 1 ignoreDifferences (DSCI /spec) | PostSync hook required |
 | 3.4 (expected)| No changes expected | `maas-controller` may handle AuthPolicy properly |
