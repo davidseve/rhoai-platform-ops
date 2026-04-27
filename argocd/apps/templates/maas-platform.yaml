@@ -29,6 +29,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
       - SkipDryRunOnMissingResource=true
     retry:
       limit: 30
@@ -36,4 +37,9 @@ spec:
         duration: 15s
         factor: 2
         maxDuration: 15m
+  ignoreDifferences:
+    - group: dscinitialization.opendatahub.io
+      kind: DSCInitialization
+      jsonPointers:
+        - /spec
 {{- end }}

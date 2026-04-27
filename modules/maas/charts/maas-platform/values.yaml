@@ -2,42 +2,6 @@
 # Required for Route host: maas.<clusterDomain>
 clusterDomain: ""
 
-datasciencecluster:
-  name: default-dsc
-  components:
-    dashboard:
-      managementState: Managed
-    kserve:
-      managementState: Managed
-    llamastackoperator:
-      managementState: Managed
-    modelsAsService:
-      managementState: Managed
-    aipipelines:
-      managementState: Removed
-    feastoperator:
-      managementState: Removed
-    kueue:
-      managementState: Removed
-    mlflowoperator:
-      managementState: Removed
-    modelregistry:
-      managementState: Removed
-    ray:
-      managementState: Removed
-    trainer:
-      managementState: Removed
-    trainingoperator:
-      managementState: Removed
-    trustyai:
-      managementState: Removed
-    workbenches:
-      managementState: Removed
-
-dashboard:
-  genAiStudio: true
-  modelAsService: true
-
 gateway:
   enabled: true
   name: maas-default-gateway
