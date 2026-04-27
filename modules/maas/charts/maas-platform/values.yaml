@@ -39,6 +39,10 @@ gateway:
   name: maas-default-gateway
   namespace: openshift-ingress
   className: openshift-default
+  # Kubernetes Service type for the Envoy proxy created by the Gateway.
+  # ClusterIP (default): traffic enters via the OpenShift Route.
+  # LoadBalancer: for clusters with a cloud LB controller (AWS, GCP, etc.).
+  serviceType: ClusterIP
   authPolicyName: maas-default-gateway-authn
   # TLS secret for the Gateway listener.
   # passthrough mode (default): use the cluster wildcard cert
