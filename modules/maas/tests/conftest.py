@@ -64,16 +64,12 @@ def oc_json(oc):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def cluster_domain(oc):
+def maas_host(oc):
+    """Discover the Route hostname from the cluster."""
     return oc(
-        "get ingresses.config.openshift.io cluster "
-        "-o jsonpath='{.spec.domain}'"
+        f"get route {GATEWAY_NAME} -n {GATEWAY_NAMESPACE} "
+        "-o jsonpath='{.spec.host}'"
     ).strip("'")
-
-
-@pytest.fixture(scope="session")
-def maas_host(cluster_domain):
-    return f"maas.{cluster_domain}"
 
 
 @pytest.fixture(scope="session")
