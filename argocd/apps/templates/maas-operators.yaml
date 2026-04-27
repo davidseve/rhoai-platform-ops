@@ -24,7 +24,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
       - SkipDryRunOnMissingResource=true
     retry:
       limit: 10
@@ -32,14 +31,4 @@ spec:
         duration: 30s
         factor: 2
         maxDuration: 10m
-  ignoreDifferences:
-    - group: operators.coreos.com
-      kind: Subscription
-      jsonPointers:
-        - /spec/startingCSV
-        - /status
-    - group: operators.coreos.com
-      kind: OperatorGroup
-      jsonPointers:
-        - /metadata/annotations
 {{- end }}

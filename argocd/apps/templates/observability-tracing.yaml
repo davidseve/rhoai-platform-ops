@@ -24,7 +24,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
       - SkipDryRunOnMissingResource=true
     retry:
       limit: 30
@@ -32,13 +31,4 @@ spec:
         duration: 15s
         factor: 2
         maxDuration: 15m
-  ignoreDifferences:
-    - group: tempo.grafana.com
-      kind: TempoMonolithic
-      jsonPointers:
-        - /spec
-    - group: opentelemetry.io
-      kind: OpenTelemetryCollector
-      jsonPointers:
-        - /spec
 {{- end }}

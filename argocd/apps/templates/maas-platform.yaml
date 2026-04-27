@@ -29,7 +29,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
       - SkipDryRunOnMissingResource=true
     retry:
       limit: 30
@@ -37,21 +36,4 @@ spec:
         duration: 15s
         factor: 2
         maxDuration: 15m
-  ignoreDifferences:
-    - group: dscinitialization.opendatahub.io
-      kind: DSCInitialization
-      jsonPointers:
-        - /spec
-    - group: datasciencecluster.opendatahub.io
-      kind: DataScienceCluster
-      jsonPointers:
-        - /spec/components
-    - group: opendatahub.io
-      kind: OdhDashboardConfig
-      jsonPointers:
-        - /spec
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      jsonPointers:
-        - /metadata/annotations
 {{- end }}
