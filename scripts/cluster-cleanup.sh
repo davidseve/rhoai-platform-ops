@@ -235,21 +235,26 @@ cleanup_observability_residual() {
 argocd_login() {
   if [[ "$DRY_RUN" == "true" ]]; then return 0; fi
 
-  local server
-  server=$($OC get route openshift-gitops-server -n openshift-gitops -o jsonpath='{.spec.host}' 2>/dev/null || true)
+  local server=""
+  for route_name in openshift-gitops-server argocd-server; do
+    server=$($OC get route "$route_name" -n openshift-gitops -o jsonpath='{.spec.host}' 2>/dev/null || true)
+    if [[ -n "$server" ]]; then break; fi
+  done
   if [[ -z "$server" ]]; then
     warn "ArgoCD route not found -- falling back to oc delete"
     return 1
   fi
 
-  local password
-  password=$($OC get secret openshift-gitops-cluster -n openshift-gitops -o jsonpath='{.data.admin\.password}' 2>/dev/null | base64 -d || true)
+  local password=""
+  for secret_name in openshift-gitops-cluster argocd-cluster; do
+    password=$($OC get secret "$secret_name" -n openshift-gitops -o jsonpath='{.data.admin\.password}' 2>/dev/null | base64 -d || true)
+    if [[ -n "$password" ]]; then break; fi
+  done
 
-  if $ARGOCD login "$server" --username admin --password "$password" --grpc-web --insecure >/dev/null 2>&1; then
+  if [[ -n "$password" ]] && $ARGOCD login "$server" --username admin --password "$password" --grpc-web --insecure >/dev/null 2>&1; then
     return 0
   fi
 
-  # ArgoCD on OpenShift: try --sso + oc token
   if $ARGOCD login "$server" --grpc-web --insecure --header "Authorization: Bearer $($OC whoami -t)" >/dev/null 2>&1; then
     return 0
   fi
