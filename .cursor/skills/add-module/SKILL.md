@@ -75,7 +75,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
       - SkipDryRunOnMissingResource=true
 {{- end }}
 ```
