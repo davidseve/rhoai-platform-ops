@@ -232,35 +232,11 @@ cleanup_observability_residual() {
 # ArgoCD
 # ============================================================
 
-argocd_login() {
-  if [[ "$DRY_RUN" == "true" ]]; then return 0; fi
+ARGOCD_CORE_FLAGS="--core"
+ARGOCD_NS="${ARGOCD_NS:-openshift-gitops}"
 
-  local server=""
-  for route_name in openshift-gitops-server argocd-server; do
-    server=$($OC get route "$route_name" -n openshift-gitops -o jsonpath='{.spec.host}' 2>/dev/null || true)
-    if [[ -n "$server" ]]; then break; fi
-  done
-  if [[ -z "$server" ]]; then
-    warn "ArgoCD route not found -- falling back to oc delete"
-    return 1
-  fi
-
-  local password=""
-  for secret_name in openshift-gitops-cluster argocd-cluster; do
-    password=$($OC get secret "$secret_name" -n openshift-gitops -o jsonpath='{.data.admin\.password}' 2>/dev/null | base64 -d || true)
-    if [[ -n "$password" ]]; then break; fi
-  done
-
-  if [[ -n "$password" ]] && $ARGOCD login "$server" --username admin --password "$password" --grpc-web --insecure >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if $ARGOCD login "$server" --grpc-web --insecure --header "Authorization: Bearer $($OC whoami -t)" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  warn "ArgoCD login failed -- falling back to oc delete"
-  return 1
+argocd_core() {
+  $ARGOCD "$@" $ARGOCD_CORE_FLAGS
 }
 
 wait_argocd_app_gone() {
@@ -268,7 +244,7 @@ wait_argocd_app_gone() {
   local timeout="${2:-120}"
   if [[ "$DRY_RUN" == "true" ]]; then return 0; fi
   local elapsed=0
-  while $ARGOCD app get "$app" >/dev/null 2>&1; do
+  while $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; do
     if (( elapsed >= timeout )); then
       warn "ArgoCD app $app still exists after ${timeout}s"
       return 1
@@ -281,33 +257,37 @@ wait_argocd_app_gone() {
 cleanup_argocd() {
   log "=== Removing ArgoCD Applications ==="
 
-  if ! command -v "$ARGOCD" &>/dev/null || ! argocd_login; then
-    log "Using oc to delete ArgoCD applications (no cascade)..."
+  local prev_ns
+  prev_ns=$($OC project -q 2>/dev/null || echo "default")
+
+  if ! command -v "$ARGOCD" &>/dev/null; then
+    warn "argocd CLI not found -- falling back to oc delete (no cascade)"
     for app in maas-model-fast maas-model maas-platform maas-operators \
                observability-tracing observability-grafana observability-operators \
                rhoai-platform-ops; do
-      run "$OC delete application '$app' -n openshift-gitops --ignore-not-found"
+      run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
     done
     sleep 10
     return
   fi
 
-  log "Logged into ArgoCD, using cascade delete..."
+  # --core requires the active namespace to be the ArgoCD namespace
+  run "$OC project '$ARGOCD_NS'"
 
   # 1. Delete app-of-apps first to stop child recreation
   log "Deleting app-of-apps (cascade)..."
-  run "$ARGOCD app delete rhoai-platform-ops --cascade --grpc-web -y"
+  run "argocd_core app delete rhoai-platform-ops --cascade -y"
   wait_argocd_app_gone "rhoai-platform-ops" 30
 
-  # 2. Delete child apps with cascade -- ArgoCD will remove managed resources
+  # 2. Delete child apps with cascade
   local apps=(
     maas-model-fast maas-model maas-platform maas-operators
     observability-tracing observability-grafana observability-operators
   )
   for app in "${apps[@]}"; do
-    if $ARGOCD app get "$app" >/dev/null 2>&1; then
+    if $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; then
       log "  Deleting $app (cascade)..."
-      run "$ARGOCD app delete '$app' --cascade --grpc-web -y"
+      run "argocd_core app delete '$app' --cascade -y"
     fi
   done
 
@@ -315,6 +295,9 @@ cleanup_argocd() {
   for app in "${apps[@]}"; do
     wait_argocd_app_gone "$app" 120
   done
+
+  # Restore previous namespace
+  run "$OC project '$prev_ns'"
 
   log "All ArgoCD applications removed."
 }
