@@ -57,7 +57,7 @@ We performed a fresh-cluster audit (April 2026) removing all `ignoreDifferences`
 | App | Resource | jsonPointers | Why necessary |
 |-----|----------|-------------|---------------|
 | maas-platform | DSCInitialization | /spec | CRD v1/v2 conversion layer causes ArgoCD drift even when spec matches live state. Template uses v2 with operator defaults to minimize drift, but the conversion still triggers OutOfSync. **TODO**: investigate whether we actually need to manage DSCI ourselves — if the operator creates a suitable default DSCI, we could stop declaring it and remove this ignoreDifferences entirely. |
-| observability-grafana | Grafana | /spec/version | Grafana operator injects the resolved image digest into `spec.version` after creation. This value changes with each operator release and cannot be hardcoded in the template. |
+| observability-grafana | Grafana | /spec/version | Grafana operator injects the resolved image digest into `spec.version` after creation. This value changes with each operator release and cannot be hardcoded in the template. **TODO**: this goes away if we migrate from community Grafana Operator to COO/Perses (see ADR-0003). |
 
 **Key takeaway**: `ServerSideApply` (enabled as a syncOption) handles most operator-mutated fields correctly. The two remaining cases are a CRD version conversion issue (DSCI) and an operator-injected field (Grafana image digest).
 
@@ -75,6 +75,7 @@ The one genuine conflict is the `AuthPolicy` created by `odh-model-controller`. 
 ## Open Questions
 
 - **Do we need to manage DSCInitialization?** The only reason we declare `dsci.yaml` is to set `serviceMesh: Removed` (prevents conflict with Kuadrant's Istio). If a future RHOAI version defaults to `serviceMesh: Removed`, or if the operator's default DSCI works for our setup, we could stop managing it entirely — which would also eliminate the `ignoreDifferences` on `/spec` and the `RespectIgnoreDifferences` sync option from `maas-platform`.
+- **Migrate from community Grafana Operator to COO/Perses?** The `ignoreDifferences` on Grafana `/spec/version` exists because the community operator injects the image digest. Migrating to Red Hat's Cluster Observability Operator (COO) with Perses dashboards (see [ADR-0003](../../../docs/adr/0003-grafana-operator.md)) would eliminate this rule and reduce community dependencies.
 
 ## Version Notes
 
