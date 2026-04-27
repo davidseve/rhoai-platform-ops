@@ -283,29 +283,32 @@ class TestTokenRateLimitIsolation:
 class TestGovernanceResources:
     """Verify governance Kubernetes resources exist."""
 
-    def test_authpolicy_exists(self, oc, gateway_namespace):
-        out = oc(f"get authpolicy -n {gateway_namespace} --no-headers")
-        assert "maas-default-gateway-authn" in out
+    def test_authpolicy_exists(self, oc, gateway_namespace, gateway_name):
+        out = oc(
+            f"get authpolicy -n {gateway_namespace} -o jsonpath="
+            f"'{{.items[?(@.spec.targetRef.name==\"{gateway_name}\")].metadata.name}}'"
+        )
+        assert out.strip("'"), "No AuthPolicy targeting the Gateway found"
 
-    def test_ratelimitpolicy_model1_exists(self, oc, model_namespace):
+    def test_ratelimitpolicy_model1_exists(self, oc, model_namespace, model_name):
         out = oc(f"get ratelimitpolicy -n {model_namespace} --no-headers")
-        assert "tinyllama-test-rate-limits" in out
+        assert f"{model_name}-rate-limits" in out
 
-    def test_ratelimitpolicy_model2_exists(self, oc, model_namespace):
+    def test_ratelimitpolicy_model2_exists(self, oc, model_namespace, model2_name):
         out = oc(f"get ratelimitpolicy -n {model_namespace} --no-headers")
-        assert "tinyllama-fast-rate-limits" in out
+        assert f"{model2_name}-rate-limits" in out
 
-    def test_tokenratelimitpolicy_model1_exists(self, oc, model_namespace):
+    def test_tokenratelimitpolicy_model1_exists(self, oc, model_namespace, model_name):
         out = oc(
             f"get tokenratelimitpolicy -n {model_namespace} --no-headers"
         )
-        assert "tinyllama-test-token-rate-limits" in out
+        assert f"{model_name}-token-rate-limits" in out
 
-    def test_tokenratelimitpolicy_model2_exists(self, oc, model_namespace):
+    def test_tokenratelimitpolicy_model2_exists(self, oc, model_namespace, model2_name):
         out = oc(
             f"get tokenratelimitpolicy -n {model_namespace} --no-headers"
         )
-        assert "tinyllama-fast-token-rate-limits" in out
+        assert f"{model2_name}-token-rate-limits" in out
 
     def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
         if not has_telemetrypolicy:

@@ -61,14 +61,22 @@ spec:
         - -c
         - |
           set -euo pipefail
-          POLICY="{{ .Values.gateway.authPolicyName }}"
+          GW_NAME="{{ .Values.gateway.name }}"
           NS="{{ .Values.gateway.namespace }}"
 
-          echo "Waiting for $POLICY to exist..."
-          for i in $(seq 1 12); do
-            if oc get authpolicy "$POLICY" -n "$NS" &>/dev/null; then break; fi
-            echo "  attempt $i/12"; sleep 5
+          echo "Waiting for AuthPolicy targeting $GW_NAME..."
+          POLICY=""
+          for i in $(seq 1 24); do
+            POLICY=$(oc get authpolicy -n "$NS" -o jsonpath="{range .items[?(@.spec.targetRef.name=='$GW_NAME')]}{.metadata.name}{end}" 2>/dev/null || true)
+            if [ -n "$POLICY" ]; then break; fi
+            echo "  attempt $i/24 - no AuthPolicy found yet"; sleep 10
           done
+
+          if [ -z "$POLICY" ]; then
+            echo "ERROR: No AuthPolicy targeting $GW_NAME found after 4 minutes"
+            exit 1
+          fi
+          echo "Found AuthPolicy: $POLICY"
 
           echo "Patching $POLICY with MaaS audience + tier resolution..."
           oc patch authpolicy "$POLICY" -n "$NS" --type=merge -p '{
