@@ -1,7 +1,3 @@
-# Cluster domain (e.g. apps.ocp.sandbox808.opentlc.com)
-# Required for Route host: maas.<clusterDomain>
-clusterDomain: ""
-
 datasciencecluster:
   name: default-dsc
   components:

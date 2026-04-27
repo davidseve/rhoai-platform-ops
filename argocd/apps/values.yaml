@@ -1,4 +1,3 @@
-clusterDomain: CHANGE_ME
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
 targetRevision: refactor/audit-ignore-differences
 

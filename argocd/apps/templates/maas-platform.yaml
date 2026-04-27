@@ -14,8 +14,6 @@ spec:
     path: modules/maas/charts/maas-platform
     helm:
       parameters:
-        - name: clusterDomain
-          value: {{ .Values.clusterDomain }}
         - name: grafana.enabled
           value: "{{ .Values.modules.observability.enabled }}"
       valueFiles:
