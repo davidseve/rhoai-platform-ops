@@ -42,7 +42,7 @@ gateway:
   enabled: true
   name: maas-default-gateway
   namespace: openshift-ingress
-  className: data-science-gateway-class
+  className: openshift-default
   authPolicyName: gateway-auth-policy
   # TLS secret for the Gateway listener.
   # passthrough mode (default): use the cluster wildcard cert
