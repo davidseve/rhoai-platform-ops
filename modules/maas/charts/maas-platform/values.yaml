@@ -55,6 +55,9 @@ route:
   enabled: true
   name: maas-default-gateway
   namespace: openshift-ingress
+  # Custom hostname for the Route (e.g. maas.apps.cluster.example.com).
+  # Leave empty to let OpenShift generate a default hostname.
+  host: ""
   # passthrough (default): TLS goes directly from client to Gateway.
   #   Requires gateway.tlsSecretName to be the wildcard cert for *.apps.<clusterDomain>.
   # reencrypt: router terminates external TLS, re-encrypts to Gateway with service-ca cert.

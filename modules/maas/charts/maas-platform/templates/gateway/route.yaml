@@ -1,4 +1,11 @@
 {{- if .Values.route.enabled }}
+{{- $host := .Values.route.host -}}
+{{- if not $host -}}
+  {{- $ingress := (lookup "config.openshift.io/v1" "Ingress" "" "cluster") -}}
+  {{- if $ingress -}}
+    {{- $host = printf "maas.%s" $ingress.spec.domain -}}
+  {{- end -}}
+{{- end -}}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -9,6 +16,9 @@ metadata:
     router.openshift.io/service-ca-certificate: "true"
   {{- end }}
 spec:
+  {{- if $host }}
+  host: {{ $host }}
+  {{- end }}
   port:
     targetPort: 443
   tls:
@@ -18,7 +28,7 @@ spec:
     {{- end }}
   to:
     kind: Service
-    name: {{ .Values.gateway.name }}-openshift-default
+    name: {{ .Values.gateway.name }}-{{ .Values.gateway.className }}
     weight: 100
   wildcardPolicy: None
 {{- end }}
