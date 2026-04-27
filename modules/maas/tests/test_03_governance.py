@@ -307,7 +307,9 @@ class TestGovernanceResources:
         )
         assert "tinyllama-fast-token-rate-limits" in out
 
-    def test_telemetrypolicy_exists(self, oc, gateway_namespace):
+    def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
+        if not has_telemetrypolicy:
+            pytest.skip("TelemetryPolicy not deployed")
         out = oc(f"get telemetrypolicy -n {gateway_namespace} --no-headers")
         assert "user-group" in out
 

@@ -1,6 +1,9 @@
 """Shared fixtures for MaaS E2E tests.
 
 Requires: `oc` CLI logged into the target cluster.
+
+All configuration is via env vars with sensible defaults.
+Set MAAS_MODEL2_NAME="" to skip model-2 tests.
 """
 
 import json
@@ -158,25 +161,50 @@ def chat_payload():
 
 
 # ---------------------------------------------------------------------------
-# Model 2 fixtures
+# Model 2 fixtures (skip automatically if not deployed)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def model2_name():
+def model2_available(oc):
+    """Return True if a second model is configured and deployed."""
+    if not MODEL2_NAME:
+        return False
+    result = _run(
+        f"oc get httproute {MODEL2_NAME}-kserve-route -n {MODEL_NAMESPACE}",
+        check=False,
+    )
+    return result.returncode == 0
+
+
+@pytest.fixture(scope="session")
+def model2_name(model2_available):
+    if not model2_available:
+        pytest.skip("Model 2 not deployed")
     return MODEL2_NAME
 
 
 @pytest.fixture(scope="session")
-def inference_path_model2():
-    """URL path segment for chat completions (model 2)."""
-    return f"/maas-models/{MODEL2_NAME}/v1/chat/completions"
+def inference_path_model2(model2_name):
+    return f"/maas-models/{model2_name}/v1/chat/completions"
 
 
 @pytest.fixture(scope="session")
-def chat_payload_model2():
-    """Minimal chat completion request body (model 2)."""
+def chat_payload_model2(model2_name):
     return {
-        "model": MODEL2_NAME,
+        "model": model2_name,
         "messages": [{"role": "user", "content": "Say hello in one word"}],
         "max_tokens": 20,
     }
+
+
+# ---------------------------------------------------------------------------
+# Feature detection helpers
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def has_telemetrypolicy(oc):
+    result = _run(
+        f"oc get telemetrypolicy -n {GATEWAY_NAMESPACE} --no-headers",
+        check=False,
+    )
+    return result.returncode == 0 and result.stdout.strip() != ""
