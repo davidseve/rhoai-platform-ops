@@ -1,5 +1,5 @@
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-targetRevision: main
+targetRevision: refactor/audit-ignore-differences
 
 modules:
   maas:
