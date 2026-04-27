@@ -61,7 +61,7 @@ spec:
         - -c
         - |
           set -euo pipefail
-          POLICY="{{ .Values.gateway.name }}-authn"
+          POLICY="{{ .Values.gateway.authPolicyName }}"
           NS="{{ .Values.gateway.namespace }}"
 
           echo "Waiting for $POLICY to exist..."
