@@ -9,7 +9,9 @@ metadata:
     router.openshift.io/service-ca-certificate: "true"
   {{- end }}
 spec:
-  host: maas.{{ required "clusterDomain is required" .Values.clusterDomain }}
+  {{- if .Values.clusterDomain }}
+  host: maas.{{ .Values.clusterDomain }}
+  {{- end }}
   port:
     targetPort: 443
   tls:
