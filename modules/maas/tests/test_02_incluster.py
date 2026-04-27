@@ -14,7 +14,7 @@ MODEL_NAME = os.getenv("MAAS_MODEL_NAME", "tinyllama-test")
 MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "maas-models")
 GATEWAY_NAME = os.getenv("MAAS_GATEWAY_NAME", "maas-default-gateway")
 GATEWAY_NAMESPACE = os.getenv("MAAS_GATEWAY_NAMESPACE", "openshift-ingress")
-GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "openshift-default")
+GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "data-science-gateway-class")
 INCLUSTER_IMAGE = os.getenv(
     "MAAS_INCLUSTER_IMAGE", "registry.redhat.io/openshift4/ose-cli:latest"
 )
