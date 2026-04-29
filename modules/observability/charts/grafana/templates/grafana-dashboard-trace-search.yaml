@@ -2,7 +2,7 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: maas-trace-exploration
+  name: maas-trace-search
   namespace: {{ .Values.grafana.namespace }}
   labels:
     dashboards: grafana
@@ -13,5 +13,5 @@ spec:
     matchLabels:
       dashboards: grafana
   json: |
-{{ .Files.Get "dashboards/traces.json" | indent 4 }}
+{{ .Files.Get "dashboards/trace-search.json" | indent 4 }}
 {{- end }}

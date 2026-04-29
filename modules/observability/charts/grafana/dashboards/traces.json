@@ -1,18 +1,4 @@
 {
-  "__inputs": [
-    {
-      "name": "DS_PROMETHEUS",
-      "label": "Prometheus",
-      "type": "datasource",
-      "pluginId": "prometheus"
-    },
-    {
-      "name": "DS_TEMPO",
-      "label": "Tempo",
-      "type": "datasource",
-      "pluginId": "tempo"
-    }
-  ],
   "annotations": {
     "list": []
   },
@@ -25,7 +11,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "${DS_TEMPO}"
+        "uid": "tempo"
       },
       "fieldConfig": {
         "defaults": {},
@@ -37,7 +23,7 @@
       "pluginVersion": "11.0.0",
       "targets": [
         {
-          "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+          "datasource": { "type": "tempo", "uid": "tempo" },
           "queryType": "serviceMap",
           "refId": "A"
         }
@@ -48,7 +34,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -72,13 +58,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.5, sum(rate(traces_span_metrics_duration_milliseconds_bucket[5m])) by (le, service_name))",
           "legendFormat": "{{ service_name }} P50",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_milliseconds_bucket[5m])) by (le, service_name))",
           "legendFormat": "{{ service_name }} P99",
           "refId": "B"
@@ -90,7 +76,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "${DS_TEMPO}"
+        "uid": "tempo"
       },
       "fieldConfig": {
         "defaults": {},
@@ -103,8 +89,18 @@
       },
       "targets": [
         {
-          "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
-          "queryType": "search",
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceqlSearch",
+          "filters": [
+            {
+              "id": "service-name",
+              "scope": "resource",
+              "tag": "service.name",
+              "operator": "=",
+              "value": ["tinyllama-test"],
+              "valueType": "string"
+            }
+          ],
           "limit": 20,
           "refId": "A"
         }
@@ -115,7 +111,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -130,7 +126,7 @@
       "id": 4,
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(rate(traces_span_metrics_calls_total[5m])) by (service_name, span_kind)",
           "legendFormat": "{{ service_name }} ({{ span_kind }})",
           "refId": "A"
