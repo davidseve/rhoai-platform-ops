@@ -34,8 +34,6 @@ make test-all               # observability + MaaS tests
 
 ### 4. Deploy with ArgoCD (for stable)
 
-Edit `argocd/app-of-apps.yaml` and set your cluster domain, then:
-
 ```bash
 make deploy-argocd
 ```
@@ -43,12 +41,12 @@ make deploy-argocd
 ## Modules
 
 
-| Module            | Status  | Description                                                        |
-| ----------------- | ------- | ------------------------------------------------------------------ |
-| **maas**          | Ready   | Models-as-a-Service: RHOAI + Kuadrant API governance               |
-| **observability** | Ready   | Grafana dashboards, vLLM metrics, alerts, distributed tracing      |
-| **benchmarks**    | Planned | Load testing with inference-perf                                   |
-| **evaluation**    | Planned | MLflow tracking and model evaluation                               |
+| Module            | Status  | Description                                                   |
+| ----------------- | ------- | ------------------------------------------------------------- |
+| **maas**          | Ready   | Models-as-a-Service: RHOAI + Kuadrant API governance          |
+| **observability** | Ready   | Grafana dashboards, vLLM metrics, alerts, distributed tracing |
+| **benchmarks**    | Planned | Load testing with inference-perf                              |
+| **evaluation**    | Planned | MLflow tracking and model evaluation                          |
 
 
 Enable/disable modules in `argocd/apps/values.yaml` under `modules:`.
@@ -67,23 +65,23 @@ Enable/disable modules in `argocd/apps/values.yaml` under `modules:`.
 | MaaS gateway and routing      | [modules/maas/docs/GATEWAY-AND-ROUTE.md](modules/maas/docs/GATEWAY-AND-ROUTE.md)           |
 | MaaS in-cluster access        | [modules/maas/docs/IN-CLUSTER-ACCESS.md](modules/maas/docs/IN-CLUSTER-ACCESS.md)           |
 | MaaS troubleshooting          | [modules/maas/docs/TROUBLESHOOTING.md](modules/maas/docs/TROUBLESHOOTING.md)               |
-| Observability and tracing     | [modules/observability/docs/OBSERVABILITY.md](modules/observability/docs/OBSERVABILITY.md)  |
+| Observability and tracing     | [modules/observability/docs/OBSERVABILITY.md](modules/observability/docs/OBSERVABILITY.md) |
 | Dashboards and trace guide    | [docs/DASHBOARDS.md](docs/DASHBOARDS.md)                                                   |
 
 
 ## Tested Versions
 
 
-| Component                        | Version |
-| -------------------------------- | ------- |
-| OpenShift                        | 4.20.8  |
-| RHOAI                            | 3.3.1   |
-| Red Hat Connectivity Link        | 1.3.2   |
-| cert-manager                     | 1.18.1  |
-| LeaderWorkerSet                  | 1.0.0   |
-| OpenShift GitOps (ArgoCD)        | 1.20.1  |
-| Grafana Operator                 | 5.22.2  |
-| Red Hat build of OpenTelemetry   | 0.20.0  |
-| Red Hat build of Tempo           | 0.20.0  |
+| Component                      | Version |
+| ------------------------------ | ------- |
+| OpenShift                      | 4.20.8  |
+| RHOAI                          | 3.3.1   |
+| Red Hat Connectivity Link      | 1.3.2   |
+| cert-manager                   | 1.18.1  |
+| LeaderWorkerSet                | 1.0.0   |
+| OpenShift GitOps (ArgoCD)      | 1.20.1  |
+| Grafana Operator               | 5.22.2  |
+| Red Hat build of OpenTelemetry | 0.20.0  |
+| Red Hat build of Tempo         | 0.20.0  |
 
 

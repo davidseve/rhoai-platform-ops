@@ -1,4 +1,4 @@
-"""External Route: token generation and chat completions for both models."""
+"""External Route: token generation, chat completions, text completions."""
 
 import requests
 import urllib3
@@ -121,6 +121,65 @@ class TestChatCompletions:
         usage = body["usage"]
         assert usage["prompt_tokens"] > 0
         assert usage["completion_tokens"] > 0
+
+
+class TestTextCompletions:
+    """Verify the /v1/completions (text) endpoint works."""
+
+    def test_completions_returns_200(
+        self, maas_url, maas_token, completions_path, completions_payload
+    ):
+        resp = requests.post(
+            f"{maas_url}{completions_path}",
+            headers={
+                "Authorization": f"Bearer {maas_token}",
+                "Content-Type": "application/json",
+            },
+            json=completions_payload,
+            verify=False,
+            timeout=60,
+        )
+        assert resp.status_code == 200
+
+    def test_completions_response_has_text(
+        self, maas_url, maas_token, completions_path, completions_payload
+    ):
+        resp = requests.post(
+            f"{maas_url}{completions_path}",
+            headers={
+                "Authorization": f"Bearer {maas_token}",
+                "Content-Type": "application/json",
+            },
+            json=completions_payload,
+            verify=False,
+            timeout=60,
+        )
+        body = resp.json()
+        assert "choices" in body
+        assert len(body["choices"]) > 0
+        assert body["choices"][0]["text"].strip()
+
+
+class TestExpiredToken:
+
+    def test_expired_token_returns_401(self, maas_url, inference_path, chat_payload):
+        import base64, json as _json
+        header = base64.urlsafe_b64encode(_json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).rstrip(b"=")
+        payload = base64.urlsafe_b64encode(_json.dumps({"exp": 0, "sub": "test"}).encode()).rstrip(b"=")
+        expired_jwt = f"{header.decode()}.{payload.decode()}.fakesignature"
+        resp = requests.post(
+            f"{maas_url}{inference_path}",
+            headers={
+                "Authorization": f"Bearer {expired_jwt}",
+                "Content-Type": "application/json",
+            },
+            json=chat_payload,
+            verify=False,
+            timeout=15,
+        )
+        assert resp.status_code in (401, 403), (
+            f"Expected 401/403 with expired/forged token, got {resp.status_code}"
+        )
 
 
 class TestModel2ChatCompletions:

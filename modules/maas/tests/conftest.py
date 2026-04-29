@@ -147,7 +147,13 @@ def gateway_namespace():
 @pytest.fixture(scope="session")
 def inference_path():
     """URL path segment for chat completions (model 1)."""
-    return f"/maas-models/{MODEL_NAME}/v1/chat/completions"
+    return f"/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions"
+
+
+@pytest.fixture(scope="session")
+def completions_path():
+    """URL path segment for text completions (model 1)."""
+    return f"/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/completions"
 
 
 @pytest.fixture(scope="session")
@@ -156,6 +162,16 @@ def chat_payload():
     return {
         "model": MODEL_NAME,
         "messages": [{"role": "user", "content": "Say hello in one word"}],
+        "max_tokens": 20,
+    }
+
+
+@pytest.fixture(scope="session")
+def completions_payload():
+    """Minimal text completion request body (model 1)."""
+    return {
+        "model": MODEL_NAME,
+        "prompt": "Once upon a time",
         "max_tokens": 20,
     }
 
@@ -185,7 +201,7 @@ def model2_name(model2_available):
 
 @pytest.fixture(scope="session")
 def inference_path_model2(model2_name):
-    return f"/maas-models/{model2_name}/v1/chat/completions"
+    return f"/{MODEL_NAMESPACE}/{model2_name}/v1/chat/completions"
 
 
 @pytest.fixture(scope="session")

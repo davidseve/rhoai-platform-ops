@@ -50,6 +50,23 @@ oc get role -n maas-models | grep maas-access
 
 The operator creates a Role with only `post`, but the AuthPolicy authorization checks `get`. The chart's `rbac.yaml` creates a Role with both verbs.
 
+## Gateway returns 500 on all authenticated routes
+
+All requests through `maas-default-gateway` return HTTP 500, with no Authorino or `maas-api` logs produced. This is typically a TLS protocol mismatch between Envoy and Authorino caused by the `openshift-ai-inference-authn-ssl` EnvoyFilter leaking to gateways it shouldn't apply to.
+
+See [AUTHORINO-TLS.md](AUTHORINO-TLS.md) for the full root cause analysis and resolution.
+
+Quick check:
+
+```bash
+# Verify Authorino has listener TLS enabled
+oc get authorino authorino -n kuadrant-system -o jsonpath='{.spec.listener.tls}'
+# Expected: {"certSecretRef":{"name":"authorino-server-cert"},"enabled":true}
+
+# Verify the serving cert secret exists
+oc get secret authorino-server-cert -n kuadrant-system
+```
+
 ## Kuadrant AuthPolicy shows MissingDependency
 
 See [KUADRANT-READINESS-HOOK.md](KUADRANT-READINESS-HOOK.md) for the full explanation and fix.
