@@ -1,0 +1,11 @@
+# vLLM CPU image with OpenTelemetry packages
+# Base image lacks opentelemetry-sdk/exporter-otlp (pinned to a vLLM commit
+# that predates upstream PR #34466 which added OTel to default requirements).
+# This layer adds only the OTel packages needed for distributed tracing.
+FROM quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9:0.3
+
+RUN pip install --no-cache-dir \
+    "opentelemetry-sdk>=1.27.0" \
+    "opentelemetry-api>=1.27.0" \
+    "opentelemetry-exporter-otlp>=1.27.0" \
+    "opentelemetry-semantic-conventions-ai>=0.4.1"
