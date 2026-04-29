@@ -18,7 +18,7 @@ GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "openshift-default")
 INCLUSTER_IMAGE = os.getenv(
     "MAAS_INCLUSTER_IMAGE", "registry.redhat.io/openshift4/ose-cli:latest"
 )
-INCLUSTER_SA = os.getenv("MAAS_INCLUSTER_SA", "e2e-maas-test")
+INCLUSTER_SA = os.getenv("MAAS_INCLUSTER_SA", "default")
 INCLUSTER_SA_NAMESPACE = os.getenv("MAAS_INCLUSTER_SA_NAMESPACE", "default")
 
 GATEWAY_SVC = f"{GATEWAY_NAME}-{GATEWAY_CLASS}"
@@ -59,8 +59,8 @@ def _extract_json(text: str) -> dict:
 def _run_in_cluster(script: str, timeout: int = 90) -> str:
     """Run a bash script inside an ephemeral pod and return stdout.
 
-    Uses INCLUSTER_SA so the pod inherits the SA's group memberships
-    (needed when tier access is restricted to specific groups).
+    The pod runs under INCLUSTER_SA in INCLUSTER_SA_NAMESPACE.
+    Auth tokens are passed explicitly via the script, not derived from the SA.
     """
     pod_name = f"e2e-incluster-{uuid.uuid4().hex[:8]}"
     subprocess.run(
