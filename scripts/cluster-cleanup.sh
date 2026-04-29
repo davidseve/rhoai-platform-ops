@@ -201,15 +201,8 @@ cleanup_observability_residual() {
   run "$OC delete grafanadatasource --all -A --ignore-not-found"
   run "$OC delete grafana --all -n observability --ignore-not-found"
 
-  # Grafana Operator is installed globally (not in a chart-managed namespace)
-  log "Deleting Grafana Operator subscription (global)..."
-  run "$OC delete subscription grafana-operator -n openshift-operators --ignore-not-found"
-  for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep grafana-operator || true); do
-    run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
-  done
-
   # Operator subscriptions / CSVs in operator namespaces
-  for ns in openshift-opentelemetry-operator openshift-tempo-operator; do
+  for ns in openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
     run "$OC delete subscription --all -n '$ns' --ignore-not-found"
     run "$OC delete csv --all -n '$ns' --ignore-not-found"
     run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
@@ -220,10 +213,10 @@ cleanup_observability_residual() {
   run "$OC delete clusterrole grafana-proxy-observability --ignore-not-found"
 
   # Namespaces
-  for ns in observability openshift-opentelemetry-operator openshift-tempo-operator; do
+  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
-  for ns in observability openshift-opentelemetry-operator openshift-tempo-operator; do
+  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
     wait_ns_gone "$ns" 90
   done
 }

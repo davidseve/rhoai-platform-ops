@@ -6,8 +6,8 @@ import requests
 def test_grafana_operator_csv_succeeded(oc):
     """Grafana Operator CSV is in Succeeded phase."""
     phase = oc(
-        "get csv -n openshift-operators "
-        "-l operators.coreos.com/grafana-operator.openshift-operators "
+        "get csv -n openshift-grafana-operator "
+        "-l operators.coreos.com/grafana-operator.openshift-grafana-operator "
         "-o jsonpath='{.items[0].status.phase}'"
     ).strip("'")
     assert phase == "Succeeded", f"Grafana Operator CSV phase: {phase}"
