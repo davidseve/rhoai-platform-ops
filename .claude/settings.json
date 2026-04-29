@@ -9,6 +9,8 @@
       "Bash(helm uninstall *)",
       "Bash(make *)",
       "Bash(go test *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
       "Edit",
       "Write"
     ]

@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-    targetRevision: chore/migrate-cursor-to-claude-code
+    targetRevision: main
     path: argocd/apps
   destination:
     server: https://kubernetes.default.svc
