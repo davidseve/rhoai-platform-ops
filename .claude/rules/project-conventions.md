@@ -1,5 +1,5 @@
 ---
-description: "Core project conventions for rhoai-platform-ops: structure, naming, workflow, priorities."
+description: "Core project conventions: module structure, naming, Helm-first workflow, Red Hat priority, testing."
 alwaysApply: true
 ---
 
@@ -45,7 +45,7 @@ Every change needs tests. Tests must be:
 
 ## Architecture Decision Records
 
-Non-obvious decisions get an ADR in `docs/adr/NNNN-<title>.md`. Use the `adr` skill to create them.
+Non-obvious decisions get an ADR in `docs/adr/NNNN-<title>.md`. Use the `/adr` skill to create them.
 
 ## YAML Style
 
@@ -53,15 +53,13 @@ Non-obvious decisions get an ADR in `docs/adr/NNNN-<title>.md`. Use the `adr` sk
 - Helm templates use `{{ .Values. }}` (not `{{ $.Values. }}` unless inside a range)
 - Include comments for non-obvious values in `values.yaml`
 
-## AGENTS.md is the Source of Truth
+## CLAUDE.md and AGENTS.md Are Sources of Truth
 
-`AGENTS.md` is the project context file for AI agents. It MUST be updated whenever:
-- A new Cursor skill is created or removed (update the "Cursor Skills" section)
-- A new module is added (update "Architecture" and "Quick Commands" sections)
-- A new Makefile target is added (update "Quick Commands" section)
-- Key conventions change (update the relevant section)
-
-This is not optional. Treat `AGENTS.md` the same way you treat updating imports after adding a new file.
+`AGENTS.md` and `CLAUDE.md` provide project context for AI agents. They MUST be updated whenever:
+- A new skill is created or removed
+- A new module is added
+- A new Makefile target is added
+- Key conventions change
 
 ## Cluster Cleanup Script
 

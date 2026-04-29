@@ -1,5 +1,5 @@
 ---
-description: "Helm chart conventions for modules."
+description: "Helm chart conventions for modules and ArgoCD applications."
 globs:
   - "modules/**/charts/**/*.yaml"
   - "modules/**/charts/**/*.tpl"

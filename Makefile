@@ -70,11 +70,11 @@ status: ## Check ArgoCD application sync status
 
 .PHONY: argocd-branch-current
 argocd-branch-current: ## Point ArgoCD manifests to the current git branch
-	$(PYTHON) .cursor/skills/switch-argocd-branch/scripts/set_target_revision.py --current
+	$(PYTHON) scripts/set_target_revision.py --current
 
 .PHONY: argocd-branch-main
 argocd-branch-main: ## Point ArgoCD manifests back to main
-	$(PYTHON) .cursor/skills/switch-argocd-branch/scripts/set_target_revision.py --main
+	$(PYTHON) scripts/set_target_revision.py --main
 
 .PHONY: argocd-branch
 argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
@@ -82,7 +82,7 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 		echo "Usage: make argocd-branch BRANCH=<branch-name>"; \
 		exit 1; \
 	fi
-	$(PYTHON) .cursor/skills/switch-argocd-branch/scripts/set_target_revision.py --branch "$(BRANCH)"
+	$(PYTHON) scripts/set_target_revision.py --branch "$(BRANCH)"
 
 .PHONY: undeploy-argocd
 undeploy-argocd: ## Remove app-of-apps

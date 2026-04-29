@@ -38,7 +38,6 @@ def test_model_responds_to_chat(maas_url, maas_token):
 
 - Files: `test_NN_<description>.py` (numeric prefix controls execution order)
 - Functions: `test_<what_is_being_tested>` -- descriptive, readable
-- Use `should <behavior> when <condition>` style for complex scenarios
 
 ## Idempotency
 
@@ -55,7 +54,7 @@ Tests must be runnable multiple times without manual cleanup:
 
 ## Virtual Environment
 
-Makefile `test-<module>` targets use an ephemeral venv (see `python-venv-tests` skill):
+Makefile `test-<module>` targets use an ephemeral venv:
 1. Create `.venv` inside the module's `tests/` directory
 2. Install deps with the venv's pip
 3. Run pytest with the venv's interpreter

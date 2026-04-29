@@ -22,7 +22,7 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 - Tiered access: free/premium with request and token rate limits
 - ArgoCD app-of-apps with module toggles
 - E2E tests: inference, in-cluster access, governance
-- Project scaffold: .cursor rules, skills, ADRs
+- Project scaffold: .claude rules, skills, ADRs
 
 ### Phase 1: Observability (DONE)
 
