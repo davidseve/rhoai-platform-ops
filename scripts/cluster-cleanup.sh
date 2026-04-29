@@ -239,8 +239,15 @@ wait_argocd_app_gone() {
   local elapsed=0
   while $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; do
     if (( elapsed >= timeout )); then
-      warn "ArgoCD app $app still exists after ${timeout}s"
-      return 1
+      warn "ArgoCD app $app still exists after ${timeout}s -- removing finalizer"
+      $OC patch application "$app" -n "$ARGOCD_NS" \
+        --type merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+      sleep 5
+      if $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; then
+        warn "ArgoCD app $app still exists after finalizer removal -- forcing delete"
+        $OC delete application "$app" -n "$ARGOCD_NS" --force --grace-period=0 2>/dev/null || true
+      fi
+      return 0
     fi
     sleep 5
     (( elapsed += 5 ))
@@ -270,7 +277,7 @@ cleanup_argocd() {
   # 1. Delete app-of-apps first to stop child recreation
   log "Deleting app-of-apps (cascade)..."
   run "argocd_core app delete rhoai-platform-ops --cascade -y"
-  wait_argocd_app_gone "rhoai-platform-ops" 30
+  wait_argocd_app_gone "rhoai-platform-ops" 180
 
   # 2. Delete child apps with cascade
   local apps=(
