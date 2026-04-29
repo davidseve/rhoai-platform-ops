@@ -17,8 +17,8 @@ images:
     # CPU (no tracing): quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9:0.3
     # CPU (with OTel):  build with `make build-vllm-cpu-otel`, then set tag to 0.3-otel
     # GPU:              quay.io/modh/vllm:rhoai-2.20-cuda (default llm-d image)
-    repository: "quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
-    tag: "0.3"
+    repository: "quay.io/dseveria/vllm-cpu-openai-ubi9"
+    tag: "0.3-otel"
   ocCli: "registry.redhat.io/openshift4/ose-cli:latest"
 
 resources:
