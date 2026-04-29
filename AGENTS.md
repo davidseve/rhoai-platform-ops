@@ -29,6 +29,8 @@ make undeploy-all         # Undeploy everything
 
 # ArgoCD (stable deployment)
 make deploy-argocd        # Apply app-of-apps
+make wait-healthy         # Wait for all ArgoCD apps Synced+Healthy and pods Ready
+make bootstrap-argocd     # deploy-argocd + wait-healthy + test-all (full pipeline)
 make status               # Check ArgoCD sync status
 make argocd-branch-current # Point ArgoCD manifests to the current git branch
 make argocd-branch-main   # Point ArgoCD manifests back to main

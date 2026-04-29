@@ -12,6 +12,8 @@ make test-all             # Run all module tests
 make undeploy-all         # Undeploy everything
 make cluster-cleanup      # Remove ALL resources from cluster
 make deploy-argocd        # Apply ArgoCD app-of-apps
+make wait-healthy         # Wait for ArgoCD sync + pods Ready
+make bootstrap-argocd     # deploy + wait + test-all (full pipeline)
 make lint                 # Helm lint all charts
 make template             # Helm template dry-run
 ```
