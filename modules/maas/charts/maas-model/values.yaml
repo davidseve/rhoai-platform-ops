@@ -36,7 +36,8 @@ llminferenceservice:
     namespace: openshift-ingress
 
 tracing:
-  enabled: false
+  enabled: true
+  detailed: false   # token-level spans (higher overhead, requires enabled: true)
   otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
   serviceName: ""   # defaults to model servedName
 
