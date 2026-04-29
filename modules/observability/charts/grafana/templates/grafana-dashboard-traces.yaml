@@ -12,6 +12,11 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: grafana
+  datasources:
+    - inputName: "DS_PROMETHEUS"
+      datasourceName: "Prometheus"
+    - inputName: "DS_TEMPO"
+      datasourceName: "Tempo"
   json: |
 {{ .Files.Get "dashboards/traces.json" | indent 4 }}
 {{- end }}

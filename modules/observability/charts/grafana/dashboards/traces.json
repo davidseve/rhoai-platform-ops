@@ -34,6 +34,14 @@
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
       "id": 1,
       "options": {},
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+          "queryType": "serviceMap",
+          "refId": "A"
+        }
+      ],
       "title": "Service Map",
       "type": "nodeGraph"
     },
@@ -134,24 +142,7 @@
   ],
   "schemaVersion": 39,
   "tags": ["tracing", "tempo", "observability"],
-  "templating": {
-    "list": [
-      {
-        "name": "DS_PROMETHEUS",
-        "type": "datasource",
-        "query": "prometheus",
-        "current": { "text": "Prometheus", "value": "Prometheus" },
-        "hide": 0
-      },
-      {
-        "name": "DS_TEMPO",
-        "type": "datasource",
-        "query": "tempo",
-        "current": { "text": "Tempo", "value": "Tempo" },
-        "hide": 0
-      }
-    ]
-  },
+  "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
   "title": "Trace Exploration",
   "uid": "maas-trace-exploration"
