@@ -1,6 +1,9 @@
 """Shared fixtures for MaaS E2E tests.
 
 Requires: `oc` CLI logged into the target cluster.
+
+All configuration is via env vars with sensible defaults.
+Set MAAS_MODEL2_NAME="" to skip model-2 tests.
 """
 
 import json
@@ -64,16 +67,12 @@ def oc_json(oc):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def cluster_domain(oc):
+def maas_host(oc):
+    """Discover the Route hostname from the cluster."""
     return oc(
-        "get ingresses.config.openshift.io cluster "
-        "-o jsonpath='{.spec.domain}'"
+        f"get route {GATEWAY_NAME} -n {GATEWAY_NAMESPACE} "
+        "-o jsonpath='{.spec.host}'"
     ).strip("'")
-
-
-@pytest.fixture(scope="session")
-def maas_host(cluster_domain):
-    return f"maas.{cluster_domain}"
 
 
 @pytest.fixture(scope="session")
@@ -148,7 +147,13 @@ def gateway_namespace():
 @pytest.fixture(scope="session")
 def inference_path():
     """URL path segment for chat completions (model 1)."""
-    return f"/maas-models/{MODEL_NAME}/v1/chat/completions"
+    return f"/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions"
+
+
+@pytest.fixture(scope="session")
+def completions_path():
+    """URL path segment for text completions (model 1)."""
+    return f"/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/completions"
 
 
 @pytest.fixture(scope="session")
@@ -161,26 +166,61 @@ def chat_payload():
     }
 
 
+@pytest.fixture(scope="session")
+def completions_payload():
+    """Minimal text completion request body (model 1)."""
+    return {
+        "model": MODEL_NAME,
+        "prompt": "Once upon a time",
+        "max_tokens": 20,
+    }
+
+
 # ---------------------------------------------------------------------------
-# Model 2 fixtures
+# Model 2 fixtures (skip automatically if not deployed)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def model2_name():
+def model2_available(oc):
+    """Return True if a second model is configured and deployed."""
+    if not MODEL2_NAME:
+        return False
+    result = _run(
+        f"oc get httproute {MODEL2_NAME}-kserve-route -n {MODEL_NAMESPACE}",
+        check=False,
+    )
+    return result.returncode == 0
+
+
+@pytest.fixture(scope="session")
+def model2_name(model2_available):
+    if not model2_available:
+        pytest.skip("Model 2 not deployed")
     return MODEL2_NAME
 
 
 @pytest.fixture(scope="session")
-def inference_path_model2():
-    """URL path segment for chat completions (model 2)."""
-    return f"/maas-models/{MODEL2_NAME}/v1/chat/completions"
+def inference_path_model2(model2_name):
+    return f"/{MODEL_NAMESPACE}/{model2_name}/v1/chat/completions"
 
 
 @pytest.fixture(scope="session")
-def chat_payload_model2():
-    """Minimal chat completion request body (model 2)."""
+def chat_payload_model2(model2_name):
     return {
-        "model": MODEL2_NAME,
+        "model": model2_name,
         "messages": [{"role": "user", "content": "Say hello in one word"}],
         "max_tokens": 20,
     }
+
+
+# ---------------------------------------------------------------------------
+# Feature detection helpers
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def has_telemetrypolicy(oc):
+    result = _run(
+        f"oc get telemetrypolicy -n {GATEWAY_NAMESPACE} --no-headers",
+        check=False,
+    )
+    return result.returncode == 0 and result.stdout.strip() != ""

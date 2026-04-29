@@ -29,6 +29,8 @@ make undeploy-all         # Undeploy everything
 
 # ArgoCD (stable deployment)
 make deploy-argocd        # Apply app-of-apps
+make wait-healthy         # Wait for all ArgoCD apps Synced+Healthy and pods Ready
+make bootstrap-argocd     # deploy-argocd + wait-healthy + test-all (full pipeline)
 make status               # Check ArgoCD sync status
 make argocd-branch-current # Point ArgoCD manifests to the current git branch
 make argocd-branch-main   # Point ArgoCD manifests back to main
@@ -129,17 +131,17 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
 - **GitOps:** ArgoCD with app-of-apps pattern
 
-## Cursor Skills
+## Claude Code Skills
 
-- `add-module` -- Add a new module/pillar to the project
-- `deploy-module` -- Deploy a module via Helm or ArgoCD
-- `adr` -- Create an Architecture Decision Record
-- `status` -- Run project health check
-- `python-venv-tests` -- Add/update Makefile test targets with ephemeral venv (create, install, run, cleanup)
-- `cluster-bootstrap` -- Bootstrap a fresh cluster: deploy all modules in order and run tests to validate
-- `cluster-cleanup` -- Remove all deployed resources from the cluster (reverse order, handles stuck finalizers)
-- `push-and-pr` -- Push changes to a new branch and create a pull request
-- `switch-argocd-branch` -- Point ArgoCD app-of-apps and child apps to `main` or the current working branch
+- `/add-module` -- Add a new module/pillar to the project
+- `/deploy-module` -- Deploy a module via Helm or ArgoCD
+- `/adr` -- Create an Architecture Decision Record
+- `/status` -- Run project health check
+- `/python-venv-tests` -- Add/update Makefile test targets with ephemeral venv (create, install, run, cleanup)
+- `/cluster-bootstrap` -- Bootstrap a fresh cluster: deploy all modules in order and run tests to validate
+- `/cluster-cleanup` -- Remove all deployed resources from the cluster (reverse order, handles stuck finalizers)
+- `/push-and-pr` -- Push changes to a new branch and create a pull request
+- `/switch-argocd-branch` -- Point ArgoCD app-of-apps and child apps to `main` or the current working branch
 
 ## Detailed Documentation
 

@@ -3,7 +3,7 @@
 The `maas-platform` chart includes an ArgoCD **PostSync hook** (`kuadrant-readiness-hook.yaml`) that handles two critical post-deployment tasks:
 
 1. **MissingDependency recovery** -- Kuadrant often starts before KServe finishes deploying the Gateway API provider, entering an unrecoverable `MissingDependency` state.
-2. **Authorino TLS setup** -- Follows the [official MaaS `setup-authorino-tls.sh`](https://github.com/opendatahub-io/models-as-a-service/blob/main/scripts/setup-authorino-tls.sh) to enable listener TLS and outbound `service-ca` trust so Authorino can call `maas-api` for tier metadata lookup.
+2. **Authorino TLS setup** -- Follows the [official MaaS `setup-authorino-tls.sh`](https://github.com/opendatahub-io/models-as-a-service/blob/main/scripts/setup-authorino-tls.sh) to enable listener TLS and outbound `service-ca` trust so Authorino can call `maas-api` for tier metadata lookup. See [AUTHORINO-TLS.md](AUTHORINO-TLS.md) for the full background on the 500 Gateway issue this solves and the RHOAI version matrix.
 
 ## How it works
 

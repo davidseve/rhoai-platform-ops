@@ -18,6 +18,8 @@ GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "openshift-default")
 INCLUSTER_IMAGE = os.getenv(
     "MAAS_INCLUSTER_IMAGE", "registry.redhat.io/openshift4/ose-cli:latest"
 )
+INCLUSTER_SA = os.getenv("MAAS_INCLUSTER_SA", "default")
+INCLUSTER_SA_NAMESPACE = os.getenv("MAAS_INCLUSTER_SA_NAMESPACE", "default")
 
 GATEWAY_SVC = f"{GATEWAY_NAME}-{GATEWAY_CLASS}"
 GATEWAY_INTERNAL = (
@@ -57,18 +59,21 @@ def _extract_json(text: str) -> dict:
 def _run_in_cluster(script: str, timeout: int = 90) -> str:
     """Run a bash script inside an ephemeral pod and return stdout.
 
-    Each invocation uses a unique pod name to avoid collisions when a
-    previous pod was not cleaned up properly (e.g. after a timeout).
+    The pod runs under INCLUSTER_SA in INCLUSTER_SA_NAMESPACE.
+    Auth tokens are passed explicitly via the script, not derived from the SA.
     """
     pod_name = f"e2e-incluster-{uuid.uuid4().hex[:8]}"
     subprocess.run(
-        ["oc", "delete", "pod", pod_name, "--ignore-not-found"],
+        ["oc", "delete", "pod", pod_name, "--ignore-not-found",
+         "-n", INCLUSTER_SA_NAMESPACE],
         capture_output=True, timeout=15,
     )
     cmd = [
         "oc", "run", pod_name,
         "--rm", "-i", "--restart=Never",
         f"--image={INCLUSTER_IMAGE}",
+        f"--overrides={json.dumps({'spec': {'serviceAccountName': INCLUSTER_SA}})}",
+        "-n", INCLUSTER_SA_NAMESPACE,
         "--", "bash", "-c", script,
     ]
     result = subprocess.run(
@@ -84,16 +89,23 @@ def _run_in_cluster(script: str, timeout: int = 90) -> str:
 
 
 class TestInClusterGateway:
+    """Validate Gateway ClusterIP reachability from inside the cluster.
+
+    Uses ``oc_token`` to obtain a MaaS token via the internal ClusterIP,
+    proving the Gateway is routable and TLS-terminated from within the
+    cluster.  ServiceAccount tokens cannot be used directly because the
+    MaaS token-exchange API does not support SA identities.
+    """
 
     def test_gateway_clusterip_service_exists(self, oc, gateway_namespace):
         out = oc(f"get svc {GATEWAY_SVC} -n {gateway_namespace} --no-headers")
         assert GATEWAY_SVC in out
 
-    def test_token_via_internal_gateway(self):
+    def test_token_via_internal_gateway(self, oc_token):
+        """Generate a MaaS token hitting the ClusterIP from an in-cluster pod."""
         script = f"""
-SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/tokens" \
-  -H "Authorization: Bearer $SA_TOKEN" \
+  -H "Authorization: Bearer {oc_token}" \
   -H "Content-Type: application/json" \
   -d '{{"expiration":"10m"}}'
 """
@@ -102,15 +114,11 @@ curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/tokens" \
         assert "token" in body, f"No token in response: {body}"
         assert len(body["token"]) > 50
 
-    def test_inference_via_internal_gateway(self):
+    def test_inference_via_internal_gateway(self, maas_token):
+        """Inference via the internal Gateway ClusterIP."""
         script = f"""
-SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-MAAS_TOKEN=$(curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/tokens" \
-  -H "Authorization: Bearer $SA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{{"expiration":"10m"}}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-curl -sk "{GATEWAY_INTERNAL}/maas-models/{MODEL_NAME}/v1/chat/completions" \
-  -H "Authorization: Bearer $MAAS_TOKEN" \
+curl -sk "{GATEWAY_INTERNAL}/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions" \
+  -H "Authorization: Bearer {maas_token}" \
   -H "Content-Type: application/json" \
   -d '{{"model":"{MODEL_NAME}","messages":[{{"role":"user","content":"Hi"}}],"max_tokens":10}}'
 """

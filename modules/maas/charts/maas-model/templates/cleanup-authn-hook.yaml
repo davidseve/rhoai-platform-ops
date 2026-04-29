@@ -1,9 +1,9 @@
-{{- if .Values.gateway.enabled }}
+{{- if .Values.llminferenceservice.gateway }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.gateway.namespace }}
+  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -12,27 +12,27 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.gateway.namespace }}
+  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 rules:
 - apiGroups: ["kuadrant.io"]
   resources: ["authpolicies"]
-  verbs: ["get", "patch"]
+  verbs: ["get", "list", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.gateway.namespace }}
+  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 subjects:
 - kind: ServiceAccount
   name: patch-gateway-authn
-  namespace: {{ .Values.gateway.namespace }}
+  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -42,7 +42,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: patch-gateway-authn
-  namespace: {{ .Values.gateway.namespace }}
+  namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -55,29 +55,41 @@ spec:
       restartPolicy: Never
       containers:
       - name: patch
-        image: registry.redhat.io/openshift4/ose-cli:latest
+        image: {{ .Values.images.ocCli }}
         command:
         - /bin/bash
         - -c
         - |
           set -euo pipefail
-          POLICY="{{ .Values.gateway.authPolicyName }}"
-          NS="{{ .Values.gateway.namespace }}"
+          GW_NAME="{{ .Values.llminferenceservice.gateway.name }}"
+          NS="{{ .Values.llminferenceservice.gateway.namespace }}"
 
-          echo "Waiting for $POLICY to exist..."
-          for i in $(seq 1 12); do
-            if oc get authpolicy "$POLICY" -n "$NS" &>/dev/null; then break; fi
-            echo "  attempt $i/12"; sleep 5
+          echo "Waiting for AuthPolicies targeting $GW_NAME..."
+          POLICIES=""
+          for i in $(seq 1 24); do
+            for ap in $(oc get authpolicy -n "$NS" -o name 2>/dev/null); do
+              TARGET=$(oc get "$ap" -n "$NS" -o jsonpath='{.spec.targetRef.name}' 2>/dev/null || true)
+              if [ "$TARGET" = "$GW_NAME" ]; then
+                POLICIES="${POLICIES} ${ap#*/}"
+              fi
+            done
+            if [ -n "$POLICIES" ]; then break; fi
+            echo "  attempt $i/24 - no AuthPolicy found yet"; sleep 10
           done
 
-          echo "Patching $POLICY with MaaS audience + tier resolution..."
-          oc patch authpolicy "$POLICY" -n "$NS" --type=merge -p '{
+          if [ -z "$POLICIES" ]; then
+            echo "ERROR: No AuthPolicy targeting $GW_NAME found after 4 minutes"
+            exit 1
+          fi
+          echo "Found AuthPolicies:$POLICIES"
+
+          PATCH='{
             "spec": {
               "rules": {
                 "authentication": {
                   "service-accounts": {
                     "kubernetesTokenReview": {
-                      "audiences": ["https://kubernetes.default.svc", "{{ .Values.gateway.name }}-sa"]
+                      "audiences": ["https://kubernetes.default.svc", "{{ .Values.llminferenceservice.gateway.name }}-sa"]
                     },
                     "cache": {
                       "key": {"selector": "context.request.http.headers.authorization.@case:lower"},
@@ -147,13 +159,16 @@ spec:
             }
           }'
 
-          echo "Verifying patch applied..."
-          AUDIENCES=$(oc get authpolicy "$POLICY" -n "$NS" \
-            -o jsonpath='{.spec.rules.authentication.service-accounts.kubernetesTokenReview.audiences}')
-          echo "Audiences: $AUDIENCES"
+          for POLICY in $POLICIES; do
+            echo "Patching $POLICY..."
+            oc patch authpolicy "$POLICY" -n "$NS" --type=merge -p "$PATCH"
+          done
 
-          TIER=$(oc get authpolicy "$POLICY" -n "$NS" \
-            -o jsonpath='{.spec.rules.metadata.matchedTier.http.url}')
-          echo "Tier lookup URL: $TIER"
+          echo "Verifying patch applied..."
+          for POLICY in $POLICIES; do
+            AUDIENCES=$(oc get authpolicy "$POLICY" -n "$NS" \
+              -o jsonpath='{.spec.rules.authentication.service-accounts.kubernetesTokenReview.audiences}')
+            echo "  $POLICY audiences: $AUDIENCES"
+          done
           echo "Done."
 {{- end }}

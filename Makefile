@@ -70,11 +70,11 @@ status: ## Check ArgoCD application sync status
 
 .PHONY: argocd-branch-current
 argocd-branch-current: ## Point ArgoCD manifests to the current git branch
-	$(PYTHON) .cursor/skills/switch-argocd-branch/scripts/set_target_revision.py --current
+	$(PYTHON) scripts/set_target_revision.py --current
 
 .PHONY: argocd-branch-main
 argocd-branch-main: ## Point ArgoCD manifests back to main
-	$(PYTHON) .cursor/skills/switch-argocd-branch/scripts/set_target_revision.py --main
+	$(PYTHON) scripts/set_target_revision.py --main
 
 .PHONY: argocd-branch
 argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
@@ -82,7 +82,52 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 		echo "Usage: make argocd-branch BRANCH=<branch-name>"; \
 		exit 1; \
 	fi
-	$(PYTHON) .cursor/skills/switch-argocd-branch/scripts/set_target_revision.py --branch "$(BRANCH)"
+	$(PYTHON) scripts/set_target_revision.py --branch "$(BRANCH)"
+
+WAIT_TIMEOUT ?= 20
+WAIT_INTERVAL ?= 30
+
+.PHONY: wait-healthy
+wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
+	@echo "Waiting for ArgoCD applications to sync (timeout: $(WAIT_TIMEOUT)m)..."
+	@elapsed=0; \
+	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
+		total=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | wc -l); \
+		healthy=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | grep -c "Synced.*Healthy" || true); \
+		echo "  [$$((elapsed / 60))m$${elapsed##*[0-9]}] $$healthy/$$total apps Synced+Healthy"; \
+		if [ "$$total" -gt 0 ] && [ "$$healthy" -eq "$$total" ]; then \
+			echo "All ArgoCD applications are Synced+Healthy."; \
+			break; \
+		fi; \
+		sleep $(WAIT_INTERVAL); \
+		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
+	done; \
+	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
+		echo "ERROR: Timed out waiting for applications."; \
+		$(OC) get applications -n openshift-gitops; \
+		exit 1; \
+	fi
+	@echo "Waiting for model pods to be Ready..."
+	@elapsed=0; \
+	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
+		not_ready=$$($(OC) get pods -n maas-models --no-headers 2>/dev/null | grep -cv "Running" || true); \
+		if [ "$$not_ready" -eq 0 ]; then \
+			$(OC) get pods -n maas-models; \
+			echo "All model pods are Running."; \
+			break; \
+		fi; \
+		echo "  [$$((elapsed / 60))m] $$not_ready pod(s) not ready yet..."; \
+		sleep $(WAIT_INTERVAL); \
+		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
+	done; \
+	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
+		echo "ERROR: Timed out waiting for model pods."; \
+		$(OC) get pods -n maas-models; \
+		exit 1; \
+	fi
+
+.PHONY: bootstrap-argocd
+bootstrap-argocd: deploy-argocd wait-healthy test-all ## Deploy ArgoCD app-of-apps, wait for sync, run tests
 
 .PHONY: undeploy-argocd
 undeploy-argocd: ## Remove app-of-apps

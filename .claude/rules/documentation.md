@@ -4,6 +4,7 @@ globs:
   - "docs/**/*.md"
   - "**/README.md"
   - "AGENTS.md"
+  - "CLAUDE.md"
 ---
 
 # Documentation Conventions
@@ -57,11 +58,6 @@ Accepted | Superseded by ADR-MMMM
 - Positive: ...
 - Negative: ...
 ```
-
-ADRs are critical for:
-- RHOAI version upgrades (understanding why current config exists)
-- Onboarding (understanding project history)
-- Revisiting decisions when constraints change
 
 ## Red Hat References
 

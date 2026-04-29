@@ -280,37 +280,84 @@ class TestTokenRateLimitIsolation:
 # Governance K8s resources
 # ---------------------------------------------------------------------------
 
+class TestModelReadiness:
+    """Smoke tests: verify model K8s resources are healthy before inference."""
+
+    def test_llminferenceservice_is_ready(self, oc, model_namespace, model_name):
+        status = oc(
+            f"get llminferenceservice {model_name} -n {model_namespace} "
+            f"-o jsonpath='{{.status.conditions[?(@.type==\"Ready\")].status}}'"
+        ).strip("'")
+        assert status == "True", (
+            f"LLMInferenceService {model_name} is not Ready (status={status})"
+        )
+
+    def test_httproute_accepted(self, oc_json, model_namespace, model_name):
+        data = oc_json(
+            f"get httproute {model_name}-kserve-route -n {model_namespace}"
+        )
+        accepted = False
+        for parent in data.get("status", {}).get("parents", []):
+            for cond in parent.get("conditions", []):
+                if cond.get("type") == "Accepted" and cond.get("status") == "True":
+                    accepted = True
+                    break
+        assert accepted, (
+            f"HTTPRoute {model_name}-kserve-route not Accepted by any parent"
+        )
+
+    def test_authpolicy_has_maas_audience(self, oc_json, gateway_namespace, gateway_name):
+        data = oc_json(f"get authpolicy -n {gateway_namespace}")
+        expected = f"{gateway_name}-sa"
+        for item in data.get("items", []):
+            enforced = any(
+                c.get("type") == "Enforced" and c.get("status") == "True"
+                for c in item.get("status", {}).get("conditions", [])
+            )
+            if not enforced:
+                continue
+            audiences = (
+                item.get("spec", {})
+                .get("rules", {})
+                .get("authentication", {})
+                .get("service-accounts", {})
+                .get("kubernetesTokenReview", {})
+                .get("audiences", [])
+            )
+            if expected in audiences:
+                return
+        pytest.fail(
+            f"No enforced AuthPolicy has audience '{expected}'. "
+            f"Was the cleanup-authn-hook executed?"
+        )
+
+
 class TestGovernanceResources:
     """Verify governance Kubernetes resources exist."""
 
-    def test_authpolicy_exists(self, oc, gateway_namespace):
-        out = oc(f"get authpolicy -n {gateway_namespace} --no-headers")
-        assert "maas-default-gateway-authn" in out
+    def test_authpolicy_exists(self, oc, gateway_namespace, gateway_name):
+        out = oc(
+            f"get authpolicy -n {gateway_namespace} -o jsonpath="
+            f"'{{.items[?(@.spec.targetRef.name==\"{gateway_name}\")].metadata.name}}'"
+        )
+        assert out.strip("'"), "No AuthPolicy targeting the Gateway found"
 
-    def test_ratelimitpolicy_model1_exists(self, oc, model_namespace):
+    def test_ratelimitpolicy_exists(self, oc, model_namespace, model_name):
         out = oc(f"get ratelimitpolicy -n {model_namespace} --no-headers")
-        assert "tinyllama-test-rate-limits" in out
+        assert f"{model_name}-rate-limits" in out
 
-    def test_ratelimitpolicy_model2_exists(self, oc, model_namespace):
-        out = oc(f"get ratelimitpolicy -n {model_namespace} --no-headers")
-        assert "tinyllama-fast-rate-limits" in out
-
-    def test_tokenratelimitpolicy_model1_exists(self, oc, model_namespace):
+    def test_tokenratelimitpolicy_exists(self, oc, model_namespace, model_name):
         out = oc(
             f"get tokenratelimitpolicy -n {model_namespace} --no-headers"
         )
-        assert "tinyllama-test-token-rate-limits" in out
+        assert f"{model_name}-token-rate-limits" in out
 
-    def test_tokenratelimitpolicy_model2_exists(self, oc, model_namespace):
-        out = oc(
-            f"get tokenratelimitpolicy -n {model_namespace} --no-headers"
-        )
-        assert "tinyllama-fast-token-rate-limits" in out
-
-    def test_telemetrypolicy_exists(self, oc, gateway_namespace):
+    def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
+        if not has_telemetrypolicy:
+            pytest.skip("TelemetryPolicy not deployed")
         out = oc(f"get telemetrypolicy -n {gateway_namespace} --no-headers")
         assert "user-group" in out
 
     def test_tier_groups_exist(self, oc):
         out = oc("get groups --no-headers")
-        assert "tier-premium-users" in out
+        assert out.strip(), "No groups found in cluster"

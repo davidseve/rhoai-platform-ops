@@ -34,9 +34,10 @@ rhoai-platform-ops/
     PROJECT-STRUCTURE.md      # This file
     adr/                      # Architecture Decision Records
 
-  .cursor/                    # AI agent configuration
-    rules/                    # Cursor rules (conventions, patterns)
-    skills/                   # Cursor skills (guided workflows)
+  .claude/                    # AI agent configuration
+    rules/                    # Convention rules (scoped by file type)
+    skills/                   # Guided workflows (invocable with /skill-name)
+    settings.json             # Permission configuration
 
   AGENTS.md                   # Project context for AI agents
   Makefile                    # Per-module and global targets
@@ -70,7 +71,7 @@ helm template (validate) --> helm install (test) --> ArgoCD (stable)
 
 ### Adding a New Module
 
-Use the `add-module` Cursor skill, or follow these steps:
+Use the `/add-module` skill, or follow these steps:
 
 1. Create `modules/<name>/` with `charts/`, `tests/`, `docs/`
 2. Add ArgoCD Application template in `argocd/apps/templates/`

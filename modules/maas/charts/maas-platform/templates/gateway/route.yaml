@@ -9,6 +9,9 @@ metadata:
     router.openshift.io/service-ca-certificate: "true"
   {{- end }}
 spec:
+  {{- if .Values.route.host }}
+  host: {{ .Values.route.host }}
+  {{- end }}
   port:
     targetPort: 443
   tls:
@@ -18,7 +21,7 @@ spec:
     {{- end }}
   to:
     kind: Service
-    name: {{ .Values.gateway.name }}-openshift-default
+    name: {{ .Values.gateway.name }}-{{ .Values.gateway.className }}
     weight: 100
   wildcardPolicy: None
 {{- end }}

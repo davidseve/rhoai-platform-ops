@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(oc get *)",
+      "Bash(oc describe *)",
+      "Bash(oc logs *)",
+      "Bash(helm install *)",
+      "Bash(helm upgrade *)",
+      "Bash(helm uninstall *)",
+      "Bash(make *)",
+      "Bash(go test *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Edit",
+      "Write"
+    ]
+  }
+}
