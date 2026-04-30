@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: patch-gateway-authn
+  name: patch-gateway-authn-{{ .Values.global.name }}
   namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
@@ -11,7 +11,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: patch-gateway-authn
+  name: patch-gateway-authn-{{ .Values.global.name }}
   namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
@@ -24,24 +24,24 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: patch-gateway-authn
+  name: patch-gateway-authn-{{ .Values.global.name }}
   namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 subjects:
 - kind: ServiceAccount
-  name: patch-gateway-authn
+  name: patch-gateway-authn-{{ .Values.global.name }}
   namespace: {{ .Values.llminferenceservice.gateway.namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: patch-gateway-authn
+  name: patch-gateway-authn-{{ .Values.global.name }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: patch-gateway-authn
+  name: patch-gateway-authn-{{ .Values.global.name }}
   namespace: {{ .Values.llminferenceservice.gateway.namespace }}
   annotations:
     argocd.argoproj.io/hook: PostSync
@@ -51,7 +51,7 @@ spec:
   activeDeadlineSeconds: 120
   template:
     spec:
-      serviceAccountName: patch-gateway-authn
+      serviceAccountName: patch-gateway-authn-{{ .Values.global.name }}
       restartPolicy: Never
       containers:
       - name: patch
