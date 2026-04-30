@@ -14,10 +14,6 @@ rules:
     - gatewayclasses
     - httproutes
     - grpcroutes
-    - tcproutes
-    - tlsroutes
-    - udproutes
-    - backendtlspolicies
   verbs: ["list", "watch"]
 # Kuadrant policy resources
 - apiGroups: ["kuadrant.io"]
