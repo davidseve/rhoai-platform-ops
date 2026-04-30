@@ -15,7 +15,7 @@ model:
 images:
   vllm:
     repository: "quay.io/dseveria/vllm-cpu-openai-ubi9"
-    tag: "0.3"
+    tag: "0.3-otel"
 
 resources:
   requests:
