@@ -1,0 +1,10 @@
+{{- if .Values.monitoring.gatewayMetrics.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway-api-state-metrics
+  namespace: {{ .Values.monitoring.gatewayMetrics.namespace | default "observability" }}
+  labels:
+    app.kubernetes.io/name: gateway-api-state-metrics
+    app.kubernetes.io/component: metrics
+{{- end }}
