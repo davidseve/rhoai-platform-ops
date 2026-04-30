@@ -2,17 +2,19 @@
 
 Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context.
 
-## Current State
+## Current State (updated 2026-04-30)
 
-The Phase 2 tracing infrastructure is fully deployed:
+The Phase 2 tracing infrastructure is fully deployed and functional:
 
 - OTel Collector with `spanmetrics` connector in `observability` namespace
 - TempoMonolithic with memory backend
-- Tempo Grafana datasource + Trace Exploration dashboard
-- vLLM OTEL env vars set when `tracing.enabled: true` (opt-in)
+- Tempo Grafana datasource (deterministic `uid: tempo`) + Trace Exploration + Trace Search dashboards
+- vLLM tracing via `--otlp-traces-endpoint` CLI arg (env vars are ignored in vLLM v0.7.3)
+- Custom vLLM CPU image with OTel packages: `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel`
+- Token-level tracing opt-in via `--collect-detailed-traces request`
 - E2E tracing tests gated behind `--run-tracing` flag
 
-**Blocker**: the CPU image `quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9:0.3` does not ship `opentelemetry-sdk` / `opentelemetry-exporter-otlp`, so OTEL env vars are silently ignored.
+**Blocker resolved**: Task 1 (vLLM OTEL image) is complete. Tasks 1 and 4 are done.
 
 ## Dependency Graph
 
@@ -29,7 +31,7 @@ Task 3 is independent and can be done in parallel with Task 1. Tasks 2, 4, and 5
 
 ---
 
-## Task 1: vLLM CPU Image with OpenTelemetry (BLOCKER)
+## Task 1: vLLM CPU Image with OpenTelemetry -- DONE
 
 **Context**: Upstream vLLM merged [PR #34466](https://github.com/vllm-project/vllm/pull/34466) (Feb 2026) adding OTel to `requirements/common.txt`. The existing CPU image is built from a pinned fork commit (`RHRolun/vllm@94ad14587`) and installs `requirements-cpu.txt` + `requirements-common.txt` but the pinned commit predates the OTel addition. The upstream [Containerfile](https://github.com/rh-aiservices-bu/llm-on-openshift/blob/main/llm-servers/vllm/cpu/Containerfile) does not add OTel separately.
 
@@ -60,28 +62,37 @@ Set `tracing.enabled: true`, deploy model, send inference request, query Tempo A
 
 ---
 
-## Task 2: Gateway/Envoy Distributed Tracing
+## Task 2: Gateway/Envoy Distributed Tracing -- DEFERRED to RHOAI 3.4
 
-**Context**: ADR-0004 deferred this because `serviceMesh.managementState: Removed` in DSCI means no Istio sidecar injection. The gateway uses Kuadrant's Envoy-based data plane (Kubernetes Gateway API), not Istio mesh. The existing Kuadrant `TelemetryPolicy` handles metrics labels but not distributed tracing.
+> **Status (2026-04-30)**: Deferred. The original approach was incorrect and no viable short-term alternative exists. Re-evaluate when RHOAI 3.4 ships.
 
-### Approach
+**Original approach (INCORRECT)**: The plan proposed `EnvoyExtensionPolicy` from `extensions.kuadrant.io/v1alpha1`. This API belongs to the **Envoy Gateway** project, NOT to the Istio/OSSM stack. The `openshift-default` GatewayClass uses Envoy managed by Istio via the cluster-ingress-operator — a completely different data plane.
 
-Kuadrant/Envoy supports OpenTelemetry tracing natively via `EnvoyExtensionPolicy` (`extensions.kuadrant.io/v1alpha1`) or upstream Envoy `OpenTelemetryTracingExtension`. This does NOT require Istio or Service Mesh -- it configures the gateway's Envoy proxy directly.
+### Investigation findings (2026-04-30)
 
-### Implementation
+1. **Istio CR is managed**: The cluster-ingress-operator reconciles the Istio CR for `openshift-default`. Adding `extensionProviders` for OpenTelemetry is not supported — the operator overwrites custom changes.
 
-1. Add template `modules/maas/charts/maas-platform/templates/envoy-tracing.yaml` with an `EnvoyExtensionPolicy` (or `EnvoyPatchPolicy` if the Kuadrant version requires it) targeting the `maas-default-gateway` Gateway
-2. Configure Envoy to send OTLP traces to the OTel Collector at `maas-collector-collector.observability.svc:4317`
-3. Gate behind `tracing.gateway.enabled` in `maas-platform/values.yaml`
-4. Propagate `traceparent` header through the gateway so vLLM spans are children of gateway spans
+2. **Istio Telemetry API requires extensionProviders**: The `Telemetry` CR (`telemetry.istio.io/v1alpha1`) references providers defined in `meshConfig.extensionProviders`. Without modifying the Istio CR, this path is blocked.
 
-### Result
+3. **Kuadrant component tracing (partial)**: Authorino and Limitador CRs accept a `spec.tracing` section pointing to a collector endpoint. This generates independent spans for auth and rate-limit decisions. However:
+   - Without a gateway-level parent span, these traces are NOT correlated with vLLM traces
+   - Known limitation: trace IDs do not propagate to WASM modules in Istio/Envoy, breaking Limitador trace continuity ([docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/))
+   - The Kuadrant operator manages Authorino/Limitador CRs — direct patches may be overwritten
 
-Traces will show the full path: `gateway (Envoy) -> vLLM model`, with gateway-level latency visible as a separate span.
+4. **Full end-to-end tracing requires**: Either (a) an independent OSSM 3 instance with full `meshConfig` control, or (b) a GatewayClass that natively supports OTel tracing (e.g., Envoy Gateway). Both are significant scope changes.
 
-### Validation
+### What to evaluate in RHOAI 3.4
 
-Send request, verify Tempo shows two services (`maas-gateway`, `vllm-<model>`) in the same trace.
+- Changes to the GatewayClass or gateway data plane (Istio vs Envoy Gateway)
+- Kuadrant CR consolidated tracing config (`spec.observability.tracing`) with end-to-end correlation
+- WASM trace ID propagation fix
+- OSSM 3 coexistence with cluster-ingress-operator
+- Changes to LLMInferenceService affecting the serving path
+
+### References
+
+- [Kuadrant Tracing Docs v1.3.x](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/)
+- [RHCL Observability Guide](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html-single/connectivity_link_observability_guide/index)
 
 ---
 
@@ -117,9 +128,9 @@ Deploy with `backend: pv`, restart Tempo pod, verify traces survive the restart.
 
 ---
 
-## Task 4: Token-Level vLLM Tracing
+## Task 4: Token-Level vLLM Tracing -- DONE
 
-**Context**: Requires the OTel-enabled vLLM image from Task 1. With OTel packages present, vLLM can emit fine-grained spans for each token generation step. Upstream vLLM (v0.8+) supports `--otlp-traces-endpoint` CLI arg which enables detailed internal spans.
+**Context**: Requires the OTel-enabled vLLM image from Task 1. With OTel packages present, vLLM can emit fine-grained spans for each token generation step. vLLM v0.7.3 supports `--otlp-traces-endpoint` CLI arg (env vars are silently ignored).
 
 ### Implementation
 
@@ -180,22 +191,32 @@ Deploy with alerting enabled, verify PrometheusRule exists and alert expressions
 
 ## Files Changed (Summary)
 
+### Done
 
 | Action   | File                                                                             | Description                                                 |
 | -------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | New      | `modules/maas/images/vllm-cpu-otel/Containerfile`                                | vLLM CPU image with OTel packages                           |
-| New      | `modules/maas/charts/maas-platform/templates/envoy-tracing.yaml`                 | Gateway Envoy OTLP tracing                                  |
-| New      | `modules/observability/charts/tracing/templates/prometheusrule-spanmetrics.yaml` | Spanmetrics SLO alerts                                      |
+| New      | `modules/observability/charts/grafana/dashboards/trace-search.json`              | Trace Search dashboard (table with service filter)          |
+| New      | `modules/observability/charts/grafana/templates/grafana-dashboard-trace-search.yaml` | GrafanaDashboard CR for trace search                    |
 | Modified | `modules/maas/charts/maas-model/values.yaml`                                     | Image tag + `tracing.detailed`                              |
 | Modified | `modules/maas/charts/maas-model/templates/llm-inference-service.yaml`            | `--otlp-traces-endpoint` + `--collect-detailed-traces` args |
-| Modified | `modules/maas/charts/maas-platform/values.yaml`                                  | `tracing.gateway.enabled`                                   |
-| Modified | `modules/observability/charts/tracing/values.yaml`                               | S3 storage config + alerting config                         |
+| Modified | `modules/observability/charts/grafana/templates/grafana-datasource.yaml`         | Deterministic `uid: prometheus`                             |
+| Modified | `modules/observability/charts/grafana/templates/grafana-datasource-tempo.yaml`   | Deterministic `uid: tempo`                                  |
+| Modified | `Makefile`                                                                       | `build-vllm-cpu-otel` + `push-vllm-cpu-otel` targets       |
+
+### Pending
+
+| Action   | File                                                                             | Description                                                 |
+| -------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| New      | `modules/observability/charts/tracing/templates/prometheusrule-spanmetrics.yaml` | Spanmetrics SLO alerts                                      |
+| Modified | `modules/observability/charts/tracing/values.yaml`                               | S3/PV storage config + alerting config                      |
 | Modified | `modules/observability/charts/tracing/templates/tempo-monolithic.yaml`           | PV/S3 conditionals                                          |
-| Modified | `modules/observability/tests/test_03_tracing.py`                                 | New assertions                                              |
-| Modified | `docs/ROADMAP.md`                                                                | Mark Phase 2b items done                                    |
-| Modified | `docs/adr/0004-tracing-stack.md`                                                 | Update deferred decisions                                   |
-| Modified | `modules/observability/docs/OBSERVABILITY.md`                                    | Document new capabilities                                   |
-| Modified | `Makefile`                                                                       | `build-vllm-cpu-otel` target                                |
+
+### Deferred to RHOAI 3.4
+
+| Action   | File                                                                             | Description                                                 |
+| -------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| ~~New~~  | ~~`modules/maas/charts/maas-platform/templates/envoy-tracing.yaml`~~            | ~~Gateway Envoy OTLP tracing~~ (EnvoyExtensionPolicy not applicable to openshift-default) |
 
 
 ## References

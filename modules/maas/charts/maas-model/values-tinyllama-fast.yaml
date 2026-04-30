@@ -14,7 +14,7 @@ model:
 
 images:
   vllm:
-    repository: "quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9"
+    repository: "quay.io/dseveria/vllm-cpu-openai-ubi9"
     tag: "0.3"
 
 resources:
