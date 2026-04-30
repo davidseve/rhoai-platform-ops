@@ -1,0 +1,17 @@
+{{- if .Values.tempo.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: maas-trace-search
+  namespace: {{ .Values.grafana.namespace }}
+  labels:
+    dashboards: grafana
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+  json: |
+{{ .Files.Get "dashboards/trace-search.json" | indent 4 }}
+{{- end }}

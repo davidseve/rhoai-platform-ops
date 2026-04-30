@@ -16,6 +16,7 @@ spec:
     matchLabels:
       dashboards: "grafana"
   datasource:
+    uid: prometheus
     name: Prometheus
     type: prometheus
     access: proxy

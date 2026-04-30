@@ -18,7 +18,7 @@ TARGET_REVISION_RE = re.compile(r"^(?P<prefix>\s*targetRevision:\s*).+$", re.MUL
 
 
 def get_repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    return Path(__file__).resolve().parents[1]
 
 
 def get_current_branch(repo_root: Path) -> str:

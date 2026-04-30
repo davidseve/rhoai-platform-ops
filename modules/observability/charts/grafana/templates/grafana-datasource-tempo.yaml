@@ -11,6 +11,7 @@ spec:
     matchLabels:
       dashboards: grafana
   datasource:
+    uid: tempo
     name: Tempo
     type: tempo
     access: proxy
@@ -18,9 +19,9 @@ spec:
     isDefault: false
     jsonData:
       tracesToMetrics:
-        datasourceUid: thanos-querier
+        datasourceUid: prometheus
       nodeGraph:
         enabled: true
       serviceMap:
-        datasourceUid: thanos-querier
+        datasourceUid: prometheus
 {{- end }}

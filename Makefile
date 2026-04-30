@@ -133,6 +133,19 @@ bootstrap-argocd: deploy-argocd wait-healthy test-all ## Deploy ArgoCD app-of-ap
 undeploy-argocd: ## Remove app-of-apps
 	$(OC) delete -f argocd/app-of-apps.yaml --ignore-not-found
 
+# --- Container Images ---
+
+VLLM_OTEL_IMAGE ?= quay.io/dseveria/vllm-cpu-openai-ubi9
+VLLM_OTEL_TAG ?= 0.3-otel
+
+.PHONY: build-vllm-cpu-otel
+build-vllm-cpu-otel: ## Build vLLM CPU image with OpenTelemetry packages
+	podman build -t $(VLLM_OTEL_IMAGE):$(VLLM_OTEL_TAG) modules/maas/images/vllm-cpu-otel
+
+.PHONY: push-vllm-cpu-otel
+push-vllm-cpu-otel: ## Push vLLM CPU OTel image to registry
+	podman push $(VLLM_OTEL_IMAGE):$(VLLM_OTEL_TAG)
+
 # --- Traffic Generation ---
 
 .PHONY: generate-traffic

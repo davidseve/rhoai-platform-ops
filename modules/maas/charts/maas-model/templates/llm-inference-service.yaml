@@ -39,13 +39,15 @@ spec:
       - --ssl-keyfile
       - /var/run/kserve/tls/tls.key
       {{- if .Values.tracing.enabled }}
+      - --otlp-traces-endpoint
+      - {{ .Values.tracing.otlpEndpoint | quote }}
+      {{- if .Values.tracing.detailed }}
+      - --collect-detailed-traces
+      - request
+      {{- end }}
       env:
-        - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-          value: {{ .Values.tracing.otlpEndpoint | quote }}
         - name: OTEL_SERVICE_NAME
           value: {{ .Values.tracing.serviceName | default .Values.model.servedName | quote }}
-        - name: OTEL_TRACES_EXPORTER
-          value: otlp
       {{- end }}
       resources:
         limits:

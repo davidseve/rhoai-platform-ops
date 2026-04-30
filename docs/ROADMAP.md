@@ -63,19 +63,39 @@ Goal: trace individual requests through the full stack (client -> gateway -> mod
 
 **Reference**: [OBSERVABILITY.md](../modules/observability/docs/OBSERVABILITY.md#distributed-tracing)
 
-### Phase 2b: Traceability Enhancements (PLANNED)
+### Phase 2b: Traceability Enhancements (IN PROGRESS)
 
-Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context and [PHASE-2B-PLAN.md](PHASE-2B-PLAN.md) for the detailed implementation plan with approach decisions, file changes, and validation steps.
+Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context and [PHASE-2B-PLAN.md](PHASE-2B-PLAN.md) for the detailed implementation plan.
 
-> **BLOCKER -- vLLM OTEL image**: The current CPU image (`vllm-cpu-openai-ubi9:0.3`) lacks `opentelemetry-sdk` / `opentelemetry-exporter-otlp`. Upstream vLLM merged OTel into default requirements in [PR #34466](https://github.com/vllm-project/vllm/pull/34466) (Feb 2026). The plan recommends extending the existing image with a `pip install` layer (Option A) rather than bumping the full fork.
+#### Completado
 
-- **Find/build CPU vLLM image with OpenTelemetry packages** (blocker for all tracing items below)
-- Gateway/Envoy distributed tracing (Kuadrant `EnvoyExtensionPolicy` for Envoy -> OTel Collector; does NOT require Istio)
+- [x] **vLLM CPU image con OpenTelemetry** -- imagen custom `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` con `opentelemetry-sdk`, `opentelemetry-exporter-otlp`, etc. ([Containerfile](../modules/maas/images/vllm-cpu-otel/Containerfile))
+- [x] **vLLM tracing funcional** -- `--otlp-traces-endpoint` CLI arg (vLLM v0.7.3 ignora env vars OTEL), spans visibles en Tempo
+- [x] **Token-level tracing** -- `--collect-detailed-traces request` opt-in via `tracing.detailed: true`
+- [x] **Dashboards de tracing** -- Trace Exploration (service map, latency, request rate) + Trace Search (tabla con filtro por servicio y Trace ID clickable)
+- [x] **Datasource UIDs determinísticos** -- `uid: prometheus` y `uid: tempo` para evitar roturas por UIDs aleatorios del operador Grafana
+
+#### Pendiente
+
 - Persistent Tempo storage (switch from memory to PV/S3 backend)
-- Token-level vLLM tracing (fine-grained per-token spans via `--collect-detailed-traces`)
-- Trace-based SLO alerts (PrometheusRule from spanmetrics-derived `traces_spanmetrics_latency_bucket` / `traces_spanmetrics_calls_total`)
-- **Kuadrant WASM auth timeout (blocker for high concurrency)**: The Kuadrant WASM filter's `auth-service` timeout is hardcoded to 200ms by the operator and cannot be configured via AuthPolicy or WasmPlugin. Under concurrent load (>=4 parallel requests), auth evaluation (TokenReview + tier lookup) exceeds 200ms, causing 500 errors. **Action**: file upstream Kuadrant issue to make the WASM auth-service timeout configurable; as a workaround, keep client concurrency at 2 or lower
-- **Gateway production hardening**: tune Authorino resource limits and HPA, evaluate connection pooling for the auth evaluation chain (TokenReview + tier lookup), add client retry guidance to API docs
+- Trace-based SLO alerts (PrometheusRule from spanmetrics)
+- **Kuadrant WASM auth timeout (blocker for high concurrency)**: timeout hardcoded a 200ms, causa 500 errors con >=4 requests paralelos
+- **Gateway production hardening**: tune Authorino limits/HPA, connection pooling, client retry guidance
+
+#### Diferido a RHOAI 3.4 -- Gateway distributed tracing
+
+> **Decisión (2026-04-30)**: El tracing end-to-end gateway → auth → ratelimit → vLLM se difiere hasta evaluar RHOAI 3.4 y los cambios en el stack MaaS/Gateway.
+>
+> **Por qué**: El enfoque original (`EnvoyExtensionPolicy` de `extensions.kuadrant.io`) era incorrecto — esa API pertenece a Envoy Gateway, no al stack Istio/OSSM que usa `openshift-default` GatewayClass. El Istio CR del cluster-ingress-operator es gestionado y no se puede customizar con `extensionProviders` para OTel. Las alternativas viables (OSSM 3 independiente, o tracing de componentes Kuadrant sin correlación) tienen un coste/beneficio cuestionable hasta que el stack evolucione.
+>
+> **Qué evaluar en RHOAI 3.4**:
+> - Si el GatewayClass cambia o soporta tracing nativo
+> - Si el Kuadrant CR consolida configuración de tracing con correlación end-to-end
+> - Si la propagación de trace IDs a WASM modules (Limitador) se resuelve ([limitación conocida](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/))
+> - Si OSSM 3 permite meshConfig custom sin conflicto con el cluster-ingress-operator
+> - Cambios en LLMInferenceService que afecten al serving path
+>
+> **Referencias**: [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/), [RHCL Observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html-single/connectivity_link_observability_guide/index)
 
 ### Phase 3: Benchmarks
 
