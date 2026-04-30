@@ -96,31 +96,22 @@ Set `tracing.enabled: true`, deploy model, send inference request, query Tempo A
 
 ---
 
-## Task 3: Persistent Tempo Storage
+## Task 3: Persistent Tempo Storage -- DONE
 
-**Context**: Current TempoMonolithic CR uses `backend: memory` -- traces are lost on pod restart. The values already have `storage.backend` and `storage.size` templated.
+**Context**: Current TempoMonolithic CR uses `backend: memory` -- traces are lost on pod restart. The TempoMonolithic template already has `backend` and `size` templated from values. The Tempo Operator automatically creates a PVC when `backend: pv` is set.
 
 ### Implementation
 
-1. Add `pv` and `s3` backend options to `modules/observability/charts/tracing/values.yaml`:
+Changed `modules/observability/charts/tracing/values.yaml`:
 
 ```yaml
 tempo:
   storage:
-    backend: memory      # "memory" | "pv" | "s3"
+    backend: pv           # "memory" for dev/test, "pv" for persistent
     size: 10Gi
-    # S3 config (only when backend: s3)
-    s3:
-      endpoint: ""
-      bucket: tempo
-      secretName: tempo-s3-credentials
 ```
 
-1. Update `tempo-monolithic.yaml` template with conditional blocks:
-  - `backend: memory` -- current behavior (no changes)
-  - `backend: pv` -- add `volumeClaimTemplate` with the configured `size`
-  - `backend: s3` -- add `s3` block with endpoint/bucket/secret reference (for ODF/MinIO)
-2. Default remains `memory` so existing deployments are unaffected
+No template changes were needed -- the existing `tempo-monolithic.yaml` already handles `pv` backend. S3 support deferred (no ODF/MinIO in sandbox; add when needed).
 
 ### Validation
 

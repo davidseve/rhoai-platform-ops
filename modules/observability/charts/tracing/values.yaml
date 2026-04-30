@@ -2,8 +2,8 @@ tempo:
   name: tempo
   namespace: observability
   storage:
-    backend: memory       # "memory" for dev/test, "pv" for persistent
-    size: 2Gi
+    backend: pv           # "memory" for dev/test, "pv" for persistent
+    size: 10Gi
   retention: 48h
   ingestion:
     otlp:
