@@ -101,6 +101,10 @@ monitoring:
   vllm:
     enabled: true
     modelNamespace: maas-models
+  # kube-state-metrics with CustomResourceState for Gateway API + Kuadrant CRs
+  gatewayMetrics:
+    enabled: true
+    namespace: observability
 
 # PrometheusRule alerts for rate limit health
 alerting:

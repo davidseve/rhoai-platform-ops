@@ -1,0 +1,272 @@
+{
+  "title": "MaaS Gateway Infrastructure",
+  "uid": "maas-gateway-infrastructure",
+  "description": "Gateway health, attached policies, and workload resource usage for the MaaS platform",
+  "tags": ["maas", "gateway", "kuadrant", "infrastructure"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Namespace",
+        "multi": true,
+        "name": "namespace",
+        "options": [],
+        "query": "label_values(kube_namespace_labels, namespace)",
+        "refresh": 2,
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "regex": "(kuadrant-system|maas-models|openshift-ingress|observability)"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Gateway Health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Gateways",
+      "description": "Gateway API resources with class, listeners, and status. Requires gateway-api-state-metrics exporter.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 16, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewayapi_gateway_info",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true, "job": true, "instance": true }, "renameByName": { "name": "Gateway", "namespace": "Namespace", "gatewayclass_name": "GatewayClass" } } }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": []
+      },
+      "options": { "showHeader": true, "sortBy": [{ "desc": false, "displayName": "Gateway" }] }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Gateways Programmed",
+      "description": "Number of gateways with status condition Programmed=True",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
+      "targets": [
+        { "refId": "A", "expr": "count(gatewayapi_gateway_status{type=\"Programmed\"} == 1) OR vector(0)", "legendFormat": "Programmed", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "noValue": "0",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Gateways Not Programmed",
+      "description": "Number of gateways that are not in Programmed state",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        { "refId": "A", "expr": "count(gatewayapi_gateway_status{type=\"Programmed\"} == 0) OR vector(0)", "legendFormat": "Not Programmed", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "noValue": "0",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Attached Routes",
+      "description": "Total number of routes attached across all gateway listeners",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 4 },
+      "targets": [
+        { "refId": "A", "expr": "sum(gatewayapi_gateway_status_listener_attached_routes) OR vector(0)", "legendFormat": "Routes", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "noValue": "0",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Gateway Listeners",
+      "description": "Listener details: port, protocol, TLS mode, and attached routes",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewayapi_gateway_listener_info",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true, "job": true, "instance": true }, "renameByName": { "name": "Gateway", "listener_name": "Listener", "port": "Port", "protocol": "Protocol", "tls_mode": "TLS Mode" } } }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } } },
+      "options": { "showHeader": true }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Policies Attached",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Gateway Policies",
+      "description": "AuthPolicy and RateLimitPolicy resources targeting Gateways",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewayapi_authpolicy_target_info{target_kind=\"Gateway\"}",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "gatewayapi_ratelimitpolicy_target_info{target_kind=\"Gateway\"}",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true, "job": true, "instance": true }, "renameByName": { "name": "Policy", "namespace": "Namespace", "target_name": "Target", "target_kind": "Target Kind" } } }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "filterable": true } } },
+      "options": { "showHeader": true, "sortBy": [{ "desc": false, "displayName": "Policy" }] }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "HTTPRoute Policies",
+      "description": "AuthPolicy and RateLimitPolicy resources targeting HTTPRoutes",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "gatewayapi_authpolicy_target_info{target_kind!=\"Gateway\"}",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "gatewayapi_ratelimitpolicy_target_info{target_kind!=\"Gateway\"}",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true, "job": true, "instance": true }, "renameByName": { "name": "Policy", "namespace": "Namespace", "target_name": "Target", "target_kind": "Target Kind" } } }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "filterable": true } } },
+      "options": { "showHeader": true, "sortBy": [{ "desc": false, "displayName": "Policy" }] }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Workload Resources",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "CPU Usage by Namespace",
+      "description": "Container CPU usage for MaaS-related namespaces",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(namespace) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=~\"$namespace\"})",
+          "legendFormat": "{{namespace}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Memory Usage by Namespace",
+      "description": "Container memory working set for MaaS-related namespaces",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(namespace) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\"})",
+          "legendFormat": "{{namespace}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    }
+  ]
+}
