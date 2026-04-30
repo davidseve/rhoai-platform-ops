@@ -1,5 +1,5 @@
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-targetRevision: main
+targetRevision: feat/enhanced-dashboards
 
 modules:
   maas:
