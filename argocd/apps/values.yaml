@@ -1,5 +1,5 @@
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-targetRevision: feat/vllm-cpu-otel-image
+targetRevision: main
 
 modules:
   maas:
