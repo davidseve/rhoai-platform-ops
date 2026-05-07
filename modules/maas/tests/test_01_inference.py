@@ -6,35 +6,36 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-class TestTokenGeneration:
+class TestAPIKeyGeneration:
+    """Verify the MaaS API key endpoint (RHOAI 3.4+)."""
 
-    def test_token_endpoint_returns_200(self, maas_url, oc_token):
+    def test_api_key_endpoint_returns_200(self, maas_url, oc_token):
         resp = requests.post(
-            f"{maas_url}/maas-api/v1/tokens",
+            f"{maas_url}/maas-api/v1/api-keys",
             headers={
                 "Authorization": f"Bearer {oc_token}",
                 "Content-Type": "application/json",
             },
-            json={"expiration": "10m"},
+            json={"name": "test-endpoint-check", "expiration": "10m"},
             verify=False,
             timeout=15,
         )
         assert resp.status_code in (200, 201)
 
-    def test_token_response_contains_token(self, maas_url, oc_token):
+    def test_api_key_response_contains_key(self, maas_url, oc_token):
         resp = requests.post(
-            f"{maas_url}/maas-api/v1/tokens",
+            f"{maas_url}/maas-api/v1/api-keys",
             headers={
                 "Authorization": f"Bearer {oc_token}",
                 "Content-Type": "application/json",
             },
-            json={"expiration": "10m"},
+            json={"name": "test-key-check", "expiration": "10m"},
             verify=False,
             timeout=15,
         )
         body = resp.json()
-        assert "token" in body
-        assert len(body["token"]) > 50, "Token looks too short"
+        assert "key" in body
+        assert body["key"].startswith("sk-oai-"), "API key should start with sk-oai- prefix"
 
 
 class TestChatCompletions:

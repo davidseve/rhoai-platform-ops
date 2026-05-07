@@ -15,7 +15,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 GRAFANA_NAMESPACE = os.getenv("GRAFANA_NAMESPACE", "observability")
 GRAFANA_NAME = os.getenv("GRAFANA_NAME", "grafana")
-MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "maas-models")
+MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "models-as-a-service")
 
 
 def _run(cmd: str, *, check: bool = True) -> subprocess.CompletedProcess:

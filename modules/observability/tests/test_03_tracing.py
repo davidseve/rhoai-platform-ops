@@ -61,7 +61,7 @@ def _check_tracing_enabled(oc):
     """Return True if any model pod has OTEL env vars configured."""
     try:
         env_value = oc(
-            "get pods -n maas-models "
+            "get pods -n models-as-a-service "
             "-l app.kubernetes.io/component=predictor "
             "-o jsonpath='{.items[0].spec.containers[0].env[?(@.name==\"OTEL_TRACES_EXPORTER\")].value}'"
         ).strip("'")

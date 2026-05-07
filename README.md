@@ -75,7 +75,7 @@ Enable/disable modules in `argocd/apps/values.yaml` under `modules:`.
 | Component                      | Version |
 | ------------------------------ | ------- |
 | OpenShift                      | 4.20.8  |
-| RHOAI                          | 3.3.1   |
+| RHOAI                          | 3.4.0-ea.2 (beta) |
 | Red Hat Connectivity Link      | 1.3.2   |
 | cert-manager                   | 1.18.1  |
 | LeaderWorkerSet                | 1.0.0   |

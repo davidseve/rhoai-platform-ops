@@ -1,4 +1,4 @@
-{{- if .Values.tiers }}
+{{- if and .Values.tiers .Values.rateLimiting.enabled }}
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy
 metadata:

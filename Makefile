@@ -38,11 +38,58 @@ undeploy-observability: ## Undeploy observability via Helm
 
 .PHONY: deploy-maas
 deploy-maas: ## Deploy MaaS operators + platform + models via Helm
+	@echo "=== Phase 1: Operators (subscriptions only) ==="
 	$(HELM) upgrade --install maas-operators modules/maas/charts/operators --wait --timeout 10m
+	@echo "Waiting for operator CRDs..."
+	@for crd in datascienceclusters.datasciencecluster.opendatahub.io dscinitializations.dscinitialization.opendatahub.io limitadors.limitador.kuadrant.io kuadrants.kuadrant.io leaderworkersetoperators.operator.openshift.io; do \
+		echo "  Waiting for $$crd..."; \
+		for i in $$(seq 1 60); do \
+			if $(OC) wait --for=condition=Established crd/$$crd --timeout=5s 2>/dev/null; then \
+				break; \
+			fi; \
+			if [ $$i -eq 60 ]; then echo "ERROR: CRD $$crd not found after 5 minutes"; exit 1; fi; \
+			sleep 5; \
+		done; \
+	done
+	@echo "Ensuring namespace redhat-ods-applications exists..."
+	@$(OC) get ns redhat-ods-applications &>/dev/null || $(OC) create ns redhat-ods-applications
+	@echo "Ensuring maas-api database secret exists..."
+	@if ! $(OC) get secret maas-db-config -n redhat-ods-applications &>/dev/null; then \
+		echo "  Deploying evaluation PostgreSQL for maas-api..."; \
+		$(OC) apply -n redhat-ods-applications -f modules/maas/prereqs/maas-db.yaml; \
+		echo "  Waiting for PostgreSQL pod..."; \
+		$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s; \
+	fi
+	@echo "=== Phase 2: Platform (operator CRs, DSC, Gateway, monitoring) ==="
 	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform \
 		--set grafana.enabled=$(GRAFANA_ENABLED) --wait --timeout 15m
-	$(HELM) upgrade --install maas-model modules/maas/charts/maas-model --wait --timeout 15m
-	$(HELM) upgrade --install maas-model-fast modules/maas/charts/maas-model -f modules/maas/charts/maas-model/values-tinyllama-fast.yaml --wait --timeout 15m
+	@echo "Waiting for DSC to be Ready..."
+	@for i in $$(seq 1 120); do \
+		status=$$($(OC) get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null); \
+		if [ "$$status" = "True" ]; then echo "  DSC Ready."; break; fi; \
+		echo "  [$$((i * 5))s] DSC Ready=$$status"; \
+		if [ $$i -eq 120 ]; then echo "ERROR: DSC not Ready after 10 minutes"; exit 1; fi; \
+		sleep 5; \
+	done
+	@echo "Waiting for OdhDashboardConfig..."
+	@for i in $$(seq 1 60); do \
+		if $(OC) get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications &>/dev/null; then \
+			echo "  OdhDashboardConfig ready."; \
+			break; \
+		fi; \
+		if [ $$i -eq 60 ]; then echo "WARNING: OdhDashboardConfig not found after 5 minutes, skipping patch"; fi; \
+		sleep 5; \
+	done
+	@echo "=== Phase 3: Dashboard config + Models ==="
+	@$(OC) get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications &>/dev/null && \
+		$(OC) patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
+			--type=merge -p '{"spec":{"dashboardConfig":{"genAiStudio":true,"modelAsService":true}}}' || \
+		echo "  Skipping dashboard patch (OdhDashboardConfig not found)"
+	$(HELM) upgrade --install maas-model modules/maas/charts/maas-model \
+		--set namespace.create=false --wait --timeout 15m
+	$(HELM) upgrade --install maas-model-fast modules/maas/charts/maas-model \
+		-f modules/maas/charts/maas-model/values-tinyllama-fast.yaml \
+		--set namespace.create=false --wait --timeout 15m
 
 .PHONY: test-maas
 test-maas: ## Run MaaS E2E tests
@@ -110,9 +157,9 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 	@echo "Waiting for model pods to be Ready..."
 	@elapsed=0; \
 	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
-		not_ready=$$($(OC) get pods -n maas-models --no-headers 2>/dev/null | grep -cv "Running" || true); \
+		not_ready=$$($(OC) get pods -n models-as-a-service --no-headers 2>/dev/null | grep -cv "Running" || true); \
 		if [ "$$not_ready" -eq 0 ]; then \
-			$(OC) get pods -n maas-models; \
+			$(OC) get pods -n models-as-a-service; \
 			echo "All model pods are Running."; \
 			break; \
 		fi; \
@@ -122,7 +169,7 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 	done; \
 	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
 		echo "ERROR: Timed out waiting for model pods."; \
-		$(OC) get pods -n maas-models; \
+		$(OC) get pods -n models-as-a-service; \
 		exit 1; \
 	fi
 

@@ -23,7 +23,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 MODEL_NAME = os.getenv("MAAS_MODEL_NAME", "tinyllama-test")
 MODEL2_NAME = os.getenv("MAAS_MODEL2_NAME", "tinyllama-fast")
-MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "maas-models")
+MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "models-as-a-service")
 GATEWAY_NAME = os.getenv("MAAS_GATEWAY_NAME", "maas-default-gateway")
 GATEWAY_NAMESPACE = os.getenv("MAAS_GATEWAY_NAMESPACE", "openshift-ingress")
 GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "openshift-default")
@@ -102,22 +102,32 @@ def oc_token(oc):
 
 
 @pytest.fixture(scope="session")
-def maas_token(maas_url, oc_token):
-    """Generate a MaaS token via the external Route (cached per session)."""
+def maas_token(oc_token):
+    """Auth token for inference requests.
+
+    RHOAI 3.4 uses KubernetesTokenReview in the gateway AuthPolicy,
+    so the oc session token works directly for inference.
+    """
+    return oc_token
+
+
+@pytest.fixture(scope="session")
+def maas_api_key(maas_url, oc_token):
+    """Generate a MaaS API key via the maas-api service (cached per session)."""
     resp = requests.post(
-        f"{maas_url}/maas-api/v1/tokens",
+        f"{maas_url}/maas-api/v1/api-keys",
         headers={
             "Authorization": f"Bearer {oc_token}",
             "Content-Type": "application/json",
         },
-        json={"expiration": "30m"},
+        json={"name": "e2e-test-key", "expiration": "30m"},
         verify=False,
         timeout=15,
     )
     resp.raise_for_status()
-    token = resp.json()["token"]
-    assert token, "MaaS token is empty"
-    return token
+    data = resp.json()
+    assert data.get("key"), "API key is empty"
+    return data
 
 
 # ---------------------------------------------------------------------------

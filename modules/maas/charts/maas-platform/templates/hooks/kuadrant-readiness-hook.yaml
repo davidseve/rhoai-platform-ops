@@ -1,3 +1,4 @@
+{{- if .Values.hooks.kuadrantReadiness.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -207,3 +208,4 @@ spec:
 
               echo ""
               echo "=== Kuadrant stack ready with official TLS configuration ==="
+{{- end }}

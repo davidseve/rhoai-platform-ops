@@ -121,7 +121,7 @@ cleanup_helm_releases() {
 cleanup_maas_residual() {
   log "=== MaaS: Cleaning up residual resources ==="
 
-  local model_ns="maas-models"
+  local model_ns="models-as-a-service"
   local gateway_ns="openshift-ingress"
   local kuadrant_ns="kuadrant-system"
 
@@ -312,7 +312,7 @@ verify_cleanup() {
   local failed=0
 
   local namespaces=(
-    "maas-models"
+    "models-as-a-service"
     "redhat-ods-applications"
     "redhat-ods-monitoring"
     "redhat-ods-operator"

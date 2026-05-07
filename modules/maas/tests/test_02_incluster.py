@@ -11,7 +11,7 @@ import uuid
 import pytest
 
 MODEL_NAME = os.getenv("MAAS_MODEL_NAME", "tinyllama-test")
-MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "maas-models")
+MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "models-as-a-service")
 GATEWAY_NAME = os.getenv("MAAS_GATEWAY_NAME", "maas-default-gateway")
 GATEWAY_NAMESPACE = os.getenv("MAAS_GATEWAY_NAMESPACE", "openshift-ingress")
 GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "openshift-default")
@@ -101,18 +101,18 @@ class TestInClusterGateway:
         out = oc(f"get svc {GATEWAY_SVC} -n {gateway_namespace} --no-headers")
         assert GATEWAY_SVC in out
 
-    def test_token_via_internal_gateway(self, oc_token):
-        """Generate a MaaS token hitting the ClusterIP from an in-cluster pod."""
+    def test_api_key_via_internal_gateway(self, oc_token):
+        """Generate a MaaS API key hitting the ClusterIP from an in-cluster pod."""
         script = f"""
-curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/tokens" \
+curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/api-keys" \
   -H "Authorization: Bearer {oc_token}" \
   -H "Content-Type: application/json" \
-  -d '{{"expiration":"10m"}}'
+  -d '{{"name":"e2e-incluster-test","expiration":"10m"}}'
 """
         out = _run_in_cluster(script)
         body = _extract_json(out)
-        assert "token" in body, f"No token in response: {body}"
-        assert len(body["token"]) > 50
+        assert "key" in body, f"No API key in response: {body}"
+        assert body["key"].startswith("sk-oai-")
 
     def test_inference_via_internal_gateway(self, maas_token):
         """Inference via the internal Gateway ClusterIP."""

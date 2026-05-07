@@ -3,4 +3,4 @@ name: maas-operators
 description: Prerequisite operators for RHOAI MaaS deployment
 type: application
 version: 0.1.0
-appVersion: "3.3"
+appVersion: "3.4-ea2"

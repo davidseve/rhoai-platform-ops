@@ -8,8 +8,11 @@ spec:
       managementState: {{ .Values.datasciencecluster.components.dashboard.managementState }}
     kserve:
       managementState: {{ .Values.datasciencecluster.components.kserve.managementState }}
+      rawDeploymentServiceConfig: {{ .Values.datasciencecluster.components.kserve.rawDeploymentServiceConfig }}
       modelsAsService:
         managementState: {{ .Values.datasciencecluster.components.modelsAsService.managementState }}
+      wva:
+        managementState: {{ .Values.datasciencecluster.components.kserve.wva.managementState }}
     llamastackoperator:
       managementState: {{ .Values.datasciencecluster.components.llamastackoperator.managementState }}
     aipipelines:
@@ -30,5 +33,7 @@ spec:
       managementState: {{ .Values.datasciencecluster.components.trainingoperator.managementState }}
     trustyai:
       managementState: {{ .Values.datasciencecluster.components.trustyai.managementState }}
+    sparkoperator:
+      managementState: {{ .Values.datasciencecluster.components.sparkoperator.managementState }}
     workbenches:
       managementState: {{ .Values.datasciencecluster.components.workbenches.managementState }}

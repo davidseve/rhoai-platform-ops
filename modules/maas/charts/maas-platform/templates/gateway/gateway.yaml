@@ -5,6 +5,7 @@ metadata:
   name: {{ .Values.gateway.name }}
   namespace: {{ .Values.gateway.namespace }}
   annotations:
+    opendatahub.io/managed: "false"
     security.opendatahub.io/authorino-tls-bootstrap: "true"
     networking.istio.io/service-type: {{ .Values.gateway.serviceType | default "ClusterIP" }}
 spec:
@@ -29,6 +30,7 @@ spec:
             values:
             - {{ .Values.gateway.namespace }}
             - redhat-ods-applications
+            - models-as-a-service
             {{- range .Values.gateway.modelNamespaces }}
             - {{ . }}
             {{- end }}

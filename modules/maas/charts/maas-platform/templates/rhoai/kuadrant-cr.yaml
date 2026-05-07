@@ -1,0 +1,12 @@
+{{- if .Values.kuadrant.enabled }}
+apiVersion: kuadrant.io/v1beta1
+kind: Kuadrant
+metadata:
+  name: kuadrant
+  namespace: {{ .Values.kuadrant.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  observability:
+    enable: {{ .Values.kuadrant.observability | default true }}
+{{- end }}

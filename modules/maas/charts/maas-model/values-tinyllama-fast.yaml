@@ -1,6 +1,6 @@
 global:
   name: tinyllama-fast
-  namespace: maas-models
+  namespace: models-as-a-service
 
 mode: llminferenceservice
 

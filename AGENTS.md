@@ -124,8 +124,8 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 
 - **LLM Serving:** RHOAI LLMInferenceService (KServe + vLLM)
 - **API Gateway:** Kubernetes Gateway API via Kuadrant
-- **Auth:** Kuadrant AuthPolicy with tier-based identity
-- **Rate Limiting:** Kuadrant RateLimitPolicy + TokenRateLimitPolicy
+- **Auth:** Kuadrant AuthPolicy with KubernetesTokenReview (RHOAI 3.4+)
+- **Rate Limiting:** MaaSSubscription + controller-managed TokenRateLimitPolicy (see [ADR-0005](docs/adr/0005-maas-subscription-model.md))
 - **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
 - **Tracing:** Red Hat build of OpenTelemetry + Tempo (see [ADR-0004](docs/adr/0004-tracing-stack.md))
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
