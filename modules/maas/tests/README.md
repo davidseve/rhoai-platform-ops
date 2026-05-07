@@ -33,7 +33,7 @@ Override defaults via environment variables:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MAAS_MODEL_NAME` | `tinyllama-test` | Model name |
-| `MAAS_MODEL_NAMESPACE` | `maas-models` | Model namespace |
+| `MAAS_MODEL_NAMESPACE` | `models-as-a-service` | Model namespace |
 | `MAAS_GATEWAY_NAME` | `maas-default-gateway` | Gateway name |
 | `MAAS_GATEWAY_NAMESPACE` | `openshift-ingress` | Gateway namespace |
 | `MAAS_GATEWAY_CLASS` | `openshift-default` | GatewayClass name |

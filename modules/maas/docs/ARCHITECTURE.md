@@ -118,9 +118,20 @@ The [official reference](https://github.com/opendatahub-io/models-as-a-service) 
 
 The reference doesn't need the PostSync hook because they accept the basic AuthPolicy that `odh-model-controller` creates — it already has the correct audience and RBAC for simple access control without tiers.
 
-## Known Limitations (RHOAI 3.3.1)
+## Known Limitations
+
+### RHOAI 3.3.1
 
 1. **`opendatahub.io/managed: "false"` is ignored** — Cannot prevent `odh-model-controller` from creating `maas-default-gateway-authn`
 2. **`gateway-auth-policy` always overridden** — The platform's full AuthPolicy never enforces; must merge logic into the controller's policy via patch
 3. **PostSync hook required on every sync** — If the controller reconciles between syncs, the patch may be reverted until next ArgoCD sync
-4. **RHOAI 3.4 may fix this** — The `maas-controller` is expected to handle AuthPolicy management properly, eliminating the need for the hook
+
+### RHOAI 3.4 EA2
+
+Items 1-3 above are **resolved**: `opendatahub.io/managed: "false"` works, both hooks disabled.
+
+4. **Token rate limits don't fire** — `maas-controller` TRLP predicates reference `auth.identity.groups_str` (comma-separated string), but the AuthPolicy's KubernetesTokenReview puts groups in `auth.identity.user.groups` (array). Fixed upstream in [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543), expected in GA.
+5. **MaaSModelRef namespace-scoped** — `modelRef` has no namespace field; controller always looks for LLMInferenceService in the same namespace as the MaaSModelRef. Models must be in `models-as-a-service`.
+6. **No request-level rate limiting** — MaaSSubscription only creates TokenRateLimitPolicy, not RateLimitPolicy. Request-level limits require custom RateLimitPolicy (`rateLimiting.enabled: true` in values).
+
+See [ADR-0005](../../../docs/adr/0005-maas-subscription-model.md) for the full decision record.

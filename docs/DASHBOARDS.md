@@ -165,9 +165,9 @@ After generating traffic, metrics appear in dashboards at different speeds:
 | Traces in Tempo | 1-5s | OTLP push, near-instant storage |
 
 If panels remain empty after 2 minutes of traffic, check:
-1. `oc get pods -n maas-models` -- are model pods running?
+1. `oc get pods -n models-as-a-service` -- are model pods running?
 2. `oc get pods -n observability` -- are Grafana, Collector, Tempo running?
-3. `oc get podmonitor -n maas-models` -- does the PodMonitor exist?
+3. `oc get podmonitor -n models-as-a-service` -- does the PodMonitor exist?
 4. `oc get grafanadatasource -n observability` -- are datasources created?
 
 ## Gateway Errors

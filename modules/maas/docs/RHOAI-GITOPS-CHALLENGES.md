@@ -61,16 +61,20 @@ We performed a fresh-cluster audit (April 2026) removing all `ignoreDifferences`
 
 **Key takeaway**: `ServerSideApply` (enabled as a syncOption) handles most operator-mutated fields correctly. The two remaining cases are a CRD version conversion issue (DSCI) and an operator-injected field (Grafana image digest).
 
-## Real GitOps Friction Point: AuthPolicy
+## AuthPolicy Management
 
-The one genuine conflict is the `AuthPolicy` created by `odh-model-controller`. See [ARCHITECTURE.md](ARCHITECTURE.md#authpolicy-conflict-odh-model-controller) for the full explanation. In short:
+### RHOAI 3.3.1: PostSync hook required
 
-- When an `LLMInferenceService` is deployed, the controller automatically creates `maas-default-gateway-authn` AuthPolicy
-- This basic AuthPolicy overrides our governance AuthPolicy (tier resolution, SAR authorization, response metadata)
-- Deleting it doesn't work — the controller recreates it within seconds
-- The `opendatahub.io/managed: "false"` annotation is ignored in RHOAI 3.3.1
+The one genuine conflict was the `AuthPolicy` created by `odh-model-controller`. The `opendatahub.io/managed: "false"` annotation was ignored. A PostSync hook (`cleanup-authn-hook.yaml`) patched the controller's AuthPolicy with governance logic.
 
-**Workaround**: A PostSync hook patches the controller's AuthPolicy with our governance logic after every ArgoCD sync. This is the only place where we truly fight the operator.
+### RHOAI 3.4 EA2: Hooks no longer needed
+
+In 3.4, two key changes eliminate the hook:
+
+1. **`opendatahub.io/managed: "false"` works** — prevents `odh-model-controller` from overriding AuthPolicies
+2. **`maas-controller`** manages AuthPolicies and TokenRateLimitPolicies via MaaSSubscription CRs
+
+Both PostSync hooks (`cleanup-authn-hook`, `kuadrant-readiness-hook`) are disabled via `hooks.*.enabled: false` in values. See [ADR-0005](../../../docs/adr/0005-maas-subscription-model.md).
 
 ## Open Questions
 
@@ -82,4 +86,4 @@ The one genuine conflict is the `AuthPolicy` created by `odh-model-controller`. 
 | RHOAI Version | DSCI/DSC/Dashboard | AuthPolicy conflict |
 | ------------- | ------------------ | ------------------- |
 | 3.3.1         | Works fine via Helm + 1 ignoreDifferences (DSCI /spec) | PostSync hook required |
-| 3.4 (expected)| No changes expected | `maas-controller` may handle AuthPolicy properly |
+| 3.4 EA2       | `rawDeploymentServiceConfig: Headed`, `sparkoperator`, `kserve.wva` added to DSC. `maas-controller` auto-creates Tenant, AuthPolicies, TokenRateLimitPolicies. Models in `models-as-a-service` namespace. MaaSSubscription replaces per-tier rate limits. | **Resolved**: both hooks disabled. `opendatahub.io/managed: "false"` works. Token rate limits don't fire (EA2 bug, [fixed upstream](https://github.com/opendatahub-io/models-as-a-service/pull/543)). |

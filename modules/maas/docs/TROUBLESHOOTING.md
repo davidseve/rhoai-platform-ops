@@ -44,7 +44,7 @@ With ArgoCD, the `authpolicy-patch.yaml` template applies this fix automatically
 The tier ServiceAccount lacks `get` permission on the LLMInferenceService. Verify:
 
 ```bash
-oc get role -n maas-models | grep maas-access
+oc get role -n models-as-a-service | grep maas-access
 # Expected: tinyllama-test-maas-access (with get + post verbs)
 ```
 

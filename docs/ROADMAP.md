@@ -94,8 +94,27 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > - Si la propagación de trace IDs a WASM modules (Limitador) se resuelve ([limitación conocida](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/))
 > - Si OSSM 3 permite meshConfig custom sin conflicto con el cluster-ingress-operator
 > - Cambios en LLMInferenceService que afecten al serving path
+> - **Mover RHCL operator a `openshift-operators`**: actualmente la Subscription y el OperatorGroup están en `kuadrant-system`. El patrón correcto para operadores cluster-wide es instalar la Subscription en `openshift-operators` (aprovechando el OperatorGroup global) y mantener solo el CR Kuadrant en `kuadrant-system`. Cambios necesarios: mover Subscription, eliminar OperatorGroup propio, actualizar `values.yaml`.
 >
 > **Referencias**: [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/), [RHCL Observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html-single/connectivity_link_observability_guide/index)
+>
+> **Status (2026-05-07)**: RHOAI 3.4 EA2 evaluated on branch `feat/enhanced-dashboards`. See [ADR-0005](adr/0005-maas-subscription-model.md).
+>
+> **Evaluated:**
+> - [x] maas-controller AuthPolicy management -- `opendatahub.io/managed: "false"` works in 3.4. `cleanup-authn-hook` disabled.
+> - [x] Authorino TLS bootstrap -- `security.opendatahub.io/authorino-tls-bootstrap: "true"` handles TLS automatically. `kuadrant-readiness-hook` disabled.
+> - [x] MaaSSubscription model -- adopted. Models moved to `models-as-a-service` namespace. Per-tier RLP/TRLP disabled, subscriptions manage rate limits.
+> - [x] PostgreSQL for maas-api -- evaluation DB in `modules/maas/prereqs/maas-db.yaml`, automated in Makefile.
+> - [x] New CRDs: Tenant (auto-created), MaaSModelRef, MaaSSubscription, gateway-default-auth/deny (auto-created by controller).
+> - [x] New DSC components: `rawDeploymentServiceConfig: Headed`, `sparkoperator: Removed`, `kserve.wva: Removed`.
+>
+> **EA2 known bug:** Token rate limits don't fire -- `maas-controller` TRLP predicates use `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview puts groups in `auth.identity.user.groups`. Fixed upstream in [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543), expected in GA.
+>
+> **Not evaluated yet:**
+> - [ ] GatewayClass: tracing nativo
+> - [ ] RHCL operator: mover a `openshift-operators`
+> - [ ] WASM trace ID propagation fixes (Limitador)
+> - [ ] OSSM 3 meshConfig custom sin conflicto con cluster-ingress-operator
 
 ### Phase 3: Benchmarks
 
@@ -150,4 +169,5 @@ Key decisions are documented as ADRs in [docs/adr/](adr/):
 - [ADR-0002: Red Hat product priority](adr/0002-red-hat-priority.md)
 - [ADR-0003: Grafana Operator for dashboards](adr/0003-grafana-operator.md)
 - [ADR-0004: Tracing stack (OTel + Tempo)](adr/0004-tracing-stack.md)
+- [ADR-0005: MaaS Subscription Model (RHOAI 3.4)](adr/0005-maas-subscription-model.md)
 

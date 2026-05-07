@@ -70,7 +70,7 @@ maas_token = response.json()["token"]
 
 ```python
 response = requests.post(
-    f"{GATEWAY}/maas-models/tinyllama-test/v1/chat/completions",
+    f"{GATEWAY}/models-as-a-service/tinyllama-test/v1/chat/completions",
     headers={
         "Authorization": f"Bearer {maas_token}",
         "Content-Type": "application/json",
@@ -98,7 +98,7 @@ MAAS_TOKEN=$(curl -sk -X POST "$GATEWAY/maas-api/v1/tokens" \
   -d '{"expiration":"1h"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 
 # Inference
-curl -sk "$GATEWAY/maas-models/tinyllama-test/v1/chat/completions" \
+curl -sk "$GATEWAY/models-as-a-service/tinyllama-test/v1/chat/completions" \
   -H "Authorization: Bearer $MAAS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"model":"tinyllama-test","messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
@@ -112,7 +112,7 @@ MaaS exposes an OpenAI-compatible API. The internal Gateway URL works as a drop-
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://maas-default-gateway-openshift-default.openshift-ingress.svc.cluster.local/maas-models/tinyllama-test/v1",
+    base_url="https://maas-default-gateway-openshift-default.openshift-ingress.svc.cluster.local/models-as-a-service/tinyllama-test/v1",
     api_key=maas_token,  # MaaS token obtained in Step 1
 )
 
@@ -176,7 +176,7 @@ KServe creates an internal Service for each model. Accessing it directly bypasse
 ```
 
 ```bash
-curl -sk "https://tinyllama-test-kserve-workload-svc.maas-models.svc.cluster.local:8000/v1/chat/completions" \
+curl -sk "https://tinyllama-test-kserve-workload-svc.models-as-a-service.svc.cluster.local:8000/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{"model":"tinyllama-test","messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
 ```
@@ -203,7 +203,7 @@ curl -sk "https://tinyllama-test-kserve-workload-svc.maas-models.svc.cluster.loc
                         |   |         |                     |         |    |
                         |   |    +----v-----+       +-------v------+  |    |
                         |   |    | MaaS API |       | Model Pod    |  |    |
-                        |   |    | /maas-api|       | /maas-models |  |    |
+                        |   |    | /maas-api|       | /models-as-a-service |  |    |
                         |   |    +----------+       +--------------+  |    |
                         |   +------------------------------------------+    |
                         +---------------------------------------------------+

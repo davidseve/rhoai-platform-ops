@@ -103,6 +103,7 @@ All three steps are automated by the `kuadrant-readiness-hook.yaml` PostSync hoo
 | 3.1           | Always created, leaks to all gateways (Istio bug) | **Yes** — without it, all extAuthz calls fail | Workaround applied |
 | 3.2           | Optional creation ([RHOAIENG-39326](https://issues.redhat.com/browse/RHOAIENG-39326)) | Yes — still best practice, prevents future regressions | Supported |
 | 3.3.2         | Fixed scoping expected | Yes — but the 500 bug should not occur even without it | **Pending validation** |
+| 3.4 EA2       | `security.opendatahub.io/authorino-tls-bootstrap: "true"` on Gateway + `opendatahub.io/managed: "false"` | Expected automatic via maas-controller | **Testing** — kuadrant-readiness-hook disabled |
 
 > [!IMPORTANT]
 > RHOAI 3.3.2 should fully resolve the EnvoyFilter scoping issue. We need to validate on our clusters that:
