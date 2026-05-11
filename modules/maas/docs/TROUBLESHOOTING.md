@@ -37,7 +37,7 @@ oc patch authpolicy maas-default-gateway-authn -n openshift-ingress \
   --type=merge -p '{"spec":{"rules":{"authentication":{"kubernetes-user":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc","maas-default-gateway-sa"]}}}}}}'
 ```
 
-With ArgoCD, the `authpolicy-patch.yaml` template applies this fix automatically. If the operator reverts it, ArgoCD's `selfHeal` will re-apply.
+In RHOAI 3.4+, the `opendatahub.io/managed: "false"` annotation prevents the operator from overwriting the AuthPolicy, and ArgoCD's `selfHeal` keeps the desired state.
 
 ## MaaS token returns 403 on inference
 

@@ -34,19 +34,6 @@ llminferenceservice:
 rbac:
   enabled: true
 
-# Generous rate limits (compared to tinyllama-test)
 tiers:
-  free:
-    requestRates:
-      - limit: 100
-        window: 1m
-    tokenRates:
-      - limit: 10000
-        window: 1m
-  premium:
-    requestRates:
-      - limit: 500
-        window: 1m
-    tokenRates:
-      - limit: 100000
-        window: 1m
+  free: {}
+  premium: {}

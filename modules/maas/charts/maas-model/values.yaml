@@ -44,31 +44,8 @@ tracing:
 rbac:
   enabled: true
 
-# Per-tier rate limits: disable when using MaaSSubscription (3.4+) for rate limiting.
-# MaaSSubscription creates its own TokenRateLimitPolicies per subscription.
-rateLimiting:
-  enabled: false
-
-# Tier definitions: key = tier name, used to derive LLMInferenceService annotation,
-# RBAC group bindings, RateLimitPolicy, and TokenRateLimitPolicy.
-# Tier names must match those in maas-platform/values.yaml (the cross-chart contract).
+# Tier names used for LLMInferenceService annotation (alpha.maas.opendatahub.io/tiers).
+# In RHOAI 3.4+, rate limits are managed by maas-controller via MaaSSubscription.
 tiers:
-  free:
-    requestRates:
-      - limit: 10
-        window: 1m
-    tokenRates:
-      - limit: 5000
-        window: 1m
-  premium:
-    requestRates:
-      - limit: 50
-        window: 1m
-    tokenRates:
-      - limit: 50000
-        window: 1m
-
-# Workaround hooks -- disable to test if RHOAI 3.4 maas-controller handles these natively
-hooks:
-  cleanupAuthn:
-    enabled: false
+  free: {}
+  premium: {}

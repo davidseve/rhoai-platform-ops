@@ -283,6 +283,7 @@ class TestGovernanceResources:
         )
         assert out.strip("'"), "No AuthPolicy targeting the Gateway found"
 
+    @pytest.mark.xfail(reason="EA2: TRLP created after MaaSSubscription flow completes")
     def test_tokenratelimitpolicy_exists(self, oc, model_namespace, model_name):
         out = oc(
             f"get tokenratelimitpolicy -n {model_namespace} --no-headers"

@@ -135,7 +135,3 @@ kuadrant:
 leaderWorkerSet:
   enabled: true
 
-# Workaround hooks -- disable to test if RHOAI 3.4 handles these natively
-hooks:
-  kuadrantReadiness:
-    enabled: false
