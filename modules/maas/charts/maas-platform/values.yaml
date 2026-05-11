@@ -41,8 +41,8 @@ datasciencecluster:
       managementState: Removed
 
 dashboard:
-  # RHOAI 3.4+ auto-creates OdhDashboardConfig. Set to true to manage it via Helm.
-  crEnabled: false
+  # The auto-created OdhDashboardConfig lacks MaaS/GenAI flags; manage it via Helm.
+  crEnabled: true
   genAiStudio: true
   modelAsService: true
 
