@@ -166,6 +166,107 @@
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Gateway Traffic",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Error Breakdown by Response Code",
+      "description": "Rate of non-success HTTP responses from the gateway, broken down by specific status codes",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"401\"}[5m]))", "legendFormat": "401 Unauthorized" },
+        { "refId": "B", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"404\"}[5m]))", "legendFormat": "404 Not Found" },
+        { "refId": "C", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"429\"}[5m]))", "legendFormat": "429 Too Many Requests" },
+        { "refId": "D", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"500\"}[5m]))", "legendFormat": "500 Internal Server Error" },
+        { "refId": "E", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"503\"}[5m]))", "legendFormat": "503 Service Unavailable" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "401 Unauthorized" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "429 Too Many Requests" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "500 Internal Server Error" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "503 Service Unavailable" }, "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Gateway Latency (P50 / P90 / P99)",
+      "description": "Request duration percentiles at the gateway level",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m])) by (le))", "legendFormat": "P50" },
+        { "refId": "B", "expr": "histogram_quantile(0.90, sum(rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m])) by (le))", "legendFormat": "P90" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m])) by (le))", "legendFormat": "P99" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "P99" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "P90" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "P50" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Request Breakdown by URL Path",
+      "description": "Request rate grouped by URL path to identify which models/endpoints receive the most traffic",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
+      "targets": [
+        { "refId": "A", "expr": "topk(10, sum by(request_url_path) (rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\"}[5m])))", "legendFormat": "{{request_url_path}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Traffic: Current vs Previous Period",
+      "description": "Compares the current request rate with the same-length period immediately prior",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 29 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\"}[5m]))", "legendFormat": "Current" },
+        { "refId": "B", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\"}[5m] offset $__range))", "legendFormat": "Previous period" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Previous period" }, "properties": [{ "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }, { "id": "color", "value": { "fixedColor": "light-blue", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
     }
   ]
 }

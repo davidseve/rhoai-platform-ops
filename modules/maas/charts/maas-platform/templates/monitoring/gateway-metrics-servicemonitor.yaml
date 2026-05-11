@@ -1,0 +1,20 @@
+{{- if .Values.monitoring.gatewayMetrics.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gateway-api-state-metrics
+  namespace: {{ .Values.monitoring.gatewayMetrics.namespace | default "observability" }}
+  labels:
+    app.kubernetes.io/name: gateway-api-state-metrics
+    app.kubernetes.io/component: metrics
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway-api-state-metrics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    honorLabels: true
+  - port: telemetry
+    interval: 30s
+{{- end }}
