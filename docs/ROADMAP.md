@@ -110,10 +110,12 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **EA2 known bug:** Token rate limits don't fire -- `maas-controller` TRLP predicates use `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview puts groups in `auth.identity.user.groups`. Fixed upstream in [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543), expected in GA.
 >
+> **Evaluated (2026-05-11):**
+> - [x] GatewayClass tracing nativo — **NOT AVAILABLE**. `data-science-gateway-class` uses `openshift.io/gateway-controller/v1` (Istio managed by cluster-ingress-operator). The managed Istio CR cannot be customized with `extensionProviders` for OTel. Would require independent OSSM 3 or upstream controller changes.
+> - [x] RHCL operator: mover a `openshift-operators` — **IMPLEMENTED** on branch `feat/rhcl-openshift-operators`. Subscription moved from `kuadrant-system` to `openshift-operators` (global OperatorGroup). OperatorGroup removed. Kuadrant CR stays in `kuadrant-system`.
+> - [x] WASM trace ID propagation (Limitador) — **NOT AVAILABLE**. Kuadrant 1.3.x: W3C `traceparent` headers NOT propagated to WASM modules. Known upstream limitation, no fix available. See [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/).
+>
 > **Not evaluated yet:**
-> - [ ] GatewayClass: tracing nativo
-> - [ ] RHCL operator: mover a `openshift-operators`
-> - [ ] WASM trace ID propagation fixes (Limitador)
 > - [ ] OSSM 3 meshConfig custom sin conflicto con cluster-ingress-operator
 
 ### Phase 3: Benchmarks

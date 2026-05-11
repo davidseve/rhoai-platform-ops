@@ -159,10 +159,16 @@ cleanup_maas_residual() {
 
   # Operator subscriptions / CSVs (in operator namespaces, not chart-managed)
   log "Deleting operator subscriptions and CSVs..."
-  for ns in redhat-ods-operator kuadrant-system leader-worker-set; do
+  for ns in redhat-ods-operator leader-worker-set; do
     run "$OC delete subscription --all -n '$ns' --ignore-not-found"
     run "$OC delete csv --all -n '$ns' --ignore-not-found"
     run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
+  done
+  # RHCL operator lives in openshift-operators (global OG); only delete its Subscription/CSV
+  log "Deleting RHCL operator from openshift-operators..."
+  run "$OC delete subscription rhcl-operator -n openshift-operators --ignore-not-found"
+  for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep rhcl || true); do
+    run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
   done
 
   # Namespaces

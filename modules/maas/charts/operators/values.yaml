@@ -7,7 +7,7 @@ rhoai:
 
 connectivityLink:
   enabled: true
-  namespace: kuadrant-system
+  namespace: openshift-operators
   channel: stable
   package: rhcl-operator
   source: redhat-operators
