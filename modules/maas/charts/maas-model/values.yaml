@@ -44,12 +44,6 @@ tracing:
 rbac:
   enabled: true
 
-# Tier names used for LLMInferenceService annotation (alpha.maas.opendatahub.io/tiers).
-# In RHOAI 3.4+, rate limits are managed by maas-controller via MaaSSubscription.
-tiers:
-  free: {}
-  premium: {}
-
 # MaaSSubscription: creates MaaSModelRef + per-tier MaaSSubscription CRs.
 # The maas-controller watches these and creates TokenRateLimitPolicy automatically.
 subscription:

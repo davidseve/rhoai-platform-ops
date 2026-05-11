@@ -34,10 +34,6 @@ llminferenceservice:
 rbac:
   enabled: true
 
-tiers:
-  free: {}
-  premium: {}
-
 subscription:
   enabled: true
   tiers:

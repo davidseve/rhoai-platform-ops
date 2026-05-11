@@ -50,7 +50,7 @@ gateway:
   enabled: true
   name: maas-default-gateway
   namespace: openshift-ingress
-  className: openshift-default
+  className: data-science-gateway-class
   # Kubernetes Service type for the Envoy proxy created by the Gateway.
   # ClusterIP (default): traffic enters via the OpenShift Route.
   # LoadBalancer: for clusters with a cloud LB controller (AWS, GCP, etc.).
@@ -84,19 +84,14 @@ limitador:
   # Enables limit_name labels on authorized metrics (not just limited_calls)
   exhaustiveTelemetry: true
 
-# Tier definitions: mapped to tier-to-group-mapping ConfigMap + OpenShift Groups.
-# Tier names (free, premium) are the cross-chart contract with maas-model/values.yaml,
-# which defines per-tier rate limits (RateLimitPolicy / TokenRateLimitPolicy).
+# OpenShift Groups for MaaSSubscription tiers.
+# system:authenticated is built-in; only custom groups need to be created.
 tiers:
   - name: free
-    displayName: "Free"
-    level: 0
     groups:
       - name: system:authenticated
 
   - name: premium
-    displayName: "Premium"
-    level: 1
     groups:
       - name: tier-premium-users
         users: []

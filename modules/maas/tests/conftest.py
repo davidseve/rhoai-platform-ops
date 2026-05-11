@@ -26,7 +26,7 @@ MODEL2_NAME = os.getenv("MAAS_MODEL2_NAME", "tinyllama-fast")
 MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "models-as-a-service")
 GATEWAY_NAME = os.getenv("MAAS_GATEWAY_NAME", "maas-default-gateway")
 GATEWAY_NAMESPACE = os.getenv("MAAS_GATEWAY_NAMESPACE", "openshift-ingress")
-GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "openshift-default")
+GATEWAY_CLASS = os.getenv("MAAS_GATEWAY_CLASS", "data-science-gateway-class")
 
 
 def _run(cmd: str, *, check: bool = True) -> subprocess.CompletedProcess:
