@@ -45,7 +45,6 @@ dashboard:
   crEnabled: true
   genAiStudio: true
   modelAsService: true
-  vLLMDeploymentOnMaaS: true
 
 gateway:
   enabled: true

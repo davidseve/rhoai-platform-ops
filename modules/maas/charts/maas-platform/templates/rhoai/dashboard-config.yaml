@@ -10,5 +10,4 @@ spec:
   dashboardConfig:
     genAiStudio: {{ .Values.dashboard.genAiStudio }}
     modelAsService: {{ .Values.dashboard.modelAsService }}
-    vLLMDeploymentOnMaaS: {{ .Values.dashboard.vLLMDeploymentOnMaaS }}
 {{- end }}
