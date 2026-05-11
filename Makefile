@@ -51,15 +51,11 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 			sleep 5; \
 		done; \
 	done
-	@echo "Ensuring namespace redhat-ods-applications exists..."
+	@echo "=== Phase 1b: PostgreSQL for maas-api ==="
 	@$(OC) get ns redhat-ods-applications &>/dev/null || $(OC) create ns redhat-ods-applications
-	@echo "Ensuring maas-api database secret exists..."
-	@if ! $(OC) get secret maas-db-config -n redhat-ods-applications &>/dev/null; then \
-		echo "  Deploying evaluation PostgreSQL for maas-api..."; \
-		$(OC) apply -n redhat-ods-applications -f modules/maas/prereqs/maas-db.yaml; \
-		echo "  Waiting for PostgreSQL pod..."; \
-		$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s; \
-	fi
+	$(HELM) upgrade --install maas-db modules/maas/charts/maas-db --wait --timeout 5m
+	@echo "Waiting for PostgreSQL pod..."
+	@$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s
 	@echo "=== Phase 2: Platform (operator CRs, DSC, Gateway, monitoring) ==="
 	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform \
 		--set grafana.enabled=$(GRAFANA_ENABLED) --wait --timeout 15m
@@ -103,6 +99,7 @@ undeploy-maas: ## Undeploy MaaS via Helm
 	-$(HELM) uninstall maas-model-fast 2>/dev/null
 	-$(HELM) uninstall maas-model 2>/dev/null
 	-$(HELM) uninstall maas-platform 2>/dev/null
+	-$(HELM) uninstall maas-db 2>/dev/null
 	-$(HELM) uninstall maas-operators 2>/dev/null
 
 # --- ArgoCD (Stable Deployment) ---
@@ -237,6 +234,7 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template obs-grafana modules/observability/charts/grafana
 	$(HELM) template obs-tracing modules/observability/charts/tracing
 	$(HELM) template maas-operators modules/maas/charts/operators
+	$(HELM) template maas-db modules/maas/charts/maas-db
 	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
 	$(HELM) template argocd-apps argocd/apps
@@ -247,6 +245,7 @@ lint: ## Helm lint all charts
 	$(HELM) lint modules/observability/charts/grafana
 	$(HELM) lint modules/observability/charts/tracing
 	$(HELM) lint modules/maas/charts/operators
+	$(HELM) lint modules/maas/charts/maas-db
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model
 	$(HELM) lint argocd/apps

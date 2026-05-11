@@ -1,0 +1,13 @@
+{{- if .Values.subscription.enabled }}
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: {{ .Values.global.name }}
+  namespace: {{ .Values.global.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  modelRef:
+    kind: LLMInferenceService
+    name: {{ .Values.global.name }}
+{{- end }}

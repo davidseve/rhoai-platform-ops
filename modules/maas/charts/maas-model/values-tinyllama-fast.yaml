@@ -37,3 +37,20 @@ rbac:
 tiers:
   free: {}
   premium: {}
+
+subscription:
+  enabled: true
+  tiers:
+    free:
+      groups:
+        - name: system:authenticated
+      tokenRateLimits:
+        - limit: 10000
+          window: "1m"
+    premium:
+      priority: 10
+      groups:
+        - name: tier-premium-users
+      tokenRateLimits:
+        - limit: 100000
+          window: "1m"

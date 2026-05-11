@@ -49,3 +49,22 @@ rbac:
 tiers:
   free: {}
   premium: {}
+
+# MaaSSubscription: creates MaaSModelRef + per-tier MaaSSubscription CRs.
+# The maas-controller watches these and creates TokenRateLimitPolicy automatically.
+subscription:
+  enabled: true
+  tiers:
+    free:
+      groups:
+        - name: system:authenticated
+      tokenRateLimits:
+        - limit: 5000
+          window: "1m"
+    premium:
+      priority: 10
+      groups:
+        - name: tier-premium-users
+      tokenRateLimits:
+        - limit: 50000
+          window: "1m"

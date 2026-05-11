@@ -138,6 +138,8 @@ class TestTokenRateLimiting:
     predicates never match, so rate limits don't fire.
     """
 
+    MAX_SEQUENTIAL = 12
+
     @pytest.mark.xfail(
         reason="EA2: AuthPolicy groups_str not populated by KubernetesTokenReview",
         strict=False,
@@ -156,7 +158,7 @@ class TestTokenRateLimiting:
             "max_tokens": 500,
         }
         statuses = []
-        for _ in range(TOKEN_RATE_BURST):
+        for _ in range(self.MAX_SEQUENTIAL):
             code = _fire_one(url, headers, payload)
             statuses.append(code)
             if code == 429:
