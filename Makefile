@@ -130,19 +130,24 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 
 WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
+# parent + 8 child apps (maas-db, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing)
+MIN_APPS ?= 9
+APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
-	@echo "Waiting for ArgoCD applications to sync (timeout: $(WAIT_TIMEOUT)m)..."
+	@echo "Waiting for ArgoCD applications to sync (timeout: $(WAIT_TIMEOUT)m, expect >= $(MIN_APPS) apps)..."
 	@elapsed=0; \
 	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
-		total=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | wc -l); \
-		healthy=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | grep -c "Synced.*Healthy" || true); \
-		echo "  [$$((elapsed / 60))m$${elapsed##*[0-9]}] $$healthy/$$total apps Synced+Healthy"; \
-		if [ "$$total" -gt 0 ] && [ "$$healthy" -eq "$$total" ]; then \
+		total=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | $(APP_FILTER) | wc -l); \
+		healthy=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | $(APP_FILTER) | grep -c "Synced.*Healthy" || true); \
+		if [ "$$total" -ge $(MIN_APPS) ] && [ "$$healthy" -eq "$$total" ]; then \
+			echo "  [$$((elapsed / 60))m] $$healthy/$$total apps Synced+Healthy"; \
 			echo "All ArgoCD applications are Synced+Healthy."; \
 			break; \
 		fi; \
+		not_healthy=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | $(APP_FILTER) | grep -v "Synced.*Healthy" | awk '{print $$1"("$$2"/"$$3")"}' | tr '\n' ' '); \
+		echo "  [$$((elapsed / 60))m] $$healthy/$$total apps Synced+Healthy  pending: $$not_healthy"; \
 		sleep $(WAIT_INTERVAL); \
 		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
 	done; \
@@ -155,7 +160,7 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 	@elapsed=0; \
 	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
 		not_ready=$$($(OC) get pods -n models-as-a-service --no-headers 2>/dev/null | grep -cv "Running" || true); \
-		if [ "$$not_ready" -eq 0 ]; then \
+		if [ "$$not_ready" -eq 0 ] && [ "$$($(OC) get pods -n models-as-a-service --no-headers 2>/dev/null | wc -l)" -gt 0 ]; then \
 			$(OC) get pods -n models-as-a-service; \
 			echo "All model pods are Running."; \
 			break; \
@@ -167,6 +172,26 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
 		echo "ERROR: Timed out waiting for model pods."; \
 		$(OC) get pods -n models-as-a-service; \
+		exit 1; \
+	fi
+	@echo "Waiting for LLMInferenceService models to be Ready..."
+	@elapsed=0; \
+	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
+		total_models=$$($(OC) get llminferenceservice -n models-as-a-service --no-headers 2>/dev/null | wc -l); \
+		ready_models=$$($(OC) get llminferenceservice -n models-as-a-service -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2>/dev/null | grep -c "True" || true); \
+		if [ "$$total_models" -gt 0 ] && [ "$$ready_models" -eq "$$total_models" ]; then \
+			$(OC) get llminferenceservice -n models-as-a-service; \
+			echo "All LLMInferenceService models are Ready."; \
+			break; \
+		fi; \
+		not_ready_names=$$($(OC) get llminferenceservice -n models-as-a-service -o jsonpath='{range .items[*]}{.metadata.name}={.status.conditions[?(@.type=="Ready")].status} {end}' 2>/dev/null || true); \
+		echo "  [$$((elapsed / 60))m] $$ready_models/$$total_models models Ready  $$not_ready_names"; \
+		sleep $(WAIT_INTERVAL); \
+		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
+	done; \
+	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
+		echo "ERROR: Timed out waiting for LLMInferenceService readiness."; \
+		$(OC) get llminferenceservice -n models-as-a-service -o wide; \
 		exit 1; \
 	fi
 

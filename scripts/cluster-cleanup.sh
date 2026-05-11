@@ -99,7 +99,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in maas-model-fast maas-model maas-platform maas-operators obs-tracing obs-grafana obs-operators; do
+  for release in maas-model-fast maas-model maas-platform maas-db maas-operators obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -137,7 +137,7 @@ cleanup_maas_residual() {
   # DataScienceCluster / DSCInitialization can block namespace deletion
   log "Deleting DataScienceCluster and DSCInitialization..."
   run "$OC delete datasciencecluster --all --timeout=120s --ignore-not-found"
-  run "$OC delete dscinitialization --all --timeout=120s --ignore-not-found"
+  run "$OC delete dscinitialization --all --timeout=30s --ignore-not-found"
 
   # Kuadrant CR must be deleted before its operator namespace
   log "Deleting Kuadrant CR..."
@@ -149,7 +149,6 @@ cleanup_maas_residual() {
 
   # GatewayClass left behind (cluster-scoped, not always pruned)
   log "Deleting GatewayClasses..."
-  run "$OC delete gatewayclass openshift-default --ignore-not-found"
   run "$OC delete gatewayclass kuadrant-multi-cluster-gateway-instance-per-cluster --ignore-not-found"
 
   # Gateway tier namespaces (created dynamically by AuthPolicy, not in chart)
@@ -173,16 +172,15 @@ cleanup_maas_residual() {
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
 
-  # Wait for namespace termination
+  # Wait for namespace termination (parallel)
   for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
             redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
-    wait_ns_gone "$ns" 120
+    wait_ns_gone "$ns" 120 &
   done
-
-  # Dynamic tier namespaces
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
-    wait_ns_gone "$ns" 60
+    wait_ns_gone "$ns" 60 &
   done
+  wait
 }
 
 # ============================================================
@@ -217,8 +215,9 @@ cleanup_observability_residual() {
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
   for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
-    wait_ns_gone "$ns" 90
+    wait_ns_gone "$ns" 90 &
   done
+  wait
 }
 
 # ============================================================
@@ -262,7 +261,7 @@ cleanup_argocd() {
 
   if ! command -v "$ARGOCD" &>/dev/null; then
     warn "argocd CLI not found -- falling back to oc delete (no cascade)"
-    for app in maas-model-fast maas-model maas-platform maas-operators \
+    for app in maas-model-fast maas-model maas-platform maas-db maas-operators \
                observability-tracing observability-grafana observability-operators \
                rhoai-platform-ops; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
@@ -281,7 +280,7 @@ cleanup_argocd() {
 
   # 2. Delete child apps with cascade
   local apps=(
-    maas-model-fast maas-model maas-platform maas-operators
+    maas-model-fast maas-model maas-platform maas-db maas-operators
     observability-tracing observability-grafana observability-operators
   )
   for app in "${apps[@]}"; do
