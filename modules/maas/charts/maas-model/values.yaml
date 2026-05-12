@@ -58,7 +58,7 @@ subscription:
   tiers:
     free:
       groups:
-        - name: system:authenticated
+        - name: cluster-admins
       tokenRateLimits:
         - limit: 5000
           window: "1m"

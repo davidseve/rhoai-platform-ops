@@ -27,7 +27,15 @@ roleRef:
   kind: Role
   name: {{ .Values.global.name }}-view-role
 subjects:
+{{- $groups := list }}
+{{- range $tierName, $tier := .Values.subscription.tiers }}
+{{- range $tier.groups }}
+{{- if not (has .name $groups) }}
 - apiGroup: rbac.authorization.k8s.io
   kind: Group
-  name: system:authenticated
+  name: {{ .name }}
+{{- $groups = append $groups .name }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
