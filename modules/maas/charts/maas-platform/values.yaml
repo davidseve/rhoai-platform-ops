@@ -45,6 +45,7 @@ dashboard:
   crEnabled: true
   genAiStudio: true
   modelAsService: true
+  observabilityDashboard: false  # TP: requires Cluster Observability Operator (COO)
 
 gateway:
   enabled: true
@@ -85,11 +86,11 @@ limitador:
   exhaustiveTelemetry: true
 
 # OpenShift Groups for MaaSSubscription tiers.
-# system:authenticated is built-in; only custom groups need to be created.
+# Groups listed here are created as OpenShift Group CRs (except built-in ones).
 tiers:
   - name: free
     groups:
-      - name: system:authenticated
+      - name: cluster-admins
 
   - name: premium
     groups:

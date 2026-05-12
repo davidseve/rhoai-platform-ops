@@ -2,8 +2,8 @@
 apiVersion: extensions.kuadrant.io/v1alpha1
 kind: TelemetryPolicy
 metadata:
-  name: user-group
-  namespace: openshift-ingress
+  name: maas-telemetry
+  namespace: {{ .Values.gateway.namespace }}
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
@@ -16,4 +16,5 @@ spec:
       labels:
         model: responseBodyJSON("/model")
         user: auth.identity.userid
+        subscription: auth.identity.selected_subscription
 {{- end }}

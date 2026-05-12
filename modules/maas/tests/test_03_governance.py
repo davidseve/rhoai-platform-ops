@@ -300,7 +300,7 @@ class TestGovernanceResources:
         if not has_telemetrypolicy:
             pytest.skip("TelemetryPolicy not deployed")
         out = oc(f"get telemetrypolicy -n {gateway_namespace} --no-headers")
-        assert "user-group" in out
+        assert "maas-telemetry" in out
 
     def test_tier_groups_exist(self, oc):
         out = oc("get groups --no-headers")
