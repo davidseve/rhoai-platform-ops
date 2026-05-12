@@ -45,7 +45,7 @@ authPolicy:
   enabled: true
   subjects:
     groups:
-      - name: cluster-admins
+      - name: maas-test-users
       - name: tier-premium-users
 
 subscription:
@@ -53,7 +53,7 @@ subscription:
   tiers:
     free:
       groups:
-        - name: cluster-admins
+        - name: maas-test-users
       tokenRateLimits:
         - limit: 10000
           window: "1m"

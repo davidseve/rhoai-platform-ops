@@ -183,6 +183,43 @@ class TestExpiredToken:
         )
 
 
+class TestAPIKeyInference:
+    """Verify inference works with API key authentication (sk-oai-* token)."""
+
+    def test_inference_with_api_key(
+        self, maas_url, maas_api_key, inference_path, chat_payload
+    ):
+        resp = requests.post(
+            f"{maas_url}{inference_path}",
+            headers={
+                "Authorization": f"Bearer {maas_api_key['key']}",
+                "Content-Type": "application/json",
+            },
+            json=chat_payload,
+            verify=False,
+            timeout=60,
+        )
+        assert resp.status_code == 200
+
+    def test_api_key_response_has_choices(
+        self, maas_url, maas_api_key, inference_path, chat_payload
+    ):
+        resp = requests.post(
+            f"{maas_url}{inference_path}",
+            headers={
+                "Authorization": f"Bearer {maas_api_key['key']}",
+                "Content-Type": "application/json",
+            },
+            json=chat_payload,
+            verify=False,
+            timeout=60,
+        )
+        body = resp.json()
+        assert "choices" in body
+        assert len(body["choices"]) > 0
+        assert body["choices"][0]["message"]["content"]
+
+
 class TestModel2ChatCompletions:
     """Verify inference works on the second model (tinyllama-fast)."""
 

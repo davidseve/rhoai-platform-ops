@@ -87,10 +87,11 @@ limitador:
 
 # OpenShift Groups for MaaSSubscription tiers.
 # Groups listed here are created as OpenShift Group CRs (except built-in ones).
+# maas-test-users: dedicated group for E2E tests (conftest.py auto-adds the logged-in user)
 tiers:
   - name: free
     groups:
-      - name: cluster-admins
+      - name: maas-test-users
 
   - name: premium
     groups:

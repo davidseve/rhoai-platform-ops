@@ -59,7 +59,7 @@ authPolicy:
   enabled: true
   subjects:
     groups:
-      - name: cluster-admins
+      - name: maas-test-users
       - name: tier-premium-users
 
 # MaaSSubscription: creates MaaSModelRef + per-tier MaaSSubscription CRs.
@@ -69,7 +69,7 @@ subscription:
   tiers:
     free:
       groups:
-        - name: cluster-admins
+        - name: maas-test-users
       tokenRateLimits:
         - limit: 5000
           window: "1m"

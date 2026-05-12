@@ -95,6 +95,14 @@ def gateway_internal_url(gateway_internal_host):
 # Authentication tokens
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(scope="session", autouse=True)
+def test_group_membership(oc):
+    """Add current user to maas-test-users for MaaSSubscription matching."""
+    user = oc("whoami")
+    _run(f"oc adm groups add-users maas-test-users {user}", check=False)
+    return user
+
+
 @pytest.fixture(scope="session")
 def oc_token(oc):
     """Current ``oc`` session token (admin)."""
@@ -103,17 +111,16 @@ def oc_token(oc):
 
 @pytest.fixture(scope="session")
 def maas_token(oc_token):
-    """Auth token for inference requests.
+    """OCP token for inference requests.
 
-    RHOAI 3.4 EA2 uses KubernetesTokenReview in the gateway AuthPolicy,
-    so the oc session token works directly for inference.
-    MaaSAuthPolicy (API key auth) deferred to GA — see ADR-0006.
+    MaaSAuthPolicy supports both OCP tokens and API keys.
+    This fixture validates the OCP token auth path.
     """
     return oc_token
 
 
 @pytest.fixture(scope="session")
-def maas_api_key(maas_url, oc_token):
+def maas_api_key(maas_url, oc_token, test_group_membership):
     """Generate a MaaS API key via the maas-api service (cached per session)."""
     resp = requests.post(
         f"{maas_url}/maas-api/v1/api-keys",
