@@ -63,7 +63,7 @@ def test_grafana_dashboard_crs_exist(oc_json):
     expected = [
         "maas-platform-overview",
         "maas-vllm-metrics",
-        "maas-tier-usage",
+        "maas-subscription-usage",
     ]
     for name in expected:
         assert name in names, (
