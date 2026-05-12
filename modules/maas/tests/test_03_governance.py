@@ -296,6 +296,16 @@ class TestGovernanceResources:
             f"in namespace {model_namespace}. Got: {out}"
         )
 
+    def test_maasauthpolicy_exists(self, oc, model_namespace, model_name):
+        """MaaSAuthPolicy exists for each model, enabling API key auth."""
+        out = oc(
+            f"get maasauthpolicy {model_name} -n {model_namespace} "
+            f"-o jsonpath='{{.status.phase}}'"
+        )
+        assert out.strip("'") in ("Active", "Pending"), (
+            f"MaaSAuthPolicy '{model_name}' not found or not active. Got: {out}"
+        )
+
     def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
         if not has_telemetrypolicy:
             pytest.skip("TelemetryPolicy not deployed")

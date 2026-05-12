@@ -41,6 +41,13 @@ modelRef:
 rbac:
   enabled: true
 
+authPolicy:
+  enabled: true
+  subjects:
+    groups:
+      - name: cluster-admins
+      - name: tier-premium-users
+
 subscription:
   enabled: true
   tiers:

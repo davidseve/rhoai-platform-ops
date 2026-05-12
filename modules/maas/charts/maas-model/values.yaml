@@ -51,6 +51,17 @@ modelRef:
 rbac:
   enabled: true
 
+# MaaSAuthPolicy: enables API key authentication for this model.
+# Creates Kuadrant AuthPolicies that validate API keys via MaaS API callback.
+# Required for: API key management UI, subscription-scoped rate limits,
+# subscription label in metrics, X-MaaS-Subscription header injection.
+authPolicy:
+  enabled: true
+  subjects:
+    groups:
+      - name: cluster-admins
+      - name: tier-premium-users
+
 # MaaSSubscription: creates MaaSModelRef + per-tier MaaSSubscription CRs.
 # The maas-controller watches these and creates TokenRateLimitPolicy automatically.
 subscription:
