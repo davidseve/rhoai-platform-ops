@@ -105,8 +105,9 @@ def oc_token(oc):
 def maas_token(oc_token):
     """Auth token for inference requests.
 
-    RHOAI 3.4 uses KubernetesTokenReview in the gateway AuthPolicy,
+    RHOAI 3.4 EA2 uses KubernetesTokenReview in the gateway AuthPolicy,
     so the oc session token works directly for inference.
+    MaaSAuthPolicy (API key auth) deferred to GA — see ADR-0006.
     """
     return oc_token
 

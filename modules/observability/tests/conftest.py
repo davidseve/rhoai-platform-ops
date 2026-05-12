@@ -94,13 +94,13 @@ def collector_namespace():
 def tracing_enabled(oc):
     """Auto-detect if model pods have OTEL tracing configured. Skip if not."""
     try:
-        env_value = oc(
+        args = oc(
             f"get pods -n {MODEL_NAMESPACE} "
-            "-l app.kubernetes.io/component=predictor "
-            "-o jsonpath='{.items[0].spec.containers[0].env[?(@.name==\"OTEL_TRACES_EXPORTER\")].value}'"
+            "-l app.kubernetes.io/component=llminferenceservice-workload "
+            "-o jsonpath='{.items[0].spec.containers[0].args}'"
         ).strip("'")
-        if env_value != "otlp":
-            pytest.skip("Tracing not enabled on model pods (OTEL_TRACES_EXPORTER != otlp)")
+        if "--otlp-traces-endpoint" not in args:
+            pytest.skip("Tracing not configured on model pods (no --otlp-traces-endpoint)")
     except Exception:
         pytest.skip("Could not detect tracing status on model pods")
 
@@ -117,7 +117,7 @@ def maas_url(oc):
 
 @pytest.fixture(scope="session")
 def maas_token(oc):
-    """Auth token for inference (oc session token)."""
+    """Auth token for inference (oc session token via KubernetesTokenReview)."""
     return oc("whoami -t")
 
 
