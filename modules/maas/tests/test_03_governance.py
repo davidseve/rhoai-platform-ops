@@ -140,10 +140,11 @@ class TestTokenRateLimiting:
 
     MAX_SEQUENTIAL = 12
 
-    @pytest.mark.skip(
-        reason="EA2: AuthPolicy groups_str not populated by KubernetesTokenReview — "
-        "sends 12 sequential requests to CPU vLLM (~2min) and never gets 429. "
-        "Re-enable with xfail or remove skip when GA fixes groups_str."
+    @pytest.mark.xfail(
+        reason="EA2: AuthPolicy groups_str may not be populated. "
+        "MaaSAuthPolicy should create per-model AuthPolicy that populates it. "
+        "If this xpasses, remove the marker.",
+        strict=False,
     )
     def test_token_rate_limit_triggers_429(
         self, maas_url, maas_token, inference_path
@@ -175,8 +176,9 @@ class TestTokenRateLimiting:
             f"other={len(statuses) - got_200 - got_429}"
         )
 
-    @pytest.mark.skip(
-        reason="EA2: AuthPolicy groups_str not populated by KubernetesTokenReview"
+    @pytest.mark.xfail(
+        reason="EA2: AuthPolicy groups_str may not be populated.",
+        strict=False,
     )
     def test_after_token_rate_limit_still_blocked(
         self, maas_url, maas_token, inference_path, chat_payload
