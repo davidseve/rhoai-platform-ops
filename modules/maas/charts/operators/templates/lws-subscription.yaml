@@ -23,4 +23,5 @@ spec:
   channel: {{ .Values.leaderWorkerSet.channel }}
   source: {{ .Values.leaderWorkerSet.source }}
   sourceNamespace: {{ .Values.leaderWorkerSet.sourceNamespace }}
+  installPlanApproval: Automatic
 {{- end }}
