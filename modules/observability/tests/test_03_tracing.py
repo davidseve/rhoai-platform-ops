@@ -62,12 +62,13 @@ def test_tempo_datasource_exists(oc_json):
 
 
 def _query_tempo(oc, params="limit=5"):
-    """Query Tempo search API via exec into the Tempo pod."""
+    """Query Tempo search API via exec into the Grafana pod (has curl)."""
     return oc(
         f"exec -n {OBSERVABILITY_NS} "
-        "$(oc get pod -n observability -l app.kubernetes.io/managed-by=tempo-operator "
-        "-o jsonpath='{.items[0].metadata.name}') -- "
-        f"wget -qO- 'http://localhost:3200/api/search?{params}' 2>/dev/null || true"
+        "$(oc get pod -n observability -l app=grafana "
+        "-o jsonpath='{.items[0].metadata.name}') "
+        "-c grafana -- "
+        f"curl -s 'http://tempo-tempo.{OBSERVABILITY_NS}.svc:3200/api/search?{params}'"
     )
 
 
@@ -86,6 +87,7 @@ def test_traces_visible_after_inference(
             "Content-Type": "application/json",
         },
         json={
+            "model": "tinyllama-test",
             "messages": [{"role": "user", "content": "Hi"}],
             "max_tokens": 10,
         },
@@ -130,6 +132,7 @@ def test_trace_spans_cover_full_stack(
                     "Content-Type": "application/json",
                 },
                 json={
+                    "model": "tinyllama-test",
                     "messages": [{"role": "user", "content": "Hi"}],
                     "max_tokens": 10,
                 },
@@ -146,9 +149,10 @@ def test_trace_spans_cover_full_stack(
         trace_id = traces[0].get("traceID", "")
         trace_detail = oc(
             f"exec -n {OBSERVABILITY_NS} "
-            "$(oc get pod -n observability -l app.kubernetes.io/managed-by=tempo-operator "
-            "-o jsonpath='{.items[0].metadata.name}') -- "
-            f"wget -qO- 'http://localhost:3200/api/traces/{trace_id}' 2>/dev/null || true"
+            "$(oc get pod -n observability -l app=grafana "
+            "-o jsonpath='{.items[0].metadata.name}') "
+            "-c grafana -- "
+            f"curl -s 'http://tempo-tempo.{OBSERVABILITY_NS}.svc:3200/api/traces/{trace_id}'"
         )
         service_names = set()
         detail_data = json.loads(trace_detail)
