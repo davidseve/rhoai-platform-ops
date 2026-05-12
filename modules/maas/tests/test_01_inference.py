@@ -1,5 +1,6 @@
 """External Route: token generation, chat completions, text completions."""
 
+import pytest
 import requests
 import urllib3
 
@@ -184,8 +185,16 @@ class TestExpiredToken:
 
 
 class TestAPIKeyInference:
-    """Verify inference works with API key authentication (sk-oai-* token)."""
+    """Verify inference works with API key authentication (sk-oai-* token).
 
+    Requires MaaSAuthPolicy enabled (authPolicy.enabled: true).
+    EA2: Authorino plain auth bug breaks inference -- xfail until GA.
+    """
+
+    @pytest.mark.xfail(
+        reason="EA2: MaaSAuthPolicy plain auth bug -- inference returns 403",
+        strict=False,
+    )
     def test_inference_with_api_key(
         self, maas_url, maas_api_key, inference_path, chat_payload
     ):
@@ -201,6 +210,10 @@ class TestAPIKeyInference:
         )
         assert resp.status_code == 200
 
+    @pytest.mark.xfail(
+        reason="EA2: MaaSAuthPolicy plain auth bug -- inference returns 403",
+        strict=False,
+    )
     def test_api_key_response_has_choices(
         self, maas_url, maas_api_key, inference_path, chat_payload
     ):

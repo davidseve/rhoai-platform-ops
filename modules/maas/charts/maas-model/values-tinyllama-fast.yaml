@@ -42,7 +42,7 @@ rbac:
   enabled: true
 
 authPolicy:
-  enabled: true
+  enabled: false  # EA2: Authorino plain auth bug breaks inference. Enable with GA.
   subjects:
     groups:
       - name: maas-test-users

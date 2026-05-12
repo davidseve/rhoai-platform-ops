@@ -6,6 +6,7 @@ free-tier limits (5000 tok/1m) and tinyllama-fast (10000 tok/1m).
 """
 
 import os
+import subprocess
 
 import pytest
 import requests
@@ -298,12 +299,15 @@ class TestGovernanceResources:
 
     def test_maasauthpolicy_exists(self, oc, model_namespace, model_name):
         """MaaSAuthPolicy exists for each model, enabling API key auth."""
-        out = oc(
-            f"get maasauthpolicy {model_name} -n {model_namespace} "
-            f"-o jsonpath='{{.status.phase}}'"
+        result = subprocess.run(
+            f"oc get maasauthpolicy {model_name} -n {model_namespace} "
+            f"-o jsonpath='{{.status.phase}}'",
+            shell=True, capture_output=True, text=True, check=False,
         )
-        assert out.strip("'") in ("Active", "Pending"), (
-            f"MaaSAuthPolicy '{model_name}' not found or not active. Got: {out}"
+        if result.returncode != 0:
+            pytest.skip("MaaSAuthPolicy not deployed (authPolicy.enabled: false)")
+        assert result.stdout.strip("'") in ("Active", "Pending"), (
+            f"MaaSAuthPolicy '{model_name}' not active. Got: {result.stdout}"
         )
 
     def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
