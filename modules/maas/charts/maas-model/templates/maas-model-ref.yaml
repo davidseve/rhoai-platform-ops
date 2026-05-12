@@ -6,6 +6,20 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    {{- with .Values.modelRef }}
+    {{- if .displayName }}
+    openshift.io/display-name: {{ .displayName | quote }}
+    {{- end }}
+    {{- if .description }}
+    openshift.io/description: {{ .description | quote }}
+    {{- end }}
+    {{- if .useCase }}
+    opendatahub.io/genai-use-case: {{ .useCase | quote }}
+    {{- end }}
+    {{- if .contextWindow }}
+    opendatahub.io/context-window: {{ .contextWindow | quote }}
+    {{- end }}
+    {{- end }}
 spec:
   modelRef:
     kind: LLMInferenceService

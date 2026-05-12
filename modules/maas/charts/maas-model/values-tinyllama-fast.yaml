@@ -31,6 +31,13 @@ llminferenceservice:
     name: maas-default-gateway
     namespace: openshift-ingress
 
+# Annotations for MaaSModelRef (returned in /v1/models API response)
+modelRef:
+  displayName: "TinyLlama 1.1B Fast"
+  description: "CPU-only TinyLlama with higher rate limits for testing"
+  useCase: "chat"
+  contextWindow: "2048"
+
 rbac:
   enabled: true
 

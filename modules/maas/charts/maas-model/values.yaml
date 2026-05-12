@@ -41,6 +41,13 @@ tracing:
   otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
   serviceName: ""   # defaults to model servedName
 
+# Annotations for MaaSModelRef (returned in /v1/models API response)
+modelRef:
+  displayName: "TinyLlama 1.1B Test"
+  description: "CPU-only TinyLlama for development and testing"
+  useCase: "chat"
+  contextWindow: "2048"
+
 rbac:
   enabled: true
 
