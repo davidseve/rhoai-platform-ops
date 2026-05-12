@@ -42,4 +42,13 @@ spec:
           annotations:
             summary: "Limitador datastore partitioned"
             description: "Limitador has lost connectivity to its backing datastore."
+
+        - alert: MaaSHighWASMErrorRate
+          expr: rate(kuadrant_errors[5m]) > {{ .Values.alerting.wasmErrorRateThreshold | default 0.01 }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High WASM filter error rate"
+            description: "Kuadrant WASM filter is generating errors at {{ "{{ $value | humanize }}" }}/s. Check gateway pod logs for CEL evaluation failures."
 {{- end }}

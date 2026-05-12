@@ -79,7 +79,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 
 - Persistent Tempo storage (switch from memory to PV/S3 backend)
 - Trace-based SLO alerts (PrometheusRule from spanmetrics)
-- **Kuadrant WASM auth timeout (blocker for high concurrency)**: timeout hardcoded a 200ms, causa 500 errors con >=4 requests paralelos
+- **Kuadrant WASM auth timeout (blocker for high concurrency)**: timeout hardcoded a 200ms, causa 500 errors con >=4 requests paralelos. **Nota (2026-05-12)**: el ratio actual de errores es ~0.09/s (~333/hour) pero NO son timeouts. Son errores de evaluación CEL causados por el bug `groups_str`: cada request evalúa ~6 descriptores TRLP que referencia `auth.identity.groups_str` (Null), generando `CelError::Resolve { UnexpectedType { got: "Null", want: "Arc<String>" } }`. Las requests NO fallan (200/201), los errores son internos al pipeline de rate limiting. Se resolverán con GA + PR #543 (fix de `groups_str`)
 - **Gateway production hardening**: tune Authorino limits/HPA, connection pooling, client retry guidance
 - **Cluster Observability Operator (COO)**: instalar cuando el observability stack de RHOAI pase a GA (estimado 3.5+). COO habilita dashboards nativos en la consola OpenShift (PersesDashboard), UIPlugins de tracing/troubleshooting, y detección de incidentes (Korrel8r). Prerequisito para `observabilityDashboard: true` en OdhDashboardConfig. No conflicta con Grafana/OTel/Tempo actuales. Ya preparado en `values.yaml` con `observabilityDashboard: false`.
 
