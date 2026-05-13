@@ -26,9 +26,9 @@ spec:
           args:
             - |
               {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
-              BACKEND_KWARGS="{\"verify\": {{ .Values.benchmark.verifySSL }}, \"api_key\": \"${AUTH_TOKEN}\"}"
+              BACKEND_KWARGS="{\"api_key\": \"${AUTH_TOKEN}\"}"
               {{- else }}
-              BACKEND_KWARGS="{\"verify\": {{ .Values.benchmark.verifySSL }}}"
+              BACKEND_KWARGS="{}"
               {{- end }}
               exec guidellm benchmark \
                 --target {{ .Values.benchmark.target | quote }} \
@@ -50,8 +50,10 @@ spec:
                 {{ . | quote }} \
                 {{- end }}
                 --disable-console
-          {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
           env:
+            - name: SSL_CERT_FILE
+              value: /etc/pki/tls/certs/ca-bundle.crt
+            {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
             - name: AUTH_TOKEN
               {{- if .Values.benchmark.authSecret }}
               valueFrom:
@@ -61,14 +63,21 @@ spec:
               {{- else }}
               value: {{ .Values.benchmark.authToken | quote }}
               {{- end }}
-          {{- end }}
+            {{- end }}
           resources:
             {{- toYaml .Values.job.resources | nindent 12 }}
           volumeMounts:
             - name: results
               mountPath: /results
+            - name: ca-bundle
+              mountPath: /etc/pki/tls/certs/ca-bundle.crt
+              subPath: ca-bundle.crt
+              readOnly: true
       volumes:
         - name: results
           persistentVolumeClaim:
             claimName: {{ include "benchmarks.fullname" . }}-results
+        - name: ca-bundle
+          configMap:
+            name: {{ include "benchmarks.fullname" . }}-ca-bundle
 {{- end }}

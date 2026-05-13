@@ -48,8 +48,8 @@ benchmark:
   outputs: "json,csv"
   warmup: "0.1"
   cooldown: "0.1"
-  # Skip TLS verification (required for self-signed certs on OpenShift routes)
-  verifySSL: false
+  # TLS verification uses the cluster CA bundle (injected via ConfigMap)
+  verifySSL: true
   # Auth: use authSecret (Secret name with key "token") or authToken (inline, dev only)
   authSecret: ""
   authToken: ""

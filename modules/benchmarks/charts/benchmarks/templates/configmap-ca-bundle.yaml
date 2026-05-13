@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "benchmarks.fullname" . }}-ca-bundle
+  namespace: {{ include "benchmarks.namespace" . }}
+  labels:
+    {{- include "benchmarks.labels" . | nindent 4 }}
+    config.openshift.io/inject-trusted-cabundle: "true"
+  annotations:
+    config.openshift.io/inject-trusted-cabundle: "true"

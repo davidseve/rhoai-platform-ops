@@ -86,10 +86,11 @@ class TestHelmTemplate:
         script = container["args"][0]
         assert "api_key" in script
 
-    def test_no_auth_skips_env(self):
+    def test_no_auth_has_no_api_key(self):
         job = _get_job()
         container = job["spec"]["template"]["spec"]["containers"][0]
-        assert container.get("env") is None
+        env_names = [e["name"] for e in container.get("env", [])]
+        assert "AUTH_TOKEN" not in env_names
         script = container["args"][0]
         assert "api_key" not in script
 
@@ -106,9 +107,20 @@ class TestHelmTemplate:
         assert "--processor" in script
         assert "TinyLlama" in script
 
-    def test_backend_kwargs_verify_false(self):
-        script = _get_job_script()
-        assert "verify" in script and "false" in script
+    def test_ca_bundle_mounted(self):
+        job = _get_job()
+        container = job["spec"]["template"]["spec"]["containers"][0]
+        mount_paths = [m["mountPath"] for m in container["volumeMounts"]]
+        assert "/etc/pki/tls/certs/ca-bundle.crt" in mount_paths
+        env_names = [e["name"] for e in container["env"]]
+        assert "SSL_CERT_FILE" in env_names
+
+    def test_ca_bundle_configmap_has_inject_label(self):
+        output = _helm_template()
+        docs = list(yaml.safe_load_all(output))
+        cm = next(d for d in docs if d and d["kind"] == "ConfigMap")
+        labels = cm["metadata"]["labels"]
+        assert labels.get("config.openshift.io/inject-trusted-cabundle") == "true"
 
 
 # --- Cluster Validation (requires oc login + deployed benchmarks infra) ---

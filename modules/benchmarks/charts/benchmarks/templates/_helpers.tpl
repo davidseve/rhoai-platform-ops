@@ -17,13 +17,13 @@ app.kubernetes.io/name: {{ include "benchmarks.fullname" . }}
 {{- end }}
 
 {{/*
-Build --backend-kwargs JSON: configurable SSL verify (default false for
-self-signed OpenShift route certs), add api_key when auth is configured.
+Build --backend-kwargs JSON. SSL verification handled via cluster CA bundle
+mount + SSL_CERT_FILE env var; only api_key needed here when auth is configured.
 */}}
 {{- define "benchmarks.backendKwargs" -}}
 {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret -}}
-{"verify": {{ .Values.benchmark.verifySSL }}, "api_key": "$(AUTH_TOKEN)"}
+{"api_key": "$(AUTH_TOKEN)"}
 {{- else -}}
-{"verify": {{ .Values.benchmark.verifySSL }}}
+{}
 {{- end -}}
 {{- end }}
