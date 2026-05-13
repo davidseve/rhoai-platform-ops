@@ -8,8 +8,13 @@ namespace:
 
 # PostgreSQL backend — reuses the maas-db instance in redhat-ods-applications.
 # MLflow and EvalHub create their own tables in the shared database.
+# WORKAROUND: The MLflow operator (RHOAI 3.4 EA2) creates a NetworkPolicy for
+# the MLflow pod that blocks DNS resolution, despite allowing port 53 egress.
+# All containers in the pod fail to resolve any hostname. Use ClusterIP until
+# the operator fixes its NetworkPolicy or DNS handling.
+# CHANGE_ME: run `oc get svc maas-db -n redhat-ods-applications -o jsonpath='{.spec.clusterIP}'`
 postgresql:
-  host: maas-db.redhat-ods-applications.svc
+  host: 172.30.40.248
   port: 5432
   user: maas
   password: maas-eval-password
