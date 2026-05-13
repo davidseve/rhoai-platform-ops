@@ -286,6 +286,7 @@ cleanup_argocd() {
 
   # 2. Delete child apps with cascade
   local apps=(
+    benchmarks
     maas-model-fast maas-model maas-platform maas-db maas-operators
     observability-tracing observability-grafana observability-operators
   )
@@ -331,6 +332,7 @@ verify_cleanup() {
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
     namespaces+=("$ns")
   done
+  namespaces+=("benchmarks")
   # -- Add new module namespaces here --
 
   for ns in "${namespaces[@]}"; do
@@ -343,7 +345,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -356,6 +358,24 @@ verify_cleanup() {
   else
     log "  All resources verified clean."
   fi
+}
+
+# ============================================================
+# Benchmarks cleanup
+# ============================================================
+cleanup_benchmarks_residual() {
+  log "=== Benchmarks: Cleaning up residual resources ==="
+  local ns="benchmarks"
+
+  # 1. Delete benchmark Jobs
+  run "$OC delete jobs --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # 2. Delete PVCs
+  run "$OC delete pvc --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # 3. Delete namespace
+  run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
+  wait_ns_gone "$ns" 120
 }
 
 # ============================================================
@@ -384,12 +404,14 @@ main() {
     case "$MODULE" in
       maas)          cleanup_maas_residual ;;
       observability) cleanup_observability_residual ;;
+      benchmarks)    cleanup_benchmarks_residual ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks" >&2
         exit 1
         ;;
     esac
   else
+    cleanup_benchmarks_residual
     cleanup_observability_residual
     cleanup_maas_residual
   fi

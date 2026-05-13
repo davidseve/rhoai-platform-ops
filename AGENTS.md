@@ -6,7 +6,7 @@ This file provides guidance to AI coding agents (Cursor, Claude Code, etc.) when
 
 RHOAI Platform Operations -- a modular GitOps repository for deploying and operating Red Hat OpenShift AI (RHOAI) infrastructure. Each module (MaaS, observability, benchmarks, evaluation) is independently deployable via Helm or ArgoCD. The project prioritizes Red Hat products, Helm-first validation, idempotent tests, and Architecture Decision Records for every non-obvious choice.
 
-**Maturity:** MaaS and observability modules deployed and tested; benchmarks and evaluation modules planned
+**Maturity:** MaaS, observability, and benchmarks modules deployed and tested; evaluation module planned
 
 ## Quick Commands
 
@@ -36,10 +36,20 @@ make argocd-branch-current # Point ArgoCD manifests to the current git branch
 make argocd-branch-main   # Point ArgoCD manifests back to main
 make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit branch
 
+# Benchmarks module
+make deploy-benchmarks    # Helm install benchmarks infra (namespace, PVC, SA, CA bundle)
+make run-benchmark BENCHMARK_SCENARIO=gateway BENCHMARK_TARGET=https://...  # Gateway (default)
+make run-benchmark BENCHMARK_SCENARIO=baseline   # Direct to model (no gateway)
+make run-benchmark BENCHMARK_SCENARIO=stress BENCHMARK_TARGET=https://...   # Sweep auto-discovery
+make run-benchmark BENCHMARK_SCENARIO=slo BENCHMARK_TARGET=https://...      # Constant 4 RPS
+make test-benchmarks      # pytest modules/benchmarks/tests/
+make undeploy-benchmarks  # Helm uninstall benchmarks
+
 # Cluster cleanup
 make cluster-cleanup      # Remove ALL resources (skip confirmation)
 make cluster-cleanup-maas # Remove only MaaS resources
 make cluster-cleanup-observability # Remove only observability resources
+make cluster-cleanup-benchmarks # Remove only benchmarks resources
 make cluster-cleanup-dry  # Dry-run: show what would be deleted
 
 # Validation
@@ -69,7 +79,12 @@ modules/
     tests/                # E2E tests (inference, in-cluster, governance)
     docs/                 # Architecture, Gateway, troubleshooting
 
-  benchmarks/             # [Planned] Load testing with inference-perf
+  benchmarks/             # GuideLLM load testing (infra via ArgoCD, Jobs on-demand)
+    charts/
+      benchmarks/         # Namespace, PVC, SA, GuideLLM K8s Job
+    tests/                # E2E tests (template validation + cluster infra)
+    docs/                 # BENCHMARKS.md
+
   evaluation/             # [Planned] MLflow tracking server
 ```
 
@@ -129,6 +144,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
 - **Tracing:** Red Hat build of OpenTelemetry + Tempo (see [ADR-0004](docs/adr/0004-tracing-stack.md))
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
+- **Benchmarks:** GuideLLM v0.6.0+ as K8s Job (infra via ArgoCD, Jobs on-demand)
 - **GitOps:** ArgoCD with app-of-apps pattern
 
 ## Claude Code Skills
@@ -150,4 +166,5 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - [Observability](modules/observability/docs/OBSERVABILITY.md)
 - [MaaS Architecture](modules/maas/docs/ARCHITECTURE.md)
 - [Gateway and Route](modules/maas/docs/GATEWAY-AND-ROUTE.md)
+- [Benchmarks](modules/benchmarks/docs/BENCHMARKS.md)
 - [ADRs](docs/adr/)
