@@ -92,13 +92,25 @@ Models-as-a-Service deployment using RHOAI and Kuadrant.
 | `maas-platform` | DSCInitialization, DataScienceCluster, Gateway, Route, tiers |
 | `maas-model` | LLMInferenceService, RBAC, RateLimitPolicy, TokenRateLimitPolicy |
 
-### observability (Planned)
+### observability (Ready)
 
-Grafana dashboards, vLLM metrics collection, alerting rules.
+Grafana dashboards, vLLM metrics collection, tracing, alerting rules.
 
-### benchmarks (Planned)
+| Chart | Description |
+|-------|-------------|
+| `operators` | Grafana, OTel, Tempo Operator subscriptions, UWM ConfigMap |
+| `grafana` | Grafana CR, SA, RBAC, Thanos + Tempo datasources, dashboards |
+| `tracing` | TempoMonolithic CR, OpenTelemetryCollector CR, ServiceMonitor |
 
-Load testing harness using inference-perf with MLflow tracking.
+### benchmarks (Ready)
+
+Load testing using GuideLLM v0.6.0+. ArgoCD deploys infrastructure (namespace, PVC, SA); benchmark Jobs run on-demand via `make run-benchmark`.
+
+| Chart | Description |
+|-------|-------------|
+| `benchmarks` | Namespace, PVC for results, ServiceAccount, GuideLLM K8s Job (conditional) |
+
+Scenarios: `gateway` (default), `baseline` (direct to model), `stress` (sweep), `slo` (constant RPS).
 
 ### evaluation (Planned)
 

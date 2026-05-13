@@ -102,6 +102,37 @@ undeploy-maas: ## Undeploy MaaS via Helm
 	-$(HELM) uninstall maas-db 2>/dev/null
 	-$(HELM) uninstall maas-operators 2>/dev/null
 
+# --- Benchmarks Module ---
+
+BENCHMARK_SCENARIO ?= gateway
+BENCHMARK_TARGET ?=
+
+.PHONY: deploy-benchmarks
+deploy-benchmarks: ## Deploy benchmarks infra (namespace, PVC, SA) via Helm
+	$(HELM) upgrade --install benchmarks modules/benchmarks/charts/benchmarks --wait --timeout 5m
+
+.PHONY: run-benchmark
+run-benchmark: ## Run a benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo, BENCHMARK_TARGET=url)
+	@echo "=== Running benchmark scenario: $(BENCHMARK_SCENARIO) ==="
+	@JOB_YAML=$$($(HELM) template benchmarks modules/benchmarks/charts/benchmarks \
+		--set job.enabled=true \
+		$(if $(filter baseline stress slo,$(BENCHMARK_SCENARIO)),-f modules/benchmarks/charts/benchmarks/values-$(BENCHMARK_SCENARIO).yaml) \
+		$(if $(BENCHMARK_TARGET),--set benchmark.target=$(BENCHMARK_TARGET)) \
+		--show-only templates/job.yaml); \
+	echo "$$JOB_YAML" | $(OC) apply -f -
+	@echo "Job created. Monitor with: oc get jobs -n benchmarks -w"
+
+.PHONY: test-benchmarks
+test-benchmarks: ## Run Benchmarks E2E tests
+	$(PYTHON) -m venv modules/benchmarks/tests/.venv
+	modules/benchmarks/tests/.venv/bin/pip install -q -r modules/benchmarks/tests/requirements.txt
+	modules/benchmarks/tests/.venv/bin/pytest modules/benchmarks/tests/ -v; \
+	  rc=$$?; rm -rf modules/benchmarks/tests/.venv; exit $$rc
+
+.PHONY: undeploy-benchmarks
+undeploy-benchmarks: ## Undeploy benchmarks via Helm
+	-$(HELM) uninstall benchmarks 2>/dev/null
+
 # --- ArgoCD (Stable Deployment) ---
 
 .PHONY: deploy-argocd
@@ -235,6 +266,10 @@ cluster-cleanup-maas: ## Remove only MaaS resources from the cluster
 cluster-cleanup-observability: ## Remove only observability resources from the cluster
 	./scripts/cluster-cleanup.sh --yes observability
 
+.PHONY: cluster-cleanup-benchmarks
+cluster-cleanup-benchmarks: ## Remove only benchmarks resources from the cluster
+	./scripts/cluster-cleanup.sh --yes benchmarks
+
 .PHONY: cluster-cleanup-dry
 cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 	DRY_RUN=true ./scripts/cluster-cleanup.sh
@@ -246,10 +281,10 @@ deploy-all: deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
 .PHONY: test-all
-test-all: test-observability test-maas ## Run all module tests
+test-all: test-observability test-maas test-benchmarks ## Run all module tests
 
 .PHONY: undeploy-all
-undeploy-all: undeploy-maas undeploy-observability ## Undeploy all modules
+undeploy-all: undeploy-benchmarks undeploy-maas undeploy-observability ## Undeploy all modules
 
 # --- Validation ---
 
@@ -262,6 +297,7 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template maas-db modules/maas/charts/maas-db
 	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
+	$(HELM) template benchmarks modules/benchmarks/charts/benchmarks
 	$(HELM) template argocd-apps argocd/apps
 
 .PHONY: lint
@@ -273,6 +309,7 @@ lint: ## Helm lint all charts
 	$(HELM) lint modules/maas/charts/maas-db
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model
+	$(HELM) lint modules/benchmarks/charts/benchmarks
 	$(HELM) lint argocd/apps
 
 # --- Help ---

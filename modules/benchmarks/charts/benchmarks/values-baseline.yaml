@@ -1,0 +1,21 @@
+# Baseline scenario: direct to model service (no gateway overhead)
+# Usage: make run-benchmark BENCHMARK_SCENARIO=baseline
+
+job:
+  enabled: true
+
+benchmark:
+  target: "http://tinyllama-test-predictor.models-as-a-service.svc:8000/v1"
+  authSecret: ""
+  authToken: ""
+  profile: "concurrent"
+  rates:
+    - "1"
+    - "2"
+    - "4"
+    - "8"
+    - "16"
+    - "32"
+  maxSeconds: 120
+  promptTokens: 256
+  outputTokens: 512

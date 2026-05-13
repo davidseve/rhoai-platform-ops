@@ -1,0 +1,13 @@
+# SLO validation scenario: constant RPS, verify PrometheusRules don't fire
+# Usage: make run-benchmark BENCHMARK_SCENARIO=slo
+
+job:
+  enabled: true
+
+benchmark:
+  profile: "constant"
+  rates:
+    - "10"
+  maxSeconds: 180
+  promptTokens: 256
+  outputTokens: 512

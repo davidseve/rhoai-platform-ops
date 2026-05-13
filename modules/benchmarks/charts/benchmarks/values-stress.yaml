@@ -1,0 +1,13 @@
+# Stress scenario: sweep profile to find max throughput and breaking point
+# Usage: make run-benchmark BENCHMARK_SCENARIO=stress
+
+job:
+  enabled: true
+
+benchmark:
+  profile: "sweep"
+  rates:
+    - "1"
+  maxSeconds: 300
+  promptTokens: 1024
+  outputTokens: 1024

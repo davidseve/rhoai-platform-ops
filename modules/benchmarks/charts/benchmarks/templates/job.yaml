@@ -1,0 +1,81 @@
+{{- if .Values.job.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "benchmarks.fullname" . }}-{{ .Values.benchmark.profile }}-{{ now | date "20060102-1504" }}
+  namespace: {{ include "benchmarks.namespace" . }}
+  labels:
+    {{- include "benchmarks.labels" . | nindent 4 }}
+    benchmarks.rhoai/profile: {{ .Values.benchmark.profile }}
+spec:
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.job.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "benchmarks.selectorLabels" . | nindent 8 }}
+        benchmarks.rhoai/profile: {{ .Values.benchmark.profile }}
+    spec:
+      serviceAccountName: {{ include "benchmarks.fullname" . }}-runner
+      restartPolicy: Never
+      containers:
+        - name: guidellm
+          image: {{ .Values.job.image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - guidellm
+          args:
+            - benchmark
+            - --target
+            - {{ .Values.benchmark.target | quote }}
+            - --model
+            - {{ .Values.benchmark.model | quote }}
+            - --request-type
+            - {{ .Values.benchmark.requestType | quote }}
+            - --rate-type
+            - {{ .Values.benchmark.profile | quote }}
+            {{- range .Values.benchmark.rates }}
+            - --rate
+            - {{ . | quote }}
+            {{- end }}
+            - --data
+            - "prompt_tokens={{ .Values.benchmark.promptTokens }},output_tokens={{ .Values.benchmark.outputTokens }}"
+            - --max-seconds
+            - {{ .Values.benchmark.maxSeconds | quote }}
+            - --outputs
+            - {{ .Values.benchmark.outputs | quote }}
+            - --output-dir
+            - /results
+            - --warmup
+            - {{ .Values.benchmark.warmup | quote }}
+            - --cooldown
+            - {{ .Values.benchmark.cooldown | quote }}
+            {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
+            - --extra-headers
+            - "Authorization: Bearer $(AUTH_TOKEN)"
+            {{- end }}
+            {{- range .Values.benchmark.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
+          env:
+            - name: AUTH_TOKEN
+              {{- if .Values.benchmark.authSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.benchmark.authSecret }}
+                  key: token
+              {{- else }}
+              value: {{ .Values.benchmark.authToken | quote }}
+              {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.job.resources | nindent 12 }}
+          volumeMounts:
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: results
+          persistentVolumeClaim:
+            claimName: {{ include "benchmarks.fullname" . }}-results
+{{- end }}

@@ -16,6 +16,8 @@ make wait-healthy         # Wait for ArgoCD sync + pods Ready
 make bootstrap-argocd     # deploy + wait + test-all (full pipeline)
 make lint                 # Helm lint all charts
 make template             # Helm template dry-run
+make deploy-benchmarks    # Deploy benchmarks infra (namespace, PVC, SA)
+make run-benchmark        # Run GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo)
 ```
 
 ## Rules
