@@ -13,7 +13,7 @@ namespace:
 # Review at GA: switch back to maas-db.redhat-ods-applications.svc
 postgresql:
   # CHANGE_ME: run `oc get svc maas-db -n redhat-ods-applications -o jsonpath='{.spec.clusterIP}'`
-  host: 172.30.253.196
+  host: 172.30.40.248
   port: 5432
   user: maas
   password: maas-eval-password
