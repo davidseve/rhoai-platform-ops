@@ -1,5 +1,5 @@
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-targetRevision: feat/rhoai-3.4-ea
+targetRevision: feat/evalhub-integration
 
 modules:
   maas:
@@ -14,4 +14,4 @@ modules:
   benchmarks:
     enabled: true
   evaluation:
-    enabled: false
+    enabled: true
