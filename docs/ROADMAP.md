@@ -140,9 +140,13 @@ Goal: identify system limits with repeatable load tests.
   - ITL (Inter-Token Latency) at P50/P99
   - E2E latency at P50/P90
   - Throughput (total output tokens / wall clock seconds)
+- [ ] Find model limits with payload sweep
+  - Run stress (sweep) with growing payloads: small (32/64), medium (256/512), large (1024/1024)
+  - Build throughput vs payload size curve to identify where the model degrades
 - [ ] Build Prometheus monitoring during benchmarks
   - Adapt approach from [MaaS-AI-Gateway-Performance-Scale](https://github.com/arielharush96/MaaS-AI-Gateway-Performance-Scale): collect pod CPU/memory/network + Istio/Authorino latency during each test run
   - Correlate infrastructure metrics with GuideLLM results
+  - Monitor `kserve_vllm:gpu_cache_usage_perc` during tests (GPU deployments)
 - [ ] Integrate with MLflow for result tracking
 - [x] E2E tests: 16 tests (13 template validation + 3 cluster infra)
 - [x] `make run-benchmark` waits for Job completion and shows logs
