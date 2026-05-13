@@ -106,10 +106,11 @@ undeploy-maas: ## Undeploy MaaS via Helm
 
 BENCHMARK_SCENARIO ?= gateway
 BENCHMARK_TARGET ?=
+BENCHMARK_TOKEN ?=
 
 .PHONY: deploy-benchmarks
 deploy-benchmarks: ## Deploy benchmarks infra (namespace, PVC, SA) via Helm
-	$(HELM) upgrade --install benchmarks modules/benchmarks/charts/benchmarks --wait --timeout 5m
+	$(HELM) upgrade --install benchmarks modules/benchmarks/charts/benchmarks --timeout 2m
 
 .PHONY: run-benchmark
 run-benchmark: ## Run a benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo, BENCHMARK_TARGET=url)
@@ -118,6 +119,7 @@ run-benchmark: ## Run a benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stres
 		--set job.enabled=true \
 		$(if $(filter baseline stress slo,$(BENCHMARK_SCENARIO)),-f modules/benchmarks/charts/benchmarks/values-$(BENCHMARK_SCENARIO).yaml) \
 		$(if $(BENCHMARK_TARGET),--set benchmark.target=$(BENCHMARK_TARGET)) \
+		$(if $(BENCHMARK_TOKEN),--set benchmark.authToken=$(BENCHMARK_TOKEN)) \
 		--show-only templates/job.yaml); \
 	echo "$$JOB_YAML" | $(OC) apply -f -
 	@echo "Job created. Monitor with: oc get jobs -n benchmarks -w"

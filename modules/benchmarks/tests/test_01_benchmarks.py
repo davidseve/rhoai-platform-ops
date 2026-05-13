@@ -25,6 +25,17 @@ def _helm_template(extra_args: str = "") -> str:
     return result.stdout
 
 
+def _get_job(extra_args: str = "") -> dict:
+    output = _helm_template(f"--set job.enabled=true {extra_args}")
+    docs = list(yaml.safe_load_all(output))
+    return next(d for d in docs if d and d["kind"] == "Job")
+
+
+def _get_job_script(extra_args: str = "") -> str:
+    job = _get_job(extra_args)
+    return job["spec"]["template"]["spec"]["containers"][0]["args"][0]
+
+
 # --- Template Validation (no cluster needed) ---
 
 
@@ -45,16 +56,12 @@ class TestHelmTemplate:
         assert "Job" in kinds
 
     def test_job_uses_correct_image(self):
-        output = _helm_template("--set job.enabled=true")
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
+        job = _get_job()
         container = job["spec"]["template"]["spec"]["containers"][0]
         assert "guidellm" in container["image"]
 
     def test_job_mounts_results_pvc(self):
-        output = _helm_template("--set job.enabled=true")
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
+        job = _get_job()
         volumes = job["spec"]["template"]["spec"]["volumes"]
         pvc_names = [
             v["persistentVolumeClaim"]["claimName"]
@@ -63,56 +70,45 @@ class TestHelmTemplate:
         ]
         assert "benchmarks-results" in pvc_names
 
-    def test_job_profile_in_args(self):
-        output = _helm_template("--set job.enabled=true --set benchmark.profile=sweep")
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
-        args = job["spec"]["template"]["spec"]["containers"][0]["args"]
-        rate_type_idx = args.index("--rate-type")
-        assert args[rate_type_idx + 1] == "sweep"
+    def test_job_profile_in_script(self):
+        script = _get_job_script("--set benchmark.profile=sweep")
+        assert "--rate-type \"sweep\"" in script
 
     def test_job_name_includes_profile(self):
-        output = _helm_template("--set job.enabled=true --set benchmark.profile=constant")
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
+        job = _get_job("--set benchmark.profile=constant")
         assert "constant" in job["metadata"]["name"]
 
-    def test_auth_token_sets_env_and_header(self):
-        output = _helm_template("--set job.enabled=true --set benchmark.authToken=test123")
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
+    def test_auth_token_sets_env_and_backend_kwargs(self):
+        job = _get_job("--set benchmark.authToken=test123")
         container = job["spec"]["template"]["spec"]["containers"][0]
         env_names = [e["name"] for e in container.get("env", [])]
         assert "AUTH_TOKEN" in env_names
-        assert "--extra-headers" in container["args"]
+        script = container["args"][0]
+        assert "api_key" in script
 
-    def test_no_auth_skips_env_and_header(self):
-        output = _helm_template("--set job.enabled=true")
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
+    def test_no_auth_skips_env(self):
+        job = _get_job()
         container = job["spec"]["template"]["spec"]["containers"][0]
         assert container.get("env") is None
-        assert "--extra-headers" not in container["args"]
+        script = container["args"][0]
+        assert "api_key" not in script
 
     def test_baseline_values_file(self):
-        output = _helm_template(
-            f"--set job.enabled=true -f {CHART_PATH}/values-baseline.yaml"
-        )
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
-        args = job["spec"]["template"]["spec"]["containers"][0]["args"]
-        target_idx = args.index("--target")
-        assert "svc" in args[target_idx + 1]
+        script = _get_job_script(f"-f {CHART_PATH}/values-baseline.yaml")
+        assert "svc" in script
 
     def test_stress_values_file(self):
-        output = _helm_template(
-            f"--set job.enabled=true -f {CHART_PATH}/values-stress.yaml"
-        )
-        docs = list(yaml.safe_load_all(output))
-        job = next(d for d in docs if d and d["kind"] == "Job")
-        args = job["spec"]["template"]["spec"]["containers"][0]["args"]
-        rate_type_idx = args.index("--rate-type")
-        assert args[rate_type_idx + 1] == "sweep"
+        script = _get_job_script(f"-f {CHART_PATH}/values-stress.yaml")
+        assert "--rate-type \"sweep\"" in script
+
+    def test_processor_in_script(self):
+        script = _get_job_script()
+        assert "--processor" in script
+        assert "TinyLlama" in script
+
+    def test_backend_kwargs_verify_false(self):
+        script = _get_job_script()
+        assert "verify" in script and "false" in script
 
 
 # --- Cluster Validation (requires oc login + deployed benchmarks infra) ---

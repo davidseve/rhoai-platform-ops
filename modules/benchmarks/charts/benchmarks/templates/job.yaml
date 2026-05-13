@@ -22,41 +22,34 @@ spec:
         - name: guidellm
           image: {{ .Values.job.image }}
           imagePullPolicy: IfNotPresent
-          command:
-            - guidellm
+          command: ["/bin/sh", "-c"]
           args:
-            - benchmark
-            - --target
-            - {{ .Values.benchmark.target | quote }}
-            - --model
-            - {{ .Values.benchmark.model | quote }}
-            - --request-type
-            - {{ .Values.benchmark.requestType | quote }}
-            - --rate-type
-            - {{ .Values.benchmark.profile | quote }}
-            {{- range .Values.benchmark.rates }}
-            - --rate
-            - {{ . | quote }}
-            {{- end }}
-            - --data
-            - "prompt_tokens={{ .Values.benchmark.promptTokens }},output_tokens={{ .Values.benchmark.outputTokens }}"
-            - --max-seconds
-            - {{ .Values.benchmark.maxSeconds | quote }}
-            - --outputs
-            - {{ .Values.benchmark.outputs | quote }}
-            - --output-dir
-            - /results
-            - --warmup
-            - {{ .Values.benchmark.warmup | quote }}
-            - --cooldown
-            - {{ .Values.benchmark.cooldown | quote }}
-            {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
-            - --extra-headers
-            - "Authorization: Bearer $(AUTH_TOKEN)"
-            {{- end }}
-            {{- range .Values.benchmark.extraArgs }}
-            - {{ . | quote }}
-            {{- end }}
+            - |
+              {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
+              BACKEND_KWARGS="{\"verify\": {{ .Values.benchmark.verifySSL }}, \"api_key\": \"${AUTH_TOKEN}\"}"
+              {{- else }}
+              BACKEND_KWARGS="{\"verify\": {{ .Values.benchmark.verifySSL }}}"
+              {{- end }}
+              exec guidellm benchmark \
+                --target {{ .Values.benchmark.target | quote }} \
+                --model {{ .Values.benchmark.model | quote }} \
+                --request-type {{ .Values.benchmark.requestType | quote }} \
+                --rate-type {{ .Values.benchmark.profile | quote }} \
+                {{- range .Values.benchmark.rates }}
+                --rate {{ . | quote }} \
+                {{- end }}
+                --data '{"prompt_tokens": {{ .Values.benchmark.promptTokens }}, "output_tokens": {{ .Values.benchmark.outputTokens }}}' \
+                --processor {{ .Values.benchmark.processor | quote }} \
+                --max-seconds {{ .Values.benchmark.maxSeconds | quote }} \
+                --outputs {{ .Values.benchmark.outputs | quote }} \
+                --output-dir /results \
+                --warmup {{ .Values.benchmark.warmup | quote }} \
+                --cooldown {{ .Values.benchmark.cooldown | quote }} \
+                --backend-kwargs "$BACKEND_KWARGS" \
+                {{- range .Values.benchmark.extraArgs }}
+                {{ . | quote }} \
+                {{- end }}
+                --disable-console
           {{- if or .Values.benchmark.authToken .Values.benchmark.authSecret }}
           env:
             - name: AUTH_TOKEN

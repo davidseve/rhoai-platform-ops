@@ -31,6 +31,8 @@ benchmark:
   # Target endpoint (gateway route by default)
   target: "https://maas.apps.CHANGE_ME/v1"
   model: "tinyllama-test"
+  # HuggingFace model ID for tokenizer (needed for synthetic data generation)
+  processor: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
   requestType: "chat_completions"
   # Load profile: concurrent | constant | poisson | sweep | synchronous
   profile: "concurrent"
@@ -38,15 +40,16 @@ benchmark:
     - "1"
     - "2"
     - "4"
-    - "8"
-  maxSeconds: 120
+  maxSeconds: 60
   # Payload size (prompt/output tokens)
-  promptTokens: 256
-  outputTokens: 512
+  promptTokens: 32
+  outputTokens: 64
   # Output formats: json, csv, html, yaml
   outputs: "json,csv"
   warmup: "0.1"
   cooldown: "0.1"
+  # Skip TLS verification (required for self-signed certs on OpenShift routes)
+  verifySSL: false
   # Auth: use authSecret (Secret name with key "token") or authToken (inline, dev only)
   authSecret: ""
   authToken: ""
