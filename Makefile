@@ -145,6 +145,28 @@ undeploy-benchmarks: ## Undeploy benchmarks via Helm
 deploy-evaluation: ## Deploy evaluation (EvalHub + MLflow) via Helm
 	$(HELM) upgrade --install evaluation modules/evaluation/charts/evaluation --timeout 5m
 
+EVAL_TASK ?= arc_easy
+EVAL_LIMIT ?= 10
+EVAL_MODEL_URL ?=
+
+.PHONY: run-evaluation
+run-evaluation: ## Run an LMEvalJob evaluation (EVAL_TASK=arc_easy, EVAL_LIMIT=10, EVAL_MODEL_URL=url)
+	@echo "=== Running LMEvalJob: $(EVAL_TASK) (limit=$(EVAL_LIMIT)) ==="
+	@EVAL_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
+		--set lmeval.enabled=true \
+		--set lmeval.task=$(EVAL_TASK) \
+		--set lmeval.limit=$(EVAL_LIMIT) \
+		$(if $(EVAL_MODEL_URL),--set lmeval.modelUrl=$(EVAL_MODEL_URL)) \
+		--show-only templates/lmevaljob.yaml); \
+	echo "$$EVAL_YAML" | $(OC) create -f -
+
+.PHONY: test-evaluation
+test-evaluation: ## Run Evaluation E2E tests
+	$(PYTHON) -m venv modules/evaluation/tests/.venv
+	modules/evaluation/tests/.venv/bin/pip install -q -r modules/evaluation/tests/requirements.txt
+	modules/evaluation/tests/.venv/bin/pytest modules/evaluation/tests/ -v; \
+	  rc=$$?; rm -rf modules/evaluation/tests/.venv; exit $$rc
+
 .PHONY: undeploy-evaluation
 undeploy-evaluation: ## Undeploy evaluation via Helm
 	-$(HELM) uninstall evaluation 2>/dev/null
@@ -301,7 +323,7 @@ deploy-all: deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
 .PHONY: test-all
-test-all: test-observability test-maas test-benchmarks ## Run all module tests
+test-all: test-observability test-maas test-benchmarks test-evaluation ## Run all module tests
 
 .PHONY: undeploy-all
 undeploy-all: undeploy-evaluation undeploy-benchmarks undeploy-maas undeploy-observability ## Undeploy all modules

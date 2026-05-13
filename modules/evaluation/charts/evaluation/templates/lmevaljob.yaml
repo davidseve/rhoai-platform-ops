@@ -1,0 +1,40 @@
+{{- if .Values.lmeval.enabled }}
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: LMEvalJob
+metadata:
+  generateName: lmeval-{{ .Values.lmeval.task }}-
+  namespace: {{ include "evaluation.namespace" . }}
+  labels:
+    {{- include "evaluation.labels" . | nindent 4 }}
+spec:
+  model: {{ .Values.lmeval.modelType }}
+  modelArgs:
+    - name: model
+      value: {{ .Values.lmeval.model }}
+    - name: base_url
+      value: {{ .Values.lmeval.modelUrl | quote }}
+    - name: num_concurrent
+      value: {{ .Values.lmeval.numConcurrent | quote }}
+    - name: tokenizer
+      value: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  taskList:
+    taskNames:
+      - {{ .Values.lmeval.task }}
+  logSamples: true
+  limit: {{ .Values.lmeval.limit | quote }}
+  allowOnline: {{ .Values.lmeval.allowOnline }}
+  pod:
+    container:
+      env:
+        - name: REQUESTS_CA_BUNDLE
+          value: /etc/pki/tls/certs/combined-ca-bundle.crt
+      volumeMounts:
+        - name: ca-bundle
+          mountPath: /etc/pki/tls/certs/combined-ca-bundle.crt
+          subPath: ca-bundle.crt
+          readOnly: true
+    volumes:
+      - name: ca-bundle
+        configMap:
+          name: {{ include "evaluation.ca-bundle-name" . }}
+{{- end }}

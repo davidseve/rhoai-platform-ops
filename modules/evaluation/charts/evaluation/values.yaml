@@ -51,6 +51,22 @@ evalhub:
   otel:
     enabled: false
 
+# LMEvalJob on-demand evaluation (not deployed by ArgoCD, used via helm template + oc create)
+lmeval:
+  enabled: false
+  # Model endpoint (vLLM/KServe internal URL)
+  model: tinyllama
+  modelUrl: "https://tinyllama-test-predictor-models-as-a-service.apps.ocp.sandbox2106.opentlc.com/v1/completions"
+  # Evaluation task (lm-evaluation-harness task name)
+  task: arc_easy
+  # Number of samples (set low for testing)
+  limit: "10"
+  numConcurrent: "1"
+  # Model type: local-completions (loglikelihood) or local-chat-completions (generation)
+  modelType: local-completions
+  # Allow online access for HuggingFace downloads
+  allowOnline: true
+
 # Combined CA bundle (system root CAs + OpenShift service-serving CA)
 # WORKAROUND for RHOAI 3.4 EA2: LMEvalJob pods need both system root CAs
 # (for HuggingFace downloads) and OpenShift service-serving CA (for vLLM/KServe
