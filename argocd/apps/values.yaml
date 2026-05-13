@@ -2,6 +2,8 @@ repoURL: https://github.com/davidseve/rhoai-platform-ops.git
 targetRevision: feat/evalhub-integration
 
 modules:
+  database:
+    enabled: true
   maas:
     enabled: true
     models:

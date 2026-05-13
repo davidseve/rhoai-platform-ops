@@ -1,0 +1,28 @@
+# Shared PostgreSQL for RHOAI platform services.
+# Consumers (evaluation, maas) reference this service by DNS name:
+#   maas-db.<namespace>.svc:<port>
+
+# Service identity — consuming charts should use these values
+# in their own `postgresql:` section to build connection strings.
+service:
+  name: maas-db
+namespace: redhat-ods-applications
+port: 5432
+
+image:
+  repository: registry.redhat.io/rhel9/postgresql-16
+  tag: latest
+
+# Database credentials — replace with a Secret reference in production
+database:
+  name: maas
+  user: maas
+  password: maas-eval-password
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"

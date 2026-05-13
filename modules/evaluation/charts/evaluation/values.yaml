@@ -8,12 +8,8 @@ namespace:
 
 # PostgreSQL backend — reuses the maas-db instance in redhat-ods-applications.
 # MLflow and EvalHub create their own tables in the shared database.
-# WORKAROUND: uses ClusterIP instead of hostname because the MLflow container
-# image (RHOAI 3.4 EA2) cannot resolve Kubernetes service DNS names.
-# Review at GA: switch back to maas-db.redhat-ods-applications.svc
 postgresql:
-  # CHANGE_ME: run `oc get svc maas-db -n redhat-ods-applications -o jsonpath='{.spec.clusterIP}'`
-  host: 172.30.40.248
+  host: maas-db.redhat-ods-applications.svc
   port: 5432
   user: maas
   password: maas-eval-password

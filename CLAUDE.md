@@ -18,6 +18,8 @@ make lint                 # Helm lint all charts
 make template             # Helm template dry-run
 make deploy-benchmarks    # Deploy benchmarks infra (namespace, PVC, SA)
 make run-benchmark        # Run GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo)
+make deploy-database      # Deploy shared PostgreSQL database
+make undeploy-database    # Undeploy database
 make deploy-evaluation    # Deploy EvalHub + MLflow (requires TrustyAI + MLflow operators in DSC)
 make undeploy-evaluation  # Undeploy evaluation
 ```

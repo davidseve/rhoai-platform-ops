@@ -1,8 +1,8 @@
-{{- if .Values.modules.maas.enabled }}
+{{- if .Values.modules.database.enabled }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: maas-db
+  name: database
   namespace: openshift-gitops
   annotations:
     argocd.argoproj.io/sync-wave: "0"
@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: {{ .Values.repoURL }}
     targetRevision: {{ .Values.targetRevision }}
-    path: modules/maas/charts/maas-db
+    path: modules/database/charts/database
     helm:
       valueFiles:
         - values.yaml

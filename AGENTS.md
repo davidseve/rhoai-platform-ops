@@ -4,13 +4,17 @@ This file provides guidance to AI coding agents (Cursor, Claude Code, etc.) when
 
 ## Project Overview
 
-RHOAI Platform Operations -- a modular GitOps repository for deploying and operating Red Hat OpenShift AI (RHOAI) infrastructure. Each module (MaaS, observability, benchmarks, evaluation) is independently deployable via Helm or ArgoCD. The project prioritizes Red Hat products, Helm-first validation, idempotent tests, and Architecture Decision Records for every non-obvious choice.
+RHOAI Platform Operations -- a modular GitOps repository for deploying and operating Red Hat OpenShift AI (RHOAI) infrastructure. Each module (database, MaaS, observability, benchmarks, evaluation) is independently deployable via Helm or ArgoCD. The project prioritizes Red Hat products, Helm-first validation, idempotent tests, and Architecture Decision Records for every non-obvious choice.
 
-**Maturity:** MaaS, observability, benchmarks, and evaluation modules deployed and tested
+**Maturity:** Database, MaaS, observability, benchmarks, and evaluation modules deployed and tested
 
 ## Quick Commands
 
 ```bash
+# Database module (shared PostgreSQL)
+make deploy-database      # Helm install shared PostgreSQL
+make undeploy-database    # Helm uninstall database
+
 # Observability module
 make deploy-observability # Helm install Grafana Operator + Grafana instance
 make test-observability   # pytest modules/observability/tests/
@@ -55,6 +59,7 @@ make cluster-cleanup-maas # Remove only MaaS resources
 make cluster-cleanup-observability # Remove only observability resources
 make cluster-cleanup-benchmarks # Remove only benchmarks resources
 make cluster-cleanup-evaluation # Remove only evaluation resources
+make cluster-cleanup-database # Remove only database resources
 make cluster-cleanup-dry  # Dry-run: show what would be deleted
 
 # Validation
@@ -68,6 +73,10 @@ make lint                 # Helm lint + YAML validation
 
 ```
 modules/
+  database/               # Shared PostgreSQL for platform services (MaaS API, MLflow, EvalHub)
+    charts/
+      database/           # Deployment, Service, Secret (maas-db in redhat-ods-applications)
+
   observability/          # Grafana, Tracing (OTel + Tempo), UWM, dashboards
     charts/
       operators/          # Grafana, OTel, Tempo Operator subscriptions, UWM ConfigMap
@@ -152,6 +161,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
 - **Tracing:** Red Hat build of OpenTelemetry + Tempo (see [ADR-0004](docs/adr/0004-tracing-stack.md))
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
+- **Database:** Shared PostgreSQL 16 in redhat-ods-applications (used by MaaS API, MLflow, EvalHub)
 - **Benchmarks:** GuideLLM v0.6.0+ as K8s Job (infra via ArgoCD, Jobs on-demand)
 - **Evaluation:** EvalHub (TrustyAI) + MLflow tracking server (RHOAI 3.4 Tech Preview)
 - **GitOps:** ArgoCD with app-of-apps pattern

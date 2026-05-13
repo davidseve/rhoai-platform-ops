@@ -99,7 +99,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in evaluation maas-model-fast maas-model maas-platform maas-db maas-operators obs-tracing obs-grafana obs-operators; do
+  for release in evaluation maas-model-fast maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -267,7 +267,7 @@ cleanup_argocd() {
 
   if ! command -v "$ARGOCD" &>/dev/null; then
     warn "argocd CLI not found -- falling back to oc delete (no cascade)"
-    for app in evaluation maas-model-fast maas-model maas-platform maas-db maas-operators \
+    for app in evaluation maas-model-fast maas-model maas-platform maas-operators database \
                observability-tracing observability-grafana observability-operators \
                rhoai-platform-ops; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
@@ -287,7 +287,7 @@ cleanup_argocd() {
   # 2. Delete child apps with cascade
   local apps=(
     evaluation benchmarks
-    maas-model-fast maas-model maas-platform maas-db maas-operators
+    maas-model-fast maas-model maas-platform maas-operators database
     observability-tracing observability-grafana observability-operators
   )
   for app in "${apps[@]}"; do
@@ -345,7 +345,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks|evaluation' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks|evaluation|database' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -436,8 +436,9 @@ main() {
       observability) cleanup_observability_residual ;;
       benchmarks)    cleanup_benchmarks_residual ;;
       evaluation)    cleanup_evaluation_residual ;;
+      database)      log "Database resources are cleaned up as part of maas (redhat-ods-applications namespace)." ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks, evaluation" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks, evaluation, database" >&2
         exit 1
         ;;
     esac

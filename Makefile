@@ -34,6 +34,19 @@ undeploy-observability: ## Undeploy observability via Helm
 	-$(HELM) uninstall obs-grafana 2>/dev/null
 	-$(HELM) uninstall obs-operators 2>/dev/null
 
+# --- Database Module ---
+
+.PHONY: deploy-database
+deploy-database: ## Deploy shared PostgreSQL database via Helm
+	@$(OC) get ns redhat-ods-applications &>/dev/null || $(OC) create ns redhat-ods-applications
+	$(HELM) upgrade --install database modules/database/charts/database --wait --timeout 5m
+	@echo "Waiting for PostgreSQL pod..."
+	@$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s
+
+.PHONY: undeploy-database
+undeploy-database: ## Undeploy shared PostgreSQL database via Helm
+	-$(HELM) uninstall database 2>/dev/null
+
 # --- MaaS Module ---
 
 .PHONY: deploy-maas
@@ -51,11 +64,6 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 			sleep 5; \
 		done; \
 	done
-	@echo "=== Phase 1b: PostgreSQL for maas-api ==="
-	@$(OC) get ns redhat-ods-applications &>/dev/null || $(OC) create ns redhat-ods-applications
-	$(HELM) upgrade --install maas-db modules/maas/charts/maas-db --wait --timeout 5m
-	@echo "Waiting for PostgreSQL pod..."
-	@$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s
 	@echo "=== Phase 2: Platform (operator CRs, DSC, Gateway, monitoring) ==="
 	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform \
 		--set grafana.enabled=$(GRAFANA_ENABLED) --wait --timeout 15m
@@ -99,7 +107,6 @@ undeploy-maas: ## Undeploy MaaS via Helm
 	-$(HELM) uninstall maas-model-fast 2>/dev/null
 	-$(HELM) uninstall maas-model 2>/dev/null
 	-$(HELM) uninstall maas-platform 2>/dev/null
-	-$(HELM) uninstall maas-db 2>/dev/null
 	-$(HELM) uninstall maas-operators 2>/dev/null
 
 # --- Benchmarks Module ---
@@ -199,9 +206,9 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 
 WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
-# parent + 10 child apps (maas-db, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, benchmarks, evaluation)
+# parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, benchmarks, evaluation)
 MIN_APPS ?= 11
-APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops|benchmarks|evaluation'
+APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops|benchmarks|evaluation|database'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
@@ -312,6 +319,10 @@ cluster-cleanup-benchmarks: ## Remove only benchmarks resources from the cluster
 cluster-cleanup-evaluation: ## Remove only evaluation resources from the cluster
 	./scripts/cluster-cleanup.sh --yes evaluation
 
+.PHONY: cluster-cleanup-database
+cluster-cleanup-database: ## Remove only database resources from the cluster
+	./scripts/cluster-cleanup.sh --yes database
+
 .PHONY: cluster-cleanup-dry
 cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 	DRY_RUN=true ./scripts/cluster-cleanup.sh
@@ -319,14 +330,14 @@ cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 # --- All Modules ---
 
 .PHONY: deploy-all
-deploy-all: deploy-observability ## Deploy all enabled modules
+deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
 .PHONY: test-all
 test-all: test-observability test-maas test-benchmarks test-evaluation ## Run all module tests
 
 .PHONY: undeploy-all
-undeploy-all: undeploy-evaluation undeploy-benchmarks undeploy-maas undeploy-observability ## Undeploy all modules
+undeploy-all: undeploy-evaluation undeploy-benchmarks undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
 
 # --- Validation ---
 
@@ -335,8 +346,8 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template obs-operators modules/observability/charts/operators
 	$(HELM) template obs-grafana modules/observability/charts/grafana
 	$(HELM) template obs-tracing modules/observability/charts/tracing
+	$(HELM) template database modules/database/charts/database
 	$(HELM) template maas-operators modules/maas/charts/operators
-	$(HELM) template maas-db modules/maas/charts/maas-db
 	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
 	$(HELM) template benchmarks modules/benchmarks/charts/benchmarks
@@ -348,8 +359,8 @@ lint: ## Helm lint all charts
 	$(HELM) lint modules/observability/charts/operators
 	$(HELM) lint modules/observability/charts/grafana
 	$(HELM) lint modules/observability/charts/tracing
+	$(HELM) lint modules/database/charts/database
 	$(HELM) lint modules/maas/charts/operators
-	$(HELM) lint modules/maas/charts/maas-db
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model
 	$(HELM) lint modules/benchmarks/charts/benchmarks
