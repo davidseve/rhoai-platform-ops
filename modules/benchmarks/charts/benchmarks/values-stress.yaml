@@ -3,11 +3,19 @@
 
 job:
   enabled: true
+  resources:
+    requests:
+      cpu: "2"
+      memory: "2Gi"
+    limits:
+      cpu: "4"
+      memory: "4Gi"
 
 benchmark:
   profile: "sweep"
+  # For sweep profile, rate = number of auto-discovered rate points (sweep_size >= 2)
   rates:
-    - "1"
-  maxSeconds: 300
-  promptTokens: 1024
-  outputTokens: 1024
+    - "5"
+  maxSeconds: 120
+  promptTokens: 32
+  outputTokens: 64

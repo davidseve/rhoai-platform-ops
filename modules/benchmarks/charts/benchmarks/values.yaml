@@ -40,6 +40,7 @@ benchmark:
     - "1"
     - "2"
     - "4"
+    - "8"
   maxSeconds: 60
   # Payload size (prompt/output tokens)
   promptTokens: 32

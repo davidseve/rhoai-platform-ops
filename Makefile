@@ -121,8 +121,12 @@ run-benchmark: ## Run a benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stres
 		$(if $(BENCHMARK_TARGET),--set benchmark.target=$(BENCHMARK_TARGET)) \
 		$(if $(BENCHMARK_TOKEN),--set benchmark.authToken=$(BENCHMARK_TOKEN)) \
 		--show-only templates/job.yaml); \
-	echo "$$JOB_YAML" | $(OC) apply -f -
-	@echo "Job created. Monitor with: oc get jobs -n benchmarks -w"
+	JOB_NAME=$$(echo "$$JOB_YAML" | grep "^  name:" | head -1 | awk '{print $$2}'); \
+	echo "$$JOB_YAML" | $(OC) create -f - && \
+	echo "Waiting for job/$$JOB_NAME to complete..." && \
+	$(OC) wait --for=condition=complete job/$$JOB_NAME -n benchmarks --timeout=1800s && \
+	echo "=== Job completed ===" && \
+	$(OC) logs job/$$JOB_NAME -n benchmarks
 
 .PHONY: test-benchmarks
 test-benchmarks: ## Run Benchmarks E2E tests

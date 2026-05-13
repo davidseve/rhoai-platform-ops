@@ -14,6 +14,7 @@ benchmark:
     - "1"
     - "2"
     - "4"
+    - "8"
   maxSeconds: 60
   promptTokens: 32
   outputTokens: 64
