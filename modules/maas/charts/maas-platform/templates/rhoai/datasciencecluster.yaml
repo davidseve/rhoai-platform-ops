@@ -33,6 +33,10 @@ spec:
       managementState: {{ .Values.datasciencecluster.components.trainingoperator.managementState }}
     trustyai:
       managementState: {{ .Values.datasciencecluster.components.trustyai.managementState }}
+      eval:
+        lmeval:
+          permitCodeExecution: {{ .Values.datasciencecluster.components.trustyai.eval.lmeval.permitCodeExecution }}
+          permitOnline: {{ .Values.datasciencecluster.components.trustyai.eval.lmeval.permitOnline }}
     sparkoperator:
       managementState: {{ .Values.datasciencecluster.components.sparkoperator.managementState }}
     workbenches:
