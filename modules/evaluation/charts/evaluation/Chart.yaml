@@ -1,0 +1,6 @@
+apiVersion: v2
+name: evaluation
+description: EvalHub + MLflow evaluation platform for LLM model quality and performance assessment
+type: application
+version: 0.1.0
+appVersion: "3.4.0"

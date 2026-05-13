@@ -1,0 +1,24 @@
+{{- if .Values.mlflow.enabled }}
+# MLflow CRD is cluster-scoped; the operator deploys workloads in redhat-ods-applications
+apiVersion: mlflow.opendatahub.io/v1
+kind: MLflow
+metadata:
+  name: {{ .Values.mlflow.name }}
+  labels:
+    {{- include "evaluation.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  replicas: {{ .Values.mlflow.replicas }}
+  backendStoreUriFrom:
+    name: mlflow-db-config
+    key: db-url
+  serveArtifacts: {{ .Values.mlflow.serveArtifacts }}
+  artifactsDestination: {{ .Values.mlflow.artifactsDestination | quote }}
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: {{ .Values.mlflow.storage.size }}
+{{- end }}

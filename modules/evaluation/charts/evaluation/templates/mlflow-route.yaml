@@ -1,0 +1,21 @@
+{{- if and .Values.mlflow.enabled .Values.mlflow.route.enabled }}
+# Route in redhat-ods-applications (where the MLflow operator deploys workloads)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.mlflow.name }}
+  namespace: redhat-ods-applications
+  labels:
+    {{- include "evaluation.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  to:
+    kind: Service
+    name: {{ .Values.mlflow.name }}
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
