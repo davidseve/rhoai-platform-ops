@@ -118,39 +118,41 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **Not evaluated yet:**
 > - [ ] OSSM 3 meshConfig custom sin conflicto con cluster-ingress-operator
-
 ### Phase 3: Benchmarks
 
 Goal: identify system limits with repeatable load tests.
 
-- Set up benchmark runner based on Mooncake trace replay approach
-  - Adapt [llm-d-tuning-mooncake](https://github.com/cemigo114/llm-d-tuning-mooncake) `mooncake_replay.py` for RHOAI endpoints
-  - Support OpenAI-compatible request format with controlled prefix sharing
-  - Parameterize: concurrency, max tokens, request count, trace source
+- Set up benchmark runner with [GuideLLM](https://github.com/neuralmagic/guidellm) (v0.6.0+)
+  - OpenAI-compatible load generator with native TTFT, ITL, throughput collection
+  - Profiles: `concurrent` (fixed parallelism), `sweep` (auto-find operating range), `poisson` (realistic arrivals), `constant` (fixed RPS)
+  - Output: JSON + CSV + HTML reports with per-request timings
+  - Deploy as Kubernetes Job with results to PVC
 - Define scenarios:
-  - Code assistant: long prompts, code completion patterns (maps to Mooncake "conversation" trace -- high prefix sharing)
-  - Cluster operations (MCP): short prompts, JSON tool call responses (maps to Mooncake "toolagent" trace -- diverse prefixes)
-  - Stress test: ramp to max throughput
-- Collect key metrics per request (from llm-d-tuning-mooncake methodology):
+  - Inference baseline: TTFT/ITL reales contra TinyLlama, concurrency sweep 1→32
+  - Gateway overhead (A/B): modelo directo vs a través del gateway Kuadrant, aislar coste de auth + rate limiting
+  - Stress test: sweep automático para encontrar max throughput y breaking point
+  - SLO validation: carga constante a target RPS, verificar que PrometheusRules no disparan
+- Payload matrix:
+  - Small: 32 prompt / 64 output tokens
+  - Medium: 256 prompt / 512 output tokens
+  - Large: 1024 prompt / 1024 output tokens
+- Collect key metrics per request:
   - TTFT (Time To First Token) at P50/P90/P99
   - ITL (Inter-Token Latency) at P50/P99
   - E2E latency at P50/P90
   - Throughput (total output tokens / wall clock seconds)
-  - TPSU (Tokens Per Second per User)
-- Build results analysis tooling
-  - Adapt `analyze_results.py` to generate comparison tables (current vs baseline)
-  - Per-request JSON output for reproducibility and independent verification
+  - Infrastructure: CPU, memory, `kserve_vllm:gpu_cache_usage_perc` during test
+- Build Prometheus monitoring during benchmarks
+  - Adapt approach from [MaaS-AI-Gateway-Performance-Scale](https://github.com/arielharush96/MaaS-AI-Gateway-Performance-Scale): collect pod CPU/memory/network + Istio/Authorino latency during each test run
+  - Correlate infrastructure metrics with GuideLLM results
 - Integrate with MLflow for result tracking
 - E2E tests: benchmark suite runs and logs results
 
-**Tools**: kubernetes-sigs/inference-perf, MLflow, [llm-d-tuning-mooncake](https://github.com/cemigo114/llm-d-tuning-mooncake) (reference for trace replay and analysis scripts).
+**Tools**: [GuideLLM](https://github.com/neuralmagic/guidellm) (load generation + metrics), MLflow (result tracking).
 
-**Reference insights from llm-d-tuning-mooncake**:
+**Reference**: [MaaS-AI-Gateway-Performance-Scale](https://github.com/arielharush96/MaaS-AI-Gateway-Performance-Scale) -- methodology for A/B baseline vs gateway testing, Prometheus monitoring during benchmarks, and concurrency sweep patterns. Uses `llm-d-inference-sim` for deterministic backend; our benchmarks use real TinyLlama models to measure actual inference performance.
 
-- Conversation workloads (high prefix sharing) benefit most from prefix-cache-aware routing
-- Toolagent workloads (diverse prefixes) need load-balanced routing with higher defer thresholds
-- KV cache pressure becomes critical at ~6-8K input tokens -- benchmark both short (4K) and long (8K+) sequences
-- Queue depth, KV cache utilization, and cache hit rate are the metrics that correlate most with serving quality
+**Why GuideLLM over Mooncake trace replay (2026-05-13)**: GuideLLM (vLLM project, v0.6.0) is significantly more mature -- collects TTFT/ITL/throughput natively, supports sweep profiles to auto-discover operating ranges, outputs JSON/CSV/HTML, and installs with `pip`. Mooncake trace replay scripts required substantial adaptation and lacked automated sweep. Trade-off: GuideLLM doesn't support controlled prefix sharing (relevant for KV cache benchmarks); revisit if prefix-cache-aware routing becomes a priority.
 
 ### Phase 4: Evaluation
 
@@ -173,4 +175,3 @@ Key decisions are documented as ADRs in [docs/adr/](adr/):
 - [ADR-0003: Grafana Operator for dashboards](adr/0003-grafana-operator.md)
 - [ADR-0004: Tracing stack (OTel + Tempo)](adr/0004-tracing-stack.md)
 - [ADR-0005: MaaS Subscription Model (RHOAI 3.4)](adr/0005-maas-subscription-model.md)
-

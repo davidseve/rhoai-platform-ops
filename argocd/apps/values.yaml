@@ -1,5 +1,5 @@
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-targetRevision: feat/rhcl-openshift-operators
+targetRevision: feat/rhoai-3.4-ea
 
 modules:
   maas:
