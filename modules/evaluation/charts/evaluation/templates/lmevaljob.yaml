@@ -2,7 +2,7 @@
 apiVersion: trustyai.opendatahub.io/v1alpha1
 kind: LMEvalJob
 metadata:
-  generateName: lmeval-{{ .Values.lmeval.task }}-
+  generateName: lmeval-{{ .Values.lmeval.task | replace "_" "-" }}-
   namespace: {{ include "evaluation.namespace" . }}
   labels:
     {{- include "evaluation.labels" . | nindent 4 }}

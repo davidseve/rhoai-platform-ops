@@ -55,8 +55,8 @@ evalhub:
 lmeval:
   enabled: false
   # Model endpoint (vLLM/KServe internal URL)
-  model: tinyllama
-  modelUrl: "https://tinyllama-test-predictor-models-as-a-service.apps.ocp.sandbox2106.opentlc.com/v1/completions"
+  model: tinyllama-test
+  modelUrl: "https://tinyllama-test-kserve-workload-svc.models-as-a-service.svc:8000/v1/completions"
   # Evaluation task (lm-evaluation-harness task name)
   task: arc_easy
   # Number of samples (set low for testing)
