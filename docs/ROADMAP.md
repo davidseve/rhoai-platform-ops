@@ -148,6 +148,10 @@ Goal: identify system limits with repeatable load tests.
   - Correlate infrastructure metrics with GuideLLM results
   - Monitor `kserve_vllm:gpu_cache_usage_perc` during tests (GPU deployments)
 - [ ] Integrate with MLflow for result tracking
+- [ ] Offline benchmark execution (air-gapped clusters)
+  - GuideLLM requires internet to download HuggingFace tokenizers and datasets at runtime
+  - Evaluate options: pre-baked datasets in PVC, init container with HF cache, custom `--data` flag with local file
+  - Affects reproducibility in restricted environments
 - [x] E2E tests: 16 tests (13 template validation + 3 cluster infra)
 - [x] `make run-benchmark` waits for Job completion and shows logs
 
@@ -157,17 +161,35 @@ Goal: identify system limits with repeatable load tests.
 
 **Why GuideLLM over Mooncake trace replay (2026-05-13)**: GuideLLM (vLLM project, v0.6.0) is significantly more mature -- collects TTFT/ITL/throughput natively, supports sweep profiles to auto-discover operating ranges, outputs JSON/CSV/HTML, and installs with `pip`. Mooncake trace replay scripts required substantial adaptation and lacked automated sweep. Trade-off: GuideLLM doesn't support controlled prefix sharing (relevant for KV cache benchmarks); revisit if prefix-cache-aware routing becomes a priority.
 
-### Phase 4: Evaluation
+### Phase 4: Evaluation (DONE)
 
-Goal: track experiments and compare model/configuration changes.
+Goal: unified evaluation platform for model quality and experiment tracking.
 
-- Deploy MLflow Tracking Server on OpenShift
-- Configure persistent storage (S3/MinIO or PVC)
-- Integrate benchmark results logging
-- Create experiment comparison workflows
-- E2E tests: MLflow up, can log and retrieve experiments
+- [x] Deploy EvalHub (TrustyAI) as evaluation control plane
+  - Providers: lm-evaluation-harness, guidellm, garak, lighteval
+  - Collections: leaderboard-v2
+- [x] Deploy MLflow Tracking Server via RHOAI MLflow Operator
+  - Cluster-scoped CR, operator deploys to `redhat-ods-applications`
+  - Artifact storage: PVC (10Gi), `--serve-artifacts` enabled
+  - Route for MLflow UI
+- [x] Extract shared PostgreSQL to independent `database` module
+  - `modules/database/charts/database/` with own ArgoCD Application (sync-wave 0)
+  - Used by MaaS API, MLflow, and EvalHub
+- [x] LMEvalJob template for on-demand evaluations
+  - `make run-evaluation EVAL_TASK=arc_easy EVAL_LIMIT=10`
+  - Combined CA bundle (system root CAs + OpenShift service-serving CA) for internal TLS + HuggingFace
+- [x] E2E tests: 22 tests (12 template validation + 10 cluster infra)
+- [ ] Integrate benchmark results logging to MLflow
+- [ ] Create experiment comparison workflows
 
-**Tools**: MLflow (community; evaluate RHOAI MLflow Operator when available).
+**Known issue -- MLflow DNS resolution (RHOAI 3.4 EA2):**
+The MLflow operator creates a NetworkPolicy allowing egress on port 53 (DNS), but OpenShift CoreDNS pods listen on target port 5353. OVN-Kubernetes evaluates egress rules after DNAT, so traffic to CoreDNS arrives on port 5353, which is blocked.
+Fix: [opendatahub-io/mlflow-operator#112](https://github.com/opendatahub-io/mlflow-operator/pull/112) (merged 2026-04-17, not yet in any release; latest is v1.1.0).
+Workaround: `postgresql.host` in `evaluation/values.yaml` uses ClusterIP instead of DNS name. Remove when RHOAI ships mlflow-operator > v1.1.0.
+
+**Tools**: EvalHub (TrustyAI, RHOAI 3.4 Tech Preview), MLflow (RHOAI MLflow Operator), lm-evaluation-harness.
+
+**Reference**: [EVALUATION.md](../modules/evaluation/docs/EVALUATION.md)
 
 ## Decision Log
 
