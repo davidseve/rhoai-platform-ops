@@ -139,6 +139,16 @@ test-benchmarks: ## Run Benchmarks E2E tests
 undeploy-benchmarks: ## Undeploy benchmarks via Helm
 	-$(HELM) uninstall benchmarks 2>/dev/null
 
+# --- Evaluation Module ---
+
+.PHONY: deploy-evaluation
+deploy-evaluation: ## Deploy evaluation (EvalHub + MLflow) via Helm
+	$(HELM) upgrade --install evaluation modules/evaluation/charts/evaluation --timeout 5m
+
+.PHONY: undeploy-evaluation
+undeploy-evaluation: ## Undeploy evaluation via Helm
+	-$(HELM) uninstall evaluation 2>/dev/null
+
 # --- ArgoCD (Stable Deployment) ---
 
 .PHONY: deploy-argocd
@@ -167,9 +177,9 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 
 WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
-# parent + 8 child apps (maas-db, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing)
-MIN_APPS ?= 9
-APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops'
+# parent + 10 child apps (maas-db, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, benchmarks, evaluation)
+MIN_APPS ?= 11
+APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops|benchmarks|evaluation'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
@@ -276,6 +286,10 @@ cluster-cleanup-observability: ## Remove only observability resources from the c
 cluster-cleanup-benchmarks: ## Remove only benchmarks resources from the cluster
 	./scripts/cluster-cleanup.sh --yes benchmarks
 
+.PHONY: cluster-cleanup-evaluation
+cluster-cleanup-evaluation: ## Remove only evaluation resources from the cluster
+	./scripts/cluster-cleanup.sh --yes evaluation
+
 .PHONY: cluster-cleanup-dry
 cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 	DRY_RUN=true ./scripts/cluster-cleanup.sh
@@ -290,7 +304,7 @@ deploy-all: deploy-observability ## Deploy all enabled modules
 test-all: test-observability test-maas test-benchmarks ## Run all module tests
 
 .PHONY: undeploy-all
-undeploy-all: undeploy-benchmarks undeploy-maas undeploy-observability ## Undeploy all modules
+undeploy-all: undeploy-evaluation undeploy-benchmarks undeploy-maas undeploy-observability ## Undeploy all modules
 
 # --- Validation ---
 
@@ -304,6 +318,7 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
 	$(HELM) template benchmarks modules/benchmarks/charts/benchmarks
+	$(HELM) template evaluation modules/evaluation/charts/evaluation
 	$(HELM) template argocd-apps argocd/apps
 
 .PHONY: lint
@@ -316,6 +331,7 @@ lint: ## Helm lint all charts
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model
 	$(HELM) lint modules/benchmarks/charts/benchmarks
+	$(HELM) lint modules/evaluation/charts/evaluation
 	$(HELM) lint argocd/apps
 
 # --- Help ---

@@ -99,7 +99,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in maas-model-fast maas-model maas-platform maas-db maas-operators obs-tracing obs-grafana obs-operators; do
+  for release in evaluation maas-model-fast maas-model maas-platform maas-db maas-operators obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -267,7 +267,7 @@ cleanup_argocd() {
 
   if ! command -v "$ARGOCD" &>/dev/null; then
     warn "argocd CLI not found -- falling back to oc delete (no cascade)"
-    for app in maas-model-fast maas-model maas-platform maas-db maas-operators \
+    for app in evaluation maas-model-fast maas-model maas-platform maas-db maas-operators \
                observability-tracing observability-grafana observability-operators \
                rhoai-platform-ops; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
@@ -286,7 +286,7 @@ cleanup_argocd() {
 
   # 2. Delete child apps with cascade
   local apps=(
-    benchmarks
+    evaluation benchmarks
     maas-model-fast maas-model maas-platform maas-db maas-operators
     observability-tracing observability-grafana observability-operators
   )
@@ -333,7 +333,7 @@ verify_cleanup() {
     namespaces+=("$ns")
   done
   namespaces+=("benchmarks")
-  # -- Add new module namespaces here --
+  namespaces+=("evaluation")
 
   for ns in "${namespaces[@]}"; do
     if $OC get ns "$ns" &>/dev/null; then
@@ -345,7 +345,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks|evaluation' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -379,6 +379,36 @@ cleanup_benchmarks_residual() {
 }
 
 # ============================================================
+# Module: Evaluation -- residual resources
+# ============================================================
+cleanup_evaluation_residual() {
+  log "=== Evaluation: Cleaning up residual resources ==="
+  local ns="evaluation"
+
+  # EvalHub CR
+  log "Deleting EvalHub CRs..."
+  run "$OC delete evalhub --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # MLflow CR (cluster-scoped)
+  log "Deleting MLflow CRs..."
+  run "$OC delete mlflow --all --timeout=60s --ignore-not-found"
+
+  # LMEvalJob CRs (may exist in evaluation namespace)
+  log "Deleting LMEvalJob CRs..."
+  run "$OC delete lmevaljob --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # Secrets in redhat-ods-applications (created by evaluation chart)
+  run "$OC delete secret mlflow-db-config -n redhat-ods-applications --ignore-not-found"
+
+  # Route in redhat-ods-applications (created by evaluation chart)
+  run "$OC delete route mlflow -n redhat-ods-applications --ignore-not-found"
+
+  # Namespace
+  run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
+  wait_ns_gone "$ns" 120
+}
+
+# ============================================================
 # Add new module cleanup functions above this line.
 # Then add the function call to main() below.
 # ============================================================
@@ -405,12 +435,14 @@ main() {
       maas)          cleanup_maas_residual ;;
       observability) cleanup_observability_residual ;;
       benchmarks)    cleanup_benchmarks_residual ;;
+      evaluation)    cleanup_evaluation_residual ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks, evaluation" >&2
         exit 1
         ;;
     esac
   else
+    cleanup_evaluation_residual
     cleanup_benchmarks_residual
     cleanup_observability_residual
     cleanup_maas_residual
