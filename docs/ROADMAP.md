@@ -122,31 +122,30 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 
 Goal: identify system limits with repeatable load tests.
 
-- Set up benchmark runner with [GuideLLM](https://github.com/neuralmagic/guidellm) (v0.6.0+)
+- [x] Set up benchmark runner with [GuideLLM](https://github.com/neuralmagic/guidellm) (v0.6.0+)
   - OpenAI-compatible load generator with native TTFT, ITL, throughput collection
   - Profiles: `concurrent` (fixed parallelism), `sweep` (auto-find operating range), `poisson` (realistic arrivals), `constant` (fixed RPS)
-  - Output: JSON + CSV + HTML reports with per-request timings
+  - Output: JSON + CSV reports with per-request timings
   - Deploy as Kubernetes Job with results to PVC
-- Define scenarios:
-  - Inference baseline: TTFT/ITL reales contra TinyLlama, concurrency sweep 1→32
-  - Gateway overhead (A/B): modelo directo vs a través del gateway Kuadrant, aislar coste de auth + rate limiting
-  - Stress test: sweep automático para encontrar max throughput y breaking point
-  - SLO validation: carga constante a target RPS, verificar que PrometheusRules no disparan
-- Payload matrix:
-  - Small: 32 prompt / 64 output tokens
-  - Medium: 256 prompt / 512 output tokens
-  - Large: 1024 prompt / 1024 output tokens
-- Collect key metrics per request:
+  - TLS via cluster CA bundle injection (not `verify: false`)
+  - `--processor` for HuggingFace tokenizer (synthetic data generation)
+- [x] Define scenarios:
+  - `gateway`: concurrent c=1,2,4,8 against external Gateway route
+  - `baseline`: concurrent c=1,2,4,8 direct to kserve workload service (A/B vs gateway)
+  - `stress`: sweep auto-discovery (5 rate points, 4Gi memory)
+  - `slo`: constant 4 RPS, validate SLO alerts don't fire
+- [x] Payload matrix: all scenarios use small payload (32/64 tokens) for CPU model; configurable via values overrides
+- [x] Collect key metrics per request:
   - TTFT (Time To First Token) at P50/P90/P99
   - ITL (Inter-Token Latency) at P50/P99
   - E2E latency at P50/P90
   - Throughput (total output tokens / wall clock seconds)
-  - Infrastructure: CPU, memory, `kserve_vllm:gpu_cache_usage_perc` during test
-- Build Prometheus monitoring during benchmarks
+- [ ] Build Prometheus monitoring during benchmarks
   - Adapt approach from [MaaS-AI-Gateway-Performance-Scale](https://github.com/arielharush96/MaaS-AI-Gateway-Performance-Scale): collect pod CPU/memory/network + Istio/Authorino latency during each test run
   - Correlate infrastructure metrics with GuideLLM results
-- Integrate with MLflow for result tracking
-- E2E tests: benchmark suite runs and logs results
+- [ ] Integrate with MLflow for result tracking
+- [x] E2E tests: 16 tests (13 template validation + 3 cluster infra)
+- [x] `make run-benchmark` waits for Job completion and shows logs
 
 **Tools**: [GuideLLM](https://github.com/neuralmagic/guidellm) (load generation + metrics), MLflow (result tracking).
 

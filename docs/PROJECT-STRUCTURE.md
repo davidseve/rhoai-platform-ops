@@ -104,13 +104,13 @@ Grafana dashboards, vLLM metrics collection, tracing, alerting rules.
 
 ### benchmarks (Ready)
 
-Load testing using GuideLLM v0.6.0+. ArgoCD deploys infrastructure (namespace, PVC, SA); benchmark Jobs run on-demand via `make run-benchmark`.
+Load testing using GuideLLM v0.6.0+. ArgoCD deploys infrastructure (namespace, PVC, SA, CA bundle); benchmark Jobs run on-demand via `make run-benchmark`. TLS verification uses the cluster CA bundle (injected by OpenShift), not `verify: false`.
 
 | Chart | Description |
 |-------|-------------|
-| `benchmarks` | Namespace, PVC for results, ServiceAccount, GuideLLM K8s Job (conditional) |
+| `benchmarks` | Namespace, PVC for results, ServiceAccount, CA bundle ConfigMap, GuideLLM K8s Job (conditional) |
 
-Scenarios: `gateway` (default), `baseline` (direct to model), `stress` (sweep), `slo` (constant RPS).
+Scenarios: `gateway` (concurrent c=1,2,4,8), `baseline` (direct to model, same rates), `stress` (sweep 5 points, 4Gi), `slo` (constant 4 RPS). See [BENCHMARKS.md](../modules/benchmarks/docs/BENCHMARKS.md) for details.
 
 ### evaluation (Planned)
 

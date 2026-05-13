@@ -37,8 +37,11 @@ make argocd-branch-main   # Point ArgoCD manifests back to main
 make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit branch
 
 # Benchmarks module
-make deploy-benchmarks    # Helm install benchmarks infra (namespace, PVC, SA)
-make run-benchmark        # Run a GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo)
+make deploy-benchmarks    # Helm install benchmarks infra (namespace, PVC, SA, CA bundle)
+make run-benchmark BENCHMARK_SCENARIO=gateway BENCHMARK_TARGET=https://...  # Gateway (default)
+make run-benchmark BENCHMARK_SCENARIO=baseline   # Direct to model (no gateway)
+make run-benchmark BENCHMARK_SCENARIO=stress BENCHMARK_TARGET=https://...   # Sweep auto-discovery
+make run-benchmark BENCHMARK_SCENARIO=slo BENCHMARK_TARGET=https://...      # Constant 4 RPS
 make test-benchmarks      # pytest modules/benchmarks/tests/
 make undeploy-benchmarks  # Helm uninstall benchmarks
 
