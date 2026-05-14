@@ -69,17 +69,20 @@ cmd_status() {
 
 cmd_submit() {
   local provider="" benchmark="" model_url="" model_name="" name="" limit="" wait_flag=false
-  local extra_params=""
+  local secret_ref="" tokenizer="" experiment=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --provider)   provider="$2"; shift 2 ;;
-      --benchmark)  benchmark="$2"; shift 2 ;;
-      --model-url)  model_url="$2"; shift 2 ;;
-      --model-name) model_name="$2"; shift 2 ;;
-      --name)       name="$2"; shift 2 ;;
-      --limit)      limit="$2"; shift 2 ;;
-      --wait)       wait_flag=true; shift ;;
+      --provider)    provider="$2"; shift 2 ;;
+      --benchmark)   benchmark="$2"; shift 2 ;;
+      --model-url)   model_url="$2"; shift 2 ;;
+      --model-name)  model_name="$2"; shift 2 ;;
+      --name)        name="$2"; shift 2 ;;
+      --limit)       limit="$2"; shift 2 ;;
+      --secret-ref)  secret_ref="$2"; shift 2 ;;
+      --tokenizer)   tokenizer="$2"; shift 2 ;;
+      --experiment)  experiment="$2"; shift 2 ;;
+      --wait)        wait_flag=true; shift ;;
       *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
   done
@@ -91,10 +94,20 @@ cmd_submit() {
 
   [[ -z "$name" ]] && name="${model_name##*/}-${benchmark}-$(date +%Y%m%d-%H%M%S)"
   name=$(echo "$name" | tr '/' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-63)
+  [[ -z "$experiment" ]] && experiment="$name"
 
   local params="{}"
-  if [[ -n "$limit" ]]; then
+  if [[ -n "$limit" && -n "$tokenizer" ]]; then
+    params="{\"limit\": $limit, \"tokenizer\": \"$tokenizer\"}"
+  elif [[ -n "$limit" ]]; then
     params="{\"limit\": $limit}"
+  elif [[ -n "$tokenizer" ]]; then
+    params="{\"tokenizer\": \"$tokenizer\"}"
+  fi
+
+  local auth_block=""
+  if [[ -n "$secret_ref" ]]; then
+    auth_block=",\"auth\": {\"secret_ref\": \"$secret_ref\"}"
   fi
 
   local body
@@ -103,7 +116,10 @@ cmd_submit() {
   "name": "$name",
   "model": {
     "url": "$model_url",
-    "name": "$model_name"
+    "name": "$model_name"$auth_block
+  },
+  "experiment": {
+    "name": "$experiment"
   },
   "benchmarks": [{
     "id": "$benchmark",
@@ -119,7 +135,10 @@ EOF
   echo "  Benchmark: $benchmark" >&2
   echo "  Model:     $model_name" >&2
   echo "  URL:       $model_url" >&2
+  [[ -n "$secret_ref" ]] && echo "  Auth:      secret/$secret_ref" >&2
+  [[ -n "$tokenizer" ]] && echo "  Tokenizer: $tokenizer" >&2
   [[ -n "$limit" ]] && echo "  Limit:     $limit" >&2
+  echo "  Experiment: $experiment" >&2
 
   local response
   response=$(_curl POST "/api/v1/evaluations/jobs" -d "$body")
@@ -192,8 +211,11 @@ Commands:
 Submit options:
   --provider <id>          Provider: lm_evaluation_harness, guidellm, garak, lighteval
   --benchmark <id>         Benchmark ID (e.g. arc_easy, sweep, leaderboard_ifeval)
-  --model-url <url>        Model endpoint URL (e.g. https://rh-ai.apps.cluster/v1)
-  --model-name <name>      Model name (e.g. TinyLlama/TinyLlama-1.1B-Chat-v1.0)
+  --model-url <url>        Model endpoint URL (internal svc or external route)
+  --model-name <name>      Served model name (must match vLLM --served-model-name)
+  --tokenizer <hf-id>      HuggingFace tokenizer ID (e.g. TinyLlama/TinyLlama-1.1B-Chat-v1.0)
+  --secret-ref <name>      K8s Secret with model auth (keys: api-key, ca_cert, hf-token)
+  --experiment <name>      MLflow experiment name (auto-generated from job name if omitted)
   --name <name>            Job name (auto-generated if omitted)
   --limit <n>              Limit number of samples (lm-eval only)
   --wait                   Wait for job to complete (polls every 15s)
@@ -206,23 +228,20 @@ Environment:
   POLL_TIMEOUT             Max wait time in seconds (default: 1800)
 
 Examples:
-  # Quality evaluation (lm-evaluation-harness)
+  # Quality evaluation against internal KServe service (with TLS CA and tokenizer)
   ./scripts/evalhub.sh submit --provider lm_evaluation_harness --benchmark arc_easy \
-      --model-url https://rh-ai.apps.cluster/v1 \
-      --model-name TinyLlama/TinyLlama-1.1B-Chat-v1.0 --limit 10 --wait
+      --model-url https://mymodel-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+      --model-name mymodel --tokenizer HFOrg/ModelName \
+      --secret-ref model-auth --limit 10 --wait
 
   # Performance benchmark (guidellm)
   ./scripts/evalhub.sh submit --provider guidellm --benchmark sweep \
-      --model-url https://rh-ai.apps.cluster/v1 \
-      --model-name tinyllama-test --wait
+      --model-url https://mymodel-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+      --model-name mymodel --secret-ref model-auth --wait
 
-  # Run leaderboard-v2 collection (all 6 benchmarks via individual submits)
-  for bench in leaderboard_ifeval leaderboard_bbh leaderboard_gpqa \
-               leaderboard_mmlu_pro leaderboard_musr leaderboard_math_hard; do
-    ./scripts/evalhub.sh submit --provider lm_evaluation_harness --benchmark "$bench" \
-        --model-url https://rh-ai.apps.cluster/v1 \
-        --model-name MyModel/name --limit 100
-  done
+  # Create model-auth Secret (service-CA for internal TLS)
+  oc create secret generic model-auth -n evaluation \
+      --from-literal=ca_cert="$(oc get cm openshift-service-ca.crt -n evaluation -o jsonpath='{.data.service-ca\.crt}')"
 USAGE
 }
 

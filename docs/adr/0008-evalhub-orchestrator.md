@@ -47,7 +47,9 @@ New Makefile targets (`evalhub-eval`, `evalhub-benchmark`, etc.) use `scripts/ev
 
 ### Negative
 
-- **TLS limitation (Tech Preview)**: EvalHub-created pods don't set `REQUESTS_CA_BUNDLE`, preventing HTTPS connections to internal model services with OpenShift service-serving certificates. Workaround: use the external gateway URL (publicly trusted cert) with auth token. Track upstream fix.
+- **TLS resolved via `model.auth.secret_ref`**: EvalHub-created pods don't set `REQUESTS_CA_BUNDLE` by default, but `model.auth.secret_ref` mounts a K8s Secret at `/var/run/secrets/model/`. A `ca_cert` key in the Secret is used as `verify_certificate` by the adapter. Create a Secret with the OpenShift service-serving CA to use internal KServe URLs.
+- **`model.name` vs tokenizer**: `model.name` must match the vLLM `--served-model-name`. Use `parameters.tokenizer` to specify the HuggingFace model ID for tokenizer download.
+- **MLflow logging requires `experiment` field**: The `experiment.name` field must be included in the job submission payload for the adapter to log metrics to MLflow. Without it, MLflow experiments are created but runs are not logged. The `evalhub.sh` script adds this field automatically.
 - Tech Preview means potential instability or breaking changes
 - Custom providers (BYOP) with tenant scope don't resolve in job submissions (TP bug, tracked)
 
@@ -61,6 +63,11 @@ GET  /api/v1/evaluations/jobs/{id}     # Job status + results
 GET  /api/v1/evaluations/providers     # List providers and benchmarks
 GET  /api/v1/evaluations/collections   # List collections
 ```
+
+Key fields in the job submission body:
+- `model.name`: must match vLLM `--served-model-name` (not the HuggingFace model ID)
+- `model.auth.secret_ref`: K8s Secret name with keys `api-key`, `ca_cert`, `hf-token`
+- `benchmarks[].parameters.tokenizer`: HuggingFace model ID for tokenizer download
 
 ### When to Remove Deprecated Templates
 

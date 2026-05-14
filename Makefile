@@ -131,7 +131,9 @@ undeploy-evaluation: ## Undeploy evaluation via Helm
 EVALHUB_BENCHMARK ?= arc_easy
 EVALHUB_PROVIDER ?= lm_evaluation_harness
 MODEL_URL ?=
-MODEL_NAME ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
+MODEL_NAME ?= tinyllama-fast
+TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
+SECRET_REF ?= model-auth
 EVAL_LIMIT ?=
 JOB_ID ?=
 
@@ -142,6 +144,8 @@ evalhub-eval: ## Run quality evaluation via EvalHub API (EVALHUB_BENCHMARK=arc_e
 		--benchmark $(EVALHUB_BENCHMARK) \
 		--model-url $(MODEL_URL) \
 		--model-name $(MODEL_NAME) \
+		$(if $(TOKENIZER),--tokenizer $(TOKENIZER)) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
 		$(if $(EVAL_LIMIT),--limit $(EVAL_LIMIT)) \
 		--wait
 
@@ -152,6 +156,7 @@ evalhub-benchmark: ## Run performance benchmark via EvalHub API (EVALHUB_BENCHMA
 		--benchmark $(EVALHUB_BENCHMARK) \
 		--model-url $(MODEL_URL) \
 		--model-name $(MODEL_NAME) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
 		--wait
 
 .PHONY: evalhub-status
