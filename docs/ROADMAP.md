@@ -184,7 +184,7 @@ Goal: unified evaluation platform for model quality, experiment tracking, and pe
 **Known issue -- MLflow DNS resolution (RHOAI 3.4 EA2):**
 The MLflow operator creates a NetworkPolicy allowing egress on port 53 (DNS), but OpenShift CoreDNS pods listen on target port 5353. OVN-Kubernetes evaluates egress rules after DNAT, so traffic to CoreDNS arrives on port 5353, which is blocked.
 Fix: [opendatahub-io/mlflow-operator#112](https://github.com/opendatahub-io/mlflow-operator/pull/112) (merged 2026-04-17, not yet in any release; latest is v1.1.0).
-Workaround: `postgresql.host` in `evaluation/values.yaml` uses ClusterIP instead of DNS name. Remove when RHOAI ships mlflow-operator > v1.1.0.
+Workaround: `mlflow-dns-fix.yaml` adds a supplementary NetworkPolicy allowing egress on port 5353. Remove when RHOAI ships mlflow-operator > v1.1.0.
 
 **Tools**: EvalHub (TrustyAI, RHOAI 3.4 Tech Preview), MLflow (RHOAI MLflow Operator), lm-evaluation-harness.
 

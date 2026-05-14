@@ -1,0 +1,29 @@
+{{- if .Values.mlflow.enabled }}
+# WORKAROUND: MLflow operator (RHOAI 3.4 EA2) creates a NetworkPolicy allowing
+# DNS egress on port 53, but OpenShift CoreDNS pods listen on target port 5353.
+# OVN-Kubernetes evaluates egress rules after DNAT, so traffic to CoreDNS
+# arrives on port 5353 which is blocked.
+# Fix merged upstream: opendatahub-io/mlflow-operator#112 (2026-04-17)
+# Not yet released (latest: v1.1.0). Remove when RHOAI ships mlflow-operator > v1.1.0.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mlflow-dns-fix
+  namespace: redhat-ods-applications
+  labels:
+    {{- include "evaluation.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  podSelector:
+    matchLabels:
+      app: mlflow
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 5353
+          protocol: UDP
+        - port: 5353
+          protocol: TCP
+{{- end }}
