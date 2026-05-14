@@ -306,6 +306,9 @@ cluster-cleanup-database: ## Remove only database resources from the cluster
 cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 	DRY_RUN=true ./scripts/cluster-cleanup.sh
 
+.PHONY: full-redeploy
+full-redeploy: cluster-cleanup bootstrap-argocd ## Cleanup everything + redeploy via ArgoCD + run tests
+
 # --- All Modules ---
 
 .PHONY: deploy-all
