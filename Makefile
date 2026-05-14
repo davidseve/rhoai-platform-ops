@@ -134,7 +134,7 @@ MODEL_URL ?=
 MODEL_NAME ?= tinyllama-fast
 TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
 SECRET_REF ?= model-auth
-EVAL_LIMIT ?=
+EVAL_LIMIT ?= 10
 JOB_ID ?=
 
 .PHONY: evalhub-eval

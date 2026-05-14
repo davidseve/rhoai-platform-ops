@@ -47,6 +47,12 @@ make evalhub-benchmark EVALHUB_BENCHMARK=sweep \
 # List providers and benchmarks
 make evalhub-providers
 
+# List benchmark collections (e.g. leaderboard-v2)
+make evalhub-collections
+
+# List all evaluation jobs
+make evalhub-jobs
+
 # Check job status
 make evalhub-status JOB_ID=<uuid>
 
@@ -145,6 +151,14 @@ curl -sk "https://${MLFLOW_ROUTE}/api/2.0/mlflow/runs/search" \
 ```
 
 **Note:** MLflow uses `--workspace-store-uri=kubernetes://`, so each K8s namespace maps to an MLflow workspace. The `evaluation` workspace corresponds to the `evaluation` namespace where EvalHub runs jobs.
+
+## Known Limitations (RHOAI 3.4 TP)
+
+- **EVAL_LIMIT recommended for CPU models**: Evaluations generate sustained inference load. vLLM on CPU can OOMKill under heavy load (e.g. full arc_easy = 2376 calls). Use `EVAL_LIMIT=10` (default) for testing, increase for final evaluations on GPU.
+- **Garak timeout**: Security scans (`garak` provider) may timeout at 600s on CPU models.
+- **Lighteval ignores `--limit`**: The lighteval adapter evaluates the full dataset regardless of the `limit` parameter.
+- **MLflow Traces**: The `/api/2.0/mlflow/traces` API exists but EvalHub does not instrument with `mlflow.trace()`. Only final metrics are logged. Full tracing (LLM calls, reasoning steps) is expected in RHOAI 3.4 GA.
+- **Custom providers (BYOP)**: Custom providers with tenant scope don't resolve in job submissions (TP bug).
 
 ## Detailed Documentation
 

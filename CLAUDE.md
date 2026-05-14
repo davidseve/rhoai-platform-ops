@@ -24,6 +24,7 @@ make evalhub-benchmark    # Performance benchmark via EvalHub API (EVALHUB_BENCH
 make evalhub-status       # Check job status (JOB_ID=uuid)
 make evalhub-jobs         # List all evaluation jobs
 make evalhub-providers    # List available providers and benchmarks
+make evalhub-collections  # List benchmark collections
 make undeploy-evaluation  # Undeploy evaluation
 ```
 

@@ -20,10 +20,10 @@ images:
 resources:
   requests:
     cpu: "2"
-    memory: "4Gi"
+    memory: "6Gi"
   limits:
     cpu: "8"
-    memory: "8Gi"
+    memory: "12Gi"
 
 llminferenceservice:
   replicas: 1
