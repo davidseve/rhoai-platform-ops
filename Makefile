@@ -115,12 +115,69 @@ undeploy-maas: ## Undeploy MaaS via Helm
 deploy-evaluation: ## Deploy evaluation (EvalHub + MLflow) via Helm
 	$(HELM) upgrade --install evaluation modules/evaluation/charts/evaluation --timeout 5m
 
+.PHONY: test-evaluation
+test-evaluation: ## Run Evaluation E2E tests
+	$(PYTHON) -m venv modules/evaluation/tests/.venv
+	modules/evaluation/tests/.venv/bin/pip install -q -r modules/evaluation/tests/requirements.txt
+	modules/evaluation/tests/.venv/bin/pytest modules/evaluation/tests/ -v; \
+	  rc=$$?; rm -rf modules/evaluation/tests/.venv; exit $$rc
+
+.PHONY: undeploy-evaluation
+undeploy-evaluation: ## Undeploy evaluation via Helm
+	-$(HELM) uninstall evaluation 2>/dev/null
+
+# --- EvalHub API (primary evaluation interface, see ADR-0008) ---
+
+EVALHUB_BENCHMARK ?= arc_easy
+EVALHUB_PROVIDER ?= lm_evaluation_harness
+MODEL_URL ?=
+MODEL_NAME ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
+EVAL_LIMIT ?=
+JOB_ID ?=
+
+.PHONY: evalhub-eval
+evalhub-eval: ## Run quality evaluation via EvalHub API (EVALHUB_BENCHMARK=arc_easy, MODEL_URL=url, EVAL_LIMIT=10)
+	./scripts/evalhub.sh submit \
+		--provider lm_evaluation_harness \
+		--benchmark $(EVALHUB_BENCHMARK) \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		$(if $(EVAL_LIMIT),--limit $(EVAL_LIMIT)) \
+		--wait
+
+.PHONY: evalhub-benchmark
+evalhub-benchmark: ## Run performance benchmark via EvalHub API (EVALHUB_BENCHMARK=sweep, MODEL_URL=url)
+	./scripts/evalhub.sh submit \
+		--provider guidellm \
+		--benchmark $(EVALHUB_BENCHMARK) \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		--wait
+
+.PHONY: evalhub-status
+evalhub-status: ## Check EvalHub job status (JOB_ID=uuid)
+	./scripts/evalhub.sh status $(JOB_ID)
+
+.PHONY: evalhub-jobs
+evalhub-jobs: ## List all EvalHub evaluation jobs
+	./scripts/evalhub.sh jobs
+
+.PHONY: evalhub-providers
+evalhub-providers: ## List available EvalHub providers and benchmarks
+	./scripts/evalhub.sh providers
+
+.PHONY: evalhub-collections
+evalhub-collections: ## List available EvalHub benchmark collections
+	./scripts/evalhub.sh collections
+
+# --- Legacy evaluation targets (DEPRECATED: use evalhub-* targets instead) ---
+
 EVAL_TASK ?= arc_easy
-EVAL_LIMIT ?= 10
 EVAL_MODEL_URL ?=
 
 .PHONY: run-evaluation
-run-evaluation: ## Run an LMEvalJob evaluation (EVAL_TASK=arc_easy, EVAL_LIMIT=10, EVAL_MODEL_URL=url)
+run-evaluation: ## [DEPRECATED] Run LMEvalJob directly — use 'make evalhub-eval' instead
+	@echo "WARNING: run-evaluation is deprecated. Use 'make evalhub-eval' instead." >&2
 	@echo "=== Running LMEvalJob: $(EVAL_TASK) (limit=$(EVAL_LIMIT)) ==="
 	@EVAL_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
 		--set lmeval.enabled=true \
@@ -130,19 +187,13 @@ run-evaluation: ## Run an LMEvalJob evaluation (EVAL_TASK=arc_easy, EVAL_LIMIT=1
 		--show-only templates/lmevaljob.yaml); \
 	echo "$$EVAL_YAML" | $(OC) create -f -
 
-.PHONY: test-evaluation
-test-evaluation: ## Run Evaluation E2E tests
-	$(PYTHON) -m venv modules/evaluation/tests/.venv
-	modules/evaluation/tests/.venv/bin/pip install -q -r modules/evaluation/tests/requirements.txt
-	modules/evaluation/tests/.venv/bin/pytest modules/evaluation/tests/ -v; \
-	  rc=$$?; rm -rf modules/evaluation/tests/.venv; exit $$rc
-
 BENCHMARK_SCENARIO ?= gateway
 BENCHMARK_TARGET ?=
 BENCHMARK_TOKEN ?=
 
 .PHONY: run-benchmark
-run-benchmark: ## Run a GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo, BENCHMARK_TARGET=url)
+run-benchmark: ## [DEPRECATED] Run GuideLLM Job directly — use 'make evalhub-benchmark' instead
+	@echo "WARNING: run-benchmark is deprecated. Use 'make evalhub-benchmark' instead." >&2
 	@echo "=== Running benchmark scenario: $(BENCHMARK_SCENARIO) ==="
 	@JOB_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
 		--set benchmarks.job.enabled=true \
@@ -156,10 +207,6 @@ run-benchmark: ## Run a GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|basel
 	$(OC) wait --for=condition=complete job/$$JOB_NAME -n evaluation --timeout=1800s && \
 	echo "=== Job completed ===" && \
 	$(OC) logs job/$$JOB_NAME -n evaluation
-
-.PHONY: undeploy-evaluation
-undeploy-evaluation: ## Undeploy evaluation via Helm
-	-$(HELM) uninstall evaluation 2>/dev/null
 
 # --- ArgoCD (Stable Deployment) ---
 

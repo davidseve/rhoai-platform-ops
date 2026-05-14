@@ -380,9 +380,12 @@ cleanup_evaluation_residual() {
   log "=== Evaluation: Cleaning up residual resources ==="
   local ns="evaluation"
 
-  # GuideLLM benchmark Jobs and PVCs
-  log "Deleting benchmark Jobs and PVCs..."
-  run "$OC delete jobs -l app.kubernetes.io/component=benchmarks -n '$ns' --timeout=60s --ignore-not-found"
+  # EvalHub-created evaluation Jobs (UUID-named pods)
+  log "Deleting EvalHub evaluation Jobs..."
+  run "$OC delete jobs --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # GuideLLM benchmark PVCs
+  log "Deleting benchmark PVCs..."
   run "$OC delete pvc benchmarks-results -n '$ns' --timeout=60s --ignore-not-found"
 
   # EvalHub CR

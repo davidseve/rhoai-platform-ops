@@ -49,7 +49,8 @@ evalhub:
   otel:
     enabled: false
 
-# LMEvalJob on-demand evaluation (not deployed by ArgoCD, used via helm template + oc create)
+# DEPRECATED: LMEvalJob on-demand evaluation. Use EvalHub API instead (make evalhub-eval).
+# Kept as fallback when EvalHub is not available.
 lmeval:
   enabled: false
   # Model endpoint (vLLM/KServe internal URL)
@@ -76,7 +77,8 @@ caBundle:
   # Image with oc/kubectl CLI for the init Job
   image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
 
-# GuideLLM load testing (merged from benchmarks module, see ADR-0007)
+# DEPRECATED: GuideLLM direct Job. Use EvalHub API instead (make evalhub-benchmark).
+# Infrastructure (PVC, SA) still deployed for fallback. Jobs via EvalHub are preferred.
 benchmarks:
   enabled: true
 

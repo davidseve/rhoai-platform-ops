@@ -40,13 +40,14 @@ make argocd-branch-current # Point ArgoCD manifests to the current git branch
 make argocd-branch-main   # Point ArgoCD manifests back to main
 make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit branch
 
-# Evaluation module (includes EvalHub, MLflow, GuideLLM benchmarks)
+# Evaluation module (EvalHub orchestrator + MLflow + benchmarks infra)
 make deploy-evaluation    # Helm install EvalHub + MLflow + benchmarks infra
-make run-evaluation EVAL_TASK=arc_easy EVAL_LIMIT=10  # Run LMEvalJob quality evaluation
-make run-benchmark BENCHMARK_SCENARIO=gateway BENCHMARK_TARGET=https://...  # Gateway (default)
-make run-benchmark BENCHMARK_SCENARIO=baseline   # Direct to model (no gateway)
-make run-benchmark BENCHMARK_SCENARIO=stress BENCHMARK_TARGET=https://...   # Sweep auto-discovery
-make run-benchmark BENCHMARK_SCENARIO=slo BENCHMARK_TARGET=https://...      # Constant 4 RPS
+make evalhub-eval EVALHUB_BENCHMARK=arc_easy MODEL_URL=https://... EVAL_LIMIT=10  # Quality eval via EvalHub API
+make evalhub-benchmark EVALHUB_BENCHMARK=sweep MODEL_URL=https://...  # Performance benchmark via EvalHub API
+make evalhub-status JOB_ID=<uuid>   # Check job status
+make evalhub-jobs                   # List all evaluation jobs
+make evalhub-providers              # List available providers and benchmarks
+make evalhub-collections            # List benchmark collections
 make test-evaluation      # pytest modules/evaluation/tests/
 make undeploy-evaluation  # Helm uninstall evaluation
 
@@ -153,8 +154,8 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Tracing:** Red Hat build of OpenTelemetry + Tempo (see [ADR-0004](docs/adr/0004-tracing-stack.md))
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
 - **Database:** Shared PostgreSQL 16 in redhat-ods-applications (used by MaaS API, MLflow, EvalHub)
-- **Benchmarks:** GuideLLM v0.6.0+ as K8s Job within evaluation module (infra via ArgoCD, Jobs on-demand)
-- **Evaluation:** EvalHub (TrustyAI) + MLflow tracking server (RHOAI 3.4 Tech Preview)
+- **Evaluation:** EvalHub (TrustyAI) as orchestrator via REST API — manages lm-eval, GuideLLM, Garak, Lighteval jobs and logs to MLflow automatically (see [ADR-0008](docs/adr/0008-evalhub-orchestrator.md))
+- **Experiment Tracking:** MLflow tracking server (RHOAI MLflow Operator)
 - **GitOps:** ArgoCD with app-of-apps pattern
 
 ## Claude Code Skills

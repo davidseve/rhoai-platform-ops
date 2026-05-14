@@ -175,12 +175,16 @@ Goal: unified evaluation platform for model quality, experiment tracking, and pe
 - [x] Extract shared PostgreSQL to independent `database` module
   - `modules/database/charts/database/` with own ArgoCD Application (sync-wave 0)
   - Used by MaaS API, MLflow, and EvalHub
-- [x] LMEvalJob template for on-demand evaluations
-  - `make run-evaluation EVAL_TASK=arc_easy EVAL_LIMIT=10`
+- [x] LMEvalJob template for on-demand evaluations (DEPRECATED — use EvalHub API)
   - Combined CA bundle (system root CAs + OpenShift service-serving CA) for internal TLS + HuggingFace
+- [x] EvalHub as evaluation orchestrator (see [ADR-0008](0008-evalhub-orchestrator.md))
+  - REST API: `POST /api/v1/evaluations/jobs` creates K8s Jobs, auto-logs to MLflow
+  - `scripts/evalhub.sh` wrapper + `make evalhub-eval` / `make evalhub-benchmark`
+  - 4 providers (lm-eval 167 benchmarks, guidellm 5 profiles, garak, lighteval)
+  - Collection: `leaderboard-v2` (IFEval, BBH, GPQA, MMLU-Pro, MuSR, MATH-Hard)
+  - **TLS limitation**: pods don't set `REQUESTS_CA_BUNDLE` — use external gateway URL as workaround
 - [x] E2E tests: 22 tests (12 template validation + 10 cluster infra)
-- [ ] Integrate benchmark results logging to MLflow
-- [ ] Create experiment comparison workflows
+- [ ] Create experiment comparison workflows in MLflow
 
 **Known issue -- MLflow DNS resolution (RHOAI 3.4 EA2):**
 The MLflow operator creates a NetworkPolicy allowing egress on port 53 (DNS), but OpenShift CoreDNS pods listen on target port 5353. OVN-Kubernetes evaluates egress rules after DNAT, so traffic to CoreDNS arrives on port 5353, which is blocked.

@@ -19,8 +19,11 @@ make template             # Helm template dry-run
 make deploy-database      # Deploy shared PostgreSQL database
 make undeploy-database    # Undeploy database
 make deploy-evaluation    # Deploy EvalHub + MLflow + benchmarks infra
-make run-evaluation       # Run LMEvalJob (EVAL_TASK=arc_easy, EVAL_LIMIT=10)
-make run-benchmark        # Run GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo)
+make evalhub-eval         # Quality eval via EvalHub API (EVALHUB_BENCHMARK=arc_easy, MODEL_URL=url)
+make evalhub-benchmark    # Performance benchmark via EvalHub API (EVALHUB_BENCHMARK=sweep)
+make evalhub-status       # Check job status (JOB_ID=uuid)
+make evalhub-jobs         # List all evaluation jobs
+make evalhub-providers    # List available providers and benchmarks
 make undeploy-evaluation  # Undeploy evaluation
 ```
 
