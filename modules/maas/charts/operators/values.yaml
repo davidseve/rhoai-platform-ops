@@ -1,7 +1,7 @@
 rhoai:
   enabled: true
   namespace: redhat-ods-operator
-  channel: beta
+  channel: stable-3.4
   source: redhat-operators
   sourceNamespace: openshift-marketplace
 

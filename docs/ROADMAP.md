@@ -79,7 +79,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 
 - Persistent Tempo storage (switch from memory to PV/S3 backend)
 - Trace-based SLO alerts (PrometheusRule from spanmetrics)
-- **Kuadrant WASM auth timeout (blocker for high concurrency)**: timeout hardcoded a 200ms, causa 500 errors con >=4 requests paralelos. **Nota (2026-05-12)**: el ratio actual de errores es ~0.09/s (~333/hour) pero NO son timeouts. Son errores de evaluación CEL causados por el bug `groups_str`: cada request evalúa ~6 descriptores TRLP que referencia `auth.identity.groups_str` (Null), generando `CelError::Resolve { UnexpectedType { got: "Null", want: "Arc<String>" } }`. Las requests NO fallan (200/201), los errores son internos al pipeline de rate limiting. Se resolverán con GA + PR #543 (fix de `groups_str`)
+- **Kuadrant WASM CEL errors (resolved in GA)**: EA2 had ~333 errors/hour caused by `groups_str` bug in maas-controller TRLP predicates (PR #543). Fixed in RHOAI 3.4 GA — MaaSAuthPolicy uses API key subscription scoping instead of `groups_str`. Verify `kuadrant_errors` drops to ~0 after GA deployment.
 - **Gateway production hardening**: tune Authorino limits/HPA, connection pooling, client retry guidance
 - **Cluster Observability Operator (COO)**: instalar cuando el observability stack de RHOAI pase a GA (estimado 3.5+). COO habilita dashboards nativos en la consola OpenShift (PersesDashboard), UIPlugins de tracing/troubleshooting, y detección de incidentes (Korrel8r). Prerequisito para `observabilityDashboard: true` en OdhDashboardConfig. No conflicta con Grafana/OTel/Tempo actuales. Ya preparado en `values.yaml` con `observabilityDashboard: false`.
 
@@ -99,7 +99,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **Referencias**: [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/), [RHCL Observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html-single/connectivity_link_observability_guide/index)
 >
-> **Status (2026-05-07)**: RHOAI 3.4 EA2 evaluated on branch `feat/enhanced-dashboards`. See [ADR-0005](adr/0005-maas-subscription-model.md).
+> **Status (2026-05-14)**: RHOAI 3.4 GA available. Operator channel updated to `stable-3.4`. MaaSAuthPolicy enabled. See [ADR-0005](adr/0005-maas-subscription-model.md).
 >
 > **Evaluated:**
 > - [x] maas-controller AuthPolicy management -- `opendatahub.io/managed: "false"` works in 3.4. `cleanup-authn-hook` disabled.
@@ -109,7 +109,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > - [x] New CRDs: Tenant (auto-created), MaaSModelRef, MaaSSubscription, gateway-default-auth/deny (auto-created by controller).
 > - [x] New DSC components: `rawDeploymentServiceConfig: Headed`, `sparkoperator: Removed`, `kserve.wva: Removed`.
 >
-> **EA2 known bug:** Token rate limits don't fire -- `maas-controller` TRLP predicates use `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview puts groups in `auth.identity.user.groups`. Fixed upstream in [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543), expected in GA.
+> **EA2 known bug (fixed in GA):** Token rate limits didn't fire in EA2 -- `maas-controller` TRLP predicates used `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview put groups in `auth.identity.user.groups`. Fixed in GA via [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543). MaaSAuthPolicy enabled, xfail markers removed.
 >
 > **Evaluated (2026-05-11):**
 > - [x] GatewayClass tracing nativo — **NOT AVAILABLE**. `data-science-gateway-class` uses `openshift.io/gateway-controller/v1` (Istio managed by cluster-ingress-operator). The managed Istio CR cannot be customized with `extensionProviders` for OTel. Would require independent OSSM 3 or upstream controller changes.

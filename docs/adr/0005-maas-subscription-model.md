@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (pending RHOAI 3.4 GA validation)
+Accepted
 
 ## Context
 
@@ -67,12 +67,13 @@ Changes made:
   [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543),
   expected in GA
 
-### TODO for RHOAI 3.4 GA
+### RHOAI 3.4 GA validation
 
-- [ ] Verify token rate limits fire after `groups_str` fix (PR #543)
-- [ ] Remove `xfail` markers from token rate limit tests
+- [x] Verify token rate limits fire after `groups_str` fix (PR #543)
+- [x] Remove `xfail` markers from token rate limit tests
+- [x] Enable MaaSAuthPolicy (`authPolicy.enabled: true`)
+- [x] Update operator channel from `beta` to `stable-3.4`
+- [x] Update Chart.yaml `appVersion` from `3.4-ea2` to `3.4`
 - [ ] Evaluate if `rateLimiting.enabled: true` is needed for request-level limits
 - [ ] Check if MaaSModelRef gains a namespace field (cross-namespace references)
-- [ ] Update operator channel from `beta` to `fast-3.x` (or GA channel)
-- [ ] Update Chart.yaml `appVersion` from `3.4-ea2` to GA version
-- [ ] Clean up old tier-specific templates if confirmed unnecessary
+- [ ] Evaluate Tenant CR (`spec.telemetry.enabled`) for TelemetryPolicy management

@@ -6,7 +6,6 @@ free-tier limits (5000 tok/1m) and tinyllama-fast (10000 tok/1m).
 """
 
 import os
-import subprocess
 
 import pytest
 import requests
@@ -129,24 +128,12 @@ def _fire_one(url, headers, payload):
 class TestTokenRateLimiting:
     """tinyllama-test free-tier subscription: 5000 tok/1m.
 
-    Sends sequential requests with max_tokens=500 (~520 tokens each including
-    prompt).  ~10 successful responses exhaust the budget.  At least one of
-    TOKEN_RATE_BURST requests must return 429.
-
-    RHOAI 3.4 EA2 bug: odh-model-controller AuthPolicy exposes groups in
-    auth.identity.user.groups (array), but maas-controller TRLP predicates
-    reference auth.identity.groups_str (comma-separated string).  The
-    predicates never match, so rate limits don't fire.
+    Sends sequential requests with max_tokens=50.  At least one of
+    MAX_SEQUENTIAL requests must return 429 once the token budget is exhausted.
     """
 
     MAX_SEQUENTIAL = 3
 
-    @pytest.mark.xfail(
-        reason="EA2: AuthPolicy groups_str may not be populated. "
-        "MaaSAuthPolicy should create per-model AuthPolicy that populates it. "
-        "If this xpasses, remove the marker.",
-        strict=False,
-    )
     def test_token_rate_limit_triggers_429(
         self, maas_url, maas_token, inference_path
     ):
@@ -177,10 +164,6 @@ class TestTokenRateLimiting:
             f"other={len(statuses) - got_200 - got_429}"
         )
 
-    @pytest.mark.xfail(
-        reason="EA2: AuthPolicy groups_str may not be populated.",
-        strict=False,
-    )
     def test_after_token_rate_limit_still_blocked(
         self, maas_url, maas_token, inference_path, chat_payload
     ):
@@ -299,15 +282,12 @@ class TestGovernanceResources:
 
     def test_maasauthpolicy_exists(self, oc, model_namespace, model_name):
         """MaaSAuthPolicy exists for each model, enabling API key auth."""
-        result = subprocess.run(
-            f"oc get maasauthpolicy {model_name} -n {model_namespace} "
-            f"-o jsonpath='{{.status.phase}}'",
-            shell=True, capture_output=True, text=True, check=False,
-        )
-        if result.returncode != 0:
-            pytest.skip("MaaSAuthPolicy not deployed (authPolicy.enabled: false)")
-        assert result.stdout.strip("'") in ("Active", "Pending"), (
-            f"MaaSAuthPolicy '{model_name}' not active. Got: {result.stdout}"
+        phase = oc(
+            f"get maasauthpolicy {model_name} -n {model_namespace} "
+            f"-o jsonpath='{{.status.phase}}'"
+        ).strip("'")
+        assert phase in ("Active", "Pending"), (
+            f"MaaSAuthPolicy '{model_name}' not active. Got: {phase}"
         )
 
     def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):

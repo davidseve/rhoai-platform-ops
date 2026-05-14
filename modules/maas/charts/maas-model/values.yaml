@@ -56,7 +56,7 @@ rbac:
 # Required for: API key management UI, subscription-scoped rate limits,
 # subscription label in metrics, X-MaaS-Subscription header injection.
 authPolicy:
-  enabled: false  # EA2: Authorino plain auth bug breaks inference. Enable with GA.
+  enabled: true
   subjects:
     groups:
       - name: maas-test-users
