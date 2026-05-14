@@ -34,11 +34,20 @@ make evalhub-eval EVALHUB_BENCHMARK=arc_easy \
     SECRET_REF=model-auth \
     EVAL_LIMIT=10
 
-# Run performance benchmark via EvalHub API
-make evalhub-benchmark EVALHUB_BENCHMARK=sweep \
+# Smoke test — validates full pipeline in <5 min (EvalHub → Job → MLflow)
+make evalhub-smoke \
+    MODEL_URL=https://tinyllama-fast-kserve-workload-svc.models-as-a-service.svc:8000/v1
+
+# Run performance benchmark via EvalHub API (default: throughput, 1 strategy)
+make evalhub-benchmark \
     MODEL_URL=https://tinyllama-fast-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
     MODEL_NAME=tinyllama-fast \
     SECRET_REF=model-auth
+
+# Run security scan via Garak (reduced probe cap for speed)
+make evalhub-security \
+    MODEL_URL=https://tinyllama-fast-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+    MODEL_NAME=tinyllama-fast
 
 # List providers and benchmarks
 make evalhub-providers
@@ -147,10 +156,28 @@ curl -sk "https://${MLFLOW_ROUTE}/api/2.0/mlflow/runs/search" \
 
 **Note:** MLflow uses `--workspace-store-uri=kubernetes://`, so each K8s namespace maps to an MLflow workspace. The `evaluation` workspace corresponds to the `evaluation` namespace where EvalHub runs jobs.
 
+## Speed Recommendations
+
+Evaluations on CPU models are slow. Use these settings for E2E validation (pipeline testing, not model evaluation):
+
+| Provider | Fast E2E | Flag | Expected Time |
+|----------|----------|------|--------------|
+| lm-eval | `--limit 1` | `make evalhub-smoke` | ~3-5 min |
+| GuideLLM | `--benchmark throughput --max-seconds 30` | `make evalhub-benchmark` | ~2-3 min |
+| Garak | `--timeout 900 --extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":10}}}'` | `make evalhub-security` | ~5-15 min |
+| Lighteval | Use small datasets (`glue:cola` ~250 items) | manual | ~10-20 min |
+
+For production evaluations (GPU models), remove limits: `--benchmark sweep` for GuideLLM, higher `--limit` for lm-eval, full garak scan without `soft_probe_prompt_cap`.
+
+**Why these defaults:**
+- **GuideLLM sweep → throughput**: sweep runs 10 strategies (synchronous + throughput + 8 constant rates). On CPU, each strategy with 256/128 token payloads takes 20+ minutes. `throughput` runs a single strategy.
+- **Garak 600s → 900s + cap**: The default adapter timeout is 600s, insufficient for CPU inference. `soft_probe_prompt_cap=10` reduces prompts per probe ([trustyai-garak docs](https://github.com/trustyai-explainability/llama-stack-provider-trustyai-garak)).
+- **Lighteval**: Ignores `--limit` parameter. Use benchmarks with small datasets instead of hellaswag (~10k items, causes OOMKill).
+
 ## Known Limitations (RHOAI 3.4 TP)
 
 - **EVAL_LIMIT recommended for CPU models**: Evaluations generate sustained inference load. vLLM on CPU can OOMKill under heavy load (e.g. full arc_easy = 2376 calls). Use `EVAL_LIMIT=10` (default) for testing, increase for final evaluations on GPU.
-- **Garak timeout**: Security scans (`garak` provider) may timeout at 600s on CPU models.
+- **Garak timeout**: Security scans (`garak` provider) default to 600s timeout in the adapter. On CPU models, use `--timeout 900` (or higher) and `--extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":10}}}'` to reduce probe scope. See `make evalhub-security`.
 - **Lighteval ignores `--limit`**: The lighteval adapter evaluates the full dataset regardless of the `limit` parameter.
 - **MLflow Traces**: The MLflow server exposes the `/v1/traces` OTLP endpoint (documented since [RHOAI 3.3 architecture](https://github.com/opendatahub-io/architecture-context)) and can persist traces. However, the EvalHub adapter does not instrument LLM calls with `mlflow.trace()` yet — only final metrics are logged. Tracked upstream: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The [EvalHub ADR](https://github.com/opendatahub-io/architecture-decision-records) (`ODH-ADR-EH-0001`) describes a dual tracing model where EvalHub creates the parent trace and benchmark pods emit spans via the AdapterFramework SDK, but this is not yet implemented.
 - **External authenticated endpoints**: The `api-key` in `model.auth.secret_ref` is mounted at `/var/run/secrets/model/api-key` and exposed as `ModelCredentials.api_key` by the SDK (`auth.py`), but it is **not** set as `OPENAI_API_KEY` environment variable automatically. Each adapter decides how to use it. GuideLLM and lm-eval read `OPENAI_API_KEY` from the environment natively, so external authenticated endpoints may not work out-of-the-box. Use internal KServe URLs (no auth needed) for reliable evaluations; external gateway URLs only make sense for measuring real gateway latency.

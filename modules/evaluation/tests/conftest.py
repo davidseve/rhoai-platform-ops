@@ -50,3 +50,23 @@ def evaluation_namespace():
 @pytest.fixture(scope="session")
 def chart_path():
     return EVALUATION_CHART_PATH
+
+
+@pytest.fixture(scope="session")
+def oc_token():
+    result = _run("oc whoami -t", check=False)
+    if result.returncode != 0:
+        pytest.skip("Not logged into cluster")
+    return result.stdout.strip()
+
+
+@pytest.fixture(scope="session")
+def evalhub_url(oc):
+    host = oc("get route evalhub -n evaluation -o jsonpath='{.spec.host}'")
+    return f"https://{host}"
+
+
+@pytest.fixture(scope="session")
+def mlflow_url(oc):
+    host = oc("get route mlflow -n redhat-ods-applications -o jsonpath='{.spec.host}'")
+    return f"https://{host}"

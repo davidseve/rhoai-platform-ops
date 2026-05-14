@@ -135,6 +135,7 @@ MODEL_NAME ?= tinyllama-fast
 TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
 SECRET_REF ?= model-auth
 EVAL_LIMIT ?= 10
+MAX_SECONDS ?=
 JOB_ID ?=
 
 .PHONY: evalhub-eval
@@ -149,14 +150,17 @@ evalhub-eval: ## Run quality evaluation via EvalHub API (EVALHUB_BENCHMARK=arc_e
 		$(if $(EVAL_LIMIT),--limit $(EVAL_LIMIT)) \
 		--wait
 
+BENCH_PROFILE ?= throughput
+
 .PHONY: evalhub-benchmark
-evalhub-benchmark: ## Run performance benchmark via EvalHub API (EVALHUB_BENCHMARK=sweep, MODEL_URL=url)
+evalhub-benchmark: ## Run performance benchmark via EvalHub API (BENCH_PROFILE=throughput, MODEL_URL=url)
 	./scripts/evalhub.sh submit \
 		--provider guidellm \
-		--benchmark $(EVALHUB_BENCHMARK) \
+		--benchmark $(BENCH_PROFILE) \
 		--model-url $(MODEL_URL) \
 		--model-name $(MODEL_NAME) \
 		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
+		$(if $(MAX_SECONDS),--max-seconds $(MAX_SECONDS)) \
 		--wait
 
 .PHONY: evalhub-status
@@ -174,6 +178,31 @@ evalhub-providers: ## List available EvalHub providers and benchmarks
 .PHONY: evalhub-collections
 evalhub-collections: ## List available EvalHub benchmark collections
 	./scripts/evalhub.sh collections
+
+.PHONY: evalhub-smoke
+evalhub-smoke: ## Smoke test: lm-eval limit=1, validates full pipeline (EvalHub → Job → MLflow)
+	POLL_TIMEOUT=600 ./scripts/evalhub.sh submit \
+		--provider lm_evaluation_harness \
+		--benchmark arc_easy \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		$(if $(TOKENIZER),--tokenizer $(TOKENIZER)) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
+		--limit 1 \
+		--experiment evalhub-smoke \
+		--wait
+
+.PHONY: evalhub-security
+evalhub-security: ## Quick security scan via Garak (timeout=900s, reduced probe cap)
+	POLL_TIMEOUT=1200 ./scripts/evalhub.sh submit \
+		--provider garak \
+		--benchmark quick \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
+		--timeout 900 \
+		--extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":10}}}' \
+		--wait
 
 # --- Legacy evaluation targets (DEPRECATED: use evalhub-* targets instead) ---
 

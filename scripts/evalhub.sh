@@ -18,7 +18,7 @@ OC="${OC:-oc}"
 EVALHUB_NAMESPACE="${EVALHUB_NAMESPACE:-evaluation}"
 EVALHUB_TENANT="${EVALHUB_TENANT:-evaluation}"
 POLL_INTERVAL="${POLL_INTERVAL:-15}"
-POLL_TIMEOUT="${POLL_TIMEOUT:-1800}"
+POLL_TIMEOUT="${POLL_TIMEOUT:-900}"
 
 _evalhub_url() {
   local route_host
@@ -69,7 +69,7 @@ cmd_status() {
 
 cmd_submit() {
   local provider="" benchmark="" model_url="" model_name="" name="" limit="" wait_flag=false
-  local secret_ref="" tokenizer="" experiment=""
+  local secret_ref="" tokenizer="" experiment="" max_seconds="" timeout="" extra_params=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -81,8 +81,11 @@ cmd_submit() {
       --limit)       limit="$2"; shift 2 ;;
       --secret-ref)  secret_ref="$2"; shift 2 ;;
       --tokenizer)   tokenizer="$2"; shift 2 ;;
-      --experiment)  experiment="$2"; shift 2 ;;
-      --wait)        wait_flag=true; shift ;;
+      --experiment)    experiment="$2"; shift 2 ;;
+      --max-seconds)  max_seconds="$2"; shift 2 ;;
+      --timeout)      timeout="$2"; shift 2 ;;
+      --extra-params) extra_params="$2"; shift 2 ;;
+      --wait)         wait_flag=true; shift ;;
       *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
   done
@@ -96,14 +99,19 @@ cmd_submit() {
   name=$(echo "$name" | tr '/' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-63)
   [[ -z "$experiment" ]] && experiment="$name"
 
-  local params="{}"
-  if [[ -n "$limit" && -n "$tokenizer" ]]; then
-    params="{\"limit\": $limit, \"tokenizer\": \"$tokenizer\"}"
-  elif [[ -n "$limit" ]]; then
-    params="{\"limit\": $limit}"
-  elif [[ -n "$tokenizer" ]]; then
-    params="{\"tokenizer\": \"$tokenizer\"}"
-  fi
+  local params
+  params=$(python3 -c "
+import json, sys
+p = {}
+if '$limit': p['limit'] = int('$limit')
+if '$tokenizer': p['tokenizer'] = '$tokenizer'
+if '$max_seconds': p['max_seconds'] = int('$max_seconds')
+if '$timeout': p['timeout'] = int('$timeout')
+extra = '''$extra_params'''
+if extra:
+    p.update(json.loads(extra))
+print(json.dumps(p))
+")
 
   local auth_block=""
   if [[ -n "$secret_ref" ]]; then
@@ -138,6 +146,9 @@ EOF
   [[ -n "$secret_ref" ]] && echo "  Auth:      secret/$secret_ref" >&2
   [[ -n "$tokenizer" ]] && echo "  Tokenizer: $tokenizer" >&2
   [[ -n "$limit" ]] && echo "  Limit:     $limit" >&2
+  [[ -n "$max_seconds" ]] && echo "  MaxSecs:   $max_seconds" >&2
+  [[ -n "$timeout" ]] && echo "  Timeout:   $timeout" >&2
+  [[ -n "$extra_params" ]] && echo "  Extra:     $extra_params" >&2
   echo "  Experiment: $experiment" >&2
 
   local response
@@ -218,6 +229,9 @@ Submit options:
   --experiment <name>      MLflow experiment name (auto-generated from job name if omitted)
   --name <name>            Job name (auto-generated if omitted)
   --limit <n>              Limit number of samples (lm-eval only)
+  --max-seconds <n>        Max duration per strategy (guidellm)
+  --timeout <n>            Scan timeout in seconds (garak, default 600)
+  --extra-params <json>    Extra benchmark parameters (merged into params JSON)
   --wait                   Wait for job to complete (polls every 15s)
 
 Environment:
@@ -225,7 +239,7 @@ Environment:
   EVALHUB_NAMESPACE        EvalHub namespace (default: evaluation)
   EVALHUB_TENANT           X-Tenant header (default: evaluation)
   POLL_INTERVAL            Seconds between status polls (default: 15)
-  POLL_TIMEOUT             Max wait time in seconds (default: 1800)
+  POLL_TIMEOUT             Max wait time in seconds (default: 900)
 
 Examples:
   # Quality evaluation against internal KServe service (with TLS CA and tokenizer)
@@ -234,14 +248,21 @@ Examples:
       --model-name mymodel --tokenizer HFOrg/ModelName \
       --secret-ref model-auth --limit 10 --wait
 
-  # Performance benchmark (guidellm)
+  # Performance benchmark — quick (single strategy, 30s max)
+  ./scripts/evalhub.sh submit --provider guidellm --benchmark throughput \
+      --model-url https://mymodel-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+      --model-name mymodel --secret-ref model-auth --max-seconds 30 --wait
+
+  # Performance benchmark — full sweep (10 strategies, production)
   ./scripts/evalhub.sh submit --provider guidellm --benchmark sweep \
       --model-url https://mymodel-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
       --model-name mymodel --secret-ref model-auth --wait
 
-  # Create model-auth Secret (service-CA for internal TLS)
-  oc create secret generic model-auth -n evaluation \
-      --from-literal=ca_cert="$(oc get cm openshift-service-ca.crt -n evaluation -o jsonpath='{.data.service-ca\.crt}')"
+  # Security scan — quick with reduced scope (garak)
+  ./scripts/evalhub.sh submit --provider garak --benchmark quick \
+      --model-url https://mymodel-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+      --model-name mymodel --secret-ref model-auth \
+      --timeout 900 --extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":10}}}' --wait
 USAGE
 }
 
