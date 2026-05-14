@@ -207,6 +207,10 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		fi; \
 		not_healthy=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | $(APP_FILTER) | grep -v "Synced.*Healthy" | awk '{print $$1"("$$2"/"$$3")"}' | tr '\n' ' '); \
 		echo "  [$$((elapsed / 60))m] $$healthy/$$total apps Synced+Healthy  pending: $$not_healthy"; \
+		for ip in $$($(OC) get installplan -n openshift-operators -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do \
+			echo "  Auto-approving InstallPlan $$ip (OLM Manual dependency)..."; \
+			$(OC) patch installplan "$$ip" -n openshift-operators --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true; \
+		done; \
 		sleep $(WAIT_INTERVAL); \
 		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
 	done; \
