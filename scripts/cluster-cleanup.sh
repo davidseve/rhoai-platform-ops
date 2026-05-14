@@ -81,11 +81,26 @@ force_delete_ns() {
   local ns="$1"
   log "Force-cleaning namespace $ns (clearing blocking finalizers)..."
 
-  for resource in $($OC api-resources --verbs=list --namespaced -o name 2>/dev/null); do
-    for item in $($OC get "$resource" -n "$ns" -o name 2>/dev/null); do
+  # Only target CRDs from our operators — core resources (pods, services, etc.)
+  # are cleaned by the namespace controller. Iterating all api-resources causes
+  # MethodNotAllowed errors on read-only resources like events and bindings.
+  local crds
+  crds=$($OC get crd -o name 2>/dev/null \
+    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset)' \
+    | sed 's|customresourcedefinition.apiextensions.k8s.io/||' || true)
+
+  for crd in $crds; do
+    for item in $($OC get "$crd" -n "$ns" -o name 2>/dev/null); do
       run "$OC patch '$item' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
   done
+
+  # Clear namespace finalizers via the finalize subresource API
+  if [[ "$DRY_RUN" != "true" ]]; then
+    $OC get ns "$ns" -o json 2>/dev/null \
+      | jq '.spec.finalizers = []' \
+      | $OC replace --raw "/api/v1/namespaces/$ns/finalize" -f - 2>/dev/null || true
+  fi
 
   run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
 }
@@ -423,7 +438,12 @@ main() {
   # 2. Delete ArgoCD applications (cascade removes chart-managed resources)
   cleanup_argocd
 
-  # 3. Clean residual resources not managed by ArgoCD charts
+  # 3. Safety net: clean resources that may survive ArgoCD cascade delete.
+  #    ArgoCD cascade handles most chart-managed resources, but these edge cases remain:
+  #    - Stuck finalizers (operator deleted before its CRs could finalize)
+  #    - Cluster-scoped resources (GatewayClass, ClusterRoles, DSC/DSCI)
+  #    - Dynamic resources not in charts (tier namespaces from AuthPolicy)
+  #    - Operator Subscriptions/CSVs that sometimes linger after cascade
   if [[ -n "$MODULE" ]]; then
     case "$MODULE" in
       maas)          cleanup_maas_residual ;;

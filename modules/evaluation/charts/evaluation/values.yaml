@@ -14,7 +14,7 @@ namespace:
 # the operator fixes its NetworkPolicy or DNS handling.
 # CHANGE_ME: run `oc get svc maas-db -n redhat-ods-applications -o jsonpath='{.spec.clusterIP}'`
 postgresql:
-  host: 172.30.40.248
+  host: 172.30.113.103
   port: 5432
   user: maas
   password: maas-eval-password
