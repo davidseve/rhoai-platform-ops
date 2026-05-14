@@ -1,6 +1,8 @@
-# Benchmarks Module
+# GuideLLM Benchmarks
 
 Load testing for LLM inference using [GuideLLM](https://github.com/vllm-project/guidellm) v0.6.0+.
+
+Part of the evaluation module (see [ADR-0007](../../../docs/adr/0007-merge-benchmarks-into-evaluation.md)).
 
 ## Prerequisites
 
@@ -11,16 +13,15 @@ Load testing for LLM inference using [GuideLLM](https://github.com/vllm-project/
 ## Quick Start
 
 ```bash
-# 1. Deploy benchmarks infrastructure (namespace, PVC, ServiceAccount, CA bundle)
-make deploy-benchmarks
+# 1. Deploy evaluation module (includes benchmarks infra: PVC, SA, CA bundle)
+make deploy-evaluation
 
 # 2. Run a benchmark against the gateway (default scenario)
-#    The command waits for the Job to complete and shows logs at the end
 make run-benchmark BENCHMARK_TARGET=https://rh-ai.apps.<cluster-domain>/v1
 
 # 3. Retrieve results from the PVC
-POD=$(oc get pods -n benchmarks -l app.kubernetes.io/name=benchmarks --sort-by=.metadata.creationTimestamp -o name | tail -1)
-oc cp -n benchmarks ${POD#pod/}:/results ./results
+POD=$(oc get pods -n evaluation -l app.kubernetes.io/component=benchmarks --sort-by=.metadata.creationTimestamp -o name | tail -1)
+oc cp -n evaluation ${POD#pod/}:/results ./results
 ```
 
 ## Scenarios
@@ -63,7 +64,7 @@ make run-benchmark BENCHMARK_SCENARIO=gateway BENCHMARK_TARGET=https://... BENCH
 
 GuideLLM generates **synthetic data** for benchmark requests. To create prompts with an exact number of tokens, it needs the model's HuggingFace tokenizer. The `--processor` flag specifies the HuggingFace model ID (e.g., `TinyLlama/TinyLlama-1.1B-Chat-v1.0`). It downloads only the tokenizer (~KB), not the model weights.
 
-This is needed because the OpenShift model name (e.g., `tinyllama-test`) doesn't match a HuggingFace model ID. Configure via `benchmark.processor` in `values.yaml`.
+This is needed because the OpenShift model name (e.g., `tinyllama-test`) doesn't match a HuggingFace model ID. Configure via `benchmarks.benchmark.processor` in `values.yaml`.
 
 ## TLS Verification
 
@@ -77,19 +78,11 @@ This approach validates the OpenShift router's certificate properly. Both the an
 
 ## Payload Matrix
 
-Configured via `benchmark.promptTokens` and `benchmark.outputTokens` in values:
+Configured via `benchmarks.benchmark.promptTokens` and `benchmarks.benchmark.outputTokens` in values:
 
 | Scenario | Prompt Tokens | Output Tokens |
 |----------|---------------|---------------|
 | gateway / baseline / stress / slo | 32 | 64 |
-
-Override inline:
-
-```bash
-make run-benchmark BENCHMARK_SCENARIO=gateway \
-  BENCHMARK_TARGET=https://... \
-  -- --set benchmark.promptTokens=256 --set benchmark.outputTokens=512
-```
 
 ## Resource Requirements
 
@@ -119,8 +112,8 @@ Results are stored in a PVC (`benchmarks-results`) at `/results/`:
 Copy results locally:
 
 ```bash
-POD=$(oc get pods -n benchmarks -l app.kubernetes.io/name=benchmarks --sort-by=.metadata.creationTimestamp -o name | tail -1)
-oc cp -n benchmarks ${POD#pod/}:/results ./results
+POD=$(oc get pods -n evaluation -l app.kubernetes.io/component=benchmarks --sort-by=.metadata.creationTimestamp -o name | tail -1)
+oc cp -n evaluation ${POD#pod/}:/results ./results
 ```
 
 ## Authentication
@@ -132,11 +125,11 @@ For gateway endpoints that require auth:
 make run-benchmark BENCHMARK_TARGET=https://... BENCHMARK_TOKEN=$(oc whoami -t)
 
 # Using a Secret (recommended)
-oc create secret generic benchmark-auth -n benchmarks --from-literal=token=$(oc whoami -t)
-helm template benchmarks modules/benchmarks/charts/benchmarks \
-  --set job.enabled=true \
-  --set benchmark.authSecret=benchmark-auth \
-  --show-only templates/job.yaml | oc create -f -
+oc create secret generic benchmark-auth -n evaluation --from-literal=token=$(oc whoami -t)
+helm template evaluation modules/evaluation/charts/evaluation \
+  --set benchmarks.job.enabled=true \
+  --set benchmarks.benchmark.authSecret=benchmark-auth \
+  --show-only templates/benchmarks-job.yaml | oc create -f -
 ```
 
 ## GuideLLM Load Profiles

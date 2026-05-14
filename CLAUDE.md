@@ -16,11 +16,11 @@ make wait-healthy         # Wait for ArgoCD sync + pods Ready
 make bootstrap-argocd     # deploy + wait + test-all (full pipeline)
 make lint                 # Helm lint all charts
 make template             # Helm template dry-run
-make deploy-benchmarks    # Deploy benchmarks infra (namespace, PVC, SA)
-make run-benchmark        # Run GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo)
 make deploy-database      # Deploy shared PostgreSQL database
 make undeploy-database    # Undeploy database
-make deploy-evaluation    # Deploy EvalHub + MLflow (requires TrustyAI + MLflow operators in DSC)
+make deploy-evaluation    # Deploy EvalHub + MLflow + benchmarks infra
+make run-evaluation       # Run LMEvalJob (EVAL_TASK=arc_easy, EVAL_LIMIT=10)
+make run-benchmark        # Run GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo)
 make undeploy-evaluation  # Undeploy evaluation
 ```
 

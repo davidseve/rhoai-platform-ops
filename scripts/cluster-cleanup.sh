@@ -99,7 +99,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in evaluation maas-model-fast maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
+  for release in evaluation benchmarks maas-model-fast maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -268,8 +268,7 @@ cleanup_argocd() {
   if ! command -v "$ARGOCD" &>/dev/null; then
     warn "argocd CLI not found -- falling back to oc delete (no cascade)"
     for app in evaluation maas-model-fast maas-model maas-platform maas-operators database \
-               observability-tracing observability-grafana observability-operators \
-               rhoai-platform-ops; do
+               observability-tracing observability-grafana observability-operators; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
     done
     sleep 10
@@ -286,7 +285,7 @@ cleanup_argocd() {
 
   # 2. Delete child apps with cascade
   local apps=(
-    evaluation benchmarks
+    evaluation
     maas-model-fast maas-model maas-platform maas-operators database
     observability-tracing observability-grafana observability-operators
   )
@@ -332,7 +331,6 @@ verify_cleanup() {
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
     namespaces+=("$ns")
   done
-  namespaces+=("benchmarks")
   namespaces+=("evaluation")
 
   for ns in "${namespaces[@]}"; do
@@ -345,7 +343,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks|evaluation|database' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|evaluation|database' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -361,29 +359,16 @@ verify_cleanup() {
 }
 
 # ============================================================
-# Benchmarks cleanup
-# ============================================================
-cleanup_benchmarks_residual() {
-  log "=== Benchmarks: Cleaning up residual resources ==="
-  local ns="benchmarks"
-
-  # 1. Delete benchmark Jobs
-  run "$OC delete jobs --all -n '$ns' --timeout=60s --ignore-not-found"
-
-  # 2. Delete PVCs
-  run "$OC delete pvc --all -n '$ns' --timeout=60s --ignore-not-found"
-
-  # 3. Delete namespace
-  run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
-  wait_ns_gone "$ns" 120
-}
-
-# ============================================================
-# Module: Evaluation -- residual resources
+# Module: Evaluation -- residual resources (includes benchmarks, see ADR-0007)
 # ============================================================
 cleanup_evaluation_residual() {
   log "=== Evaluation: Cleaning up residual resources ==="
   local ns="evaluation"
+
+  # GuideLLM benchmark Jobs and PVCs
+  log "Deleting benchmark Jobs and PVCs..."
+  run "$OC delete jobs -l app.kubernetes.io/component=benchmarks -n '$ns' --timeout=60s --ignore-not-found"
+  run "$OC delete pvc benchmarks-results -n '$ns' --timeout=60s --ignore-not-found"
 
   # EvalHub CR
   log "Deleting EvalHub CRs..."
@@ -406,6 +391,15 @@ cleanup_evaluation_residual() {
   # Namespace
   run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   wait_ns_gone "$ns" 120
+
+  # Legacy: clean up old benchmarks namespace if it still exists
+  if [[ "$DRY_RUN" != "true" ]] && $OC get ns benchmarks &>/dev/null; then
+    log "Cleaning up legacy benchmarks namespace..."
+    run "$OC delete jobs --all -n benchmarks --timeout=60s --ignore-not-found"
+    run "$OC delete pvc --all -n benchmarks --timeout=60s --ignore-not-found"
+    run "$OC delete ns benchmarks --timeout=60s --ignore-not-found"
+    wait_ns_gone "benchmarks" 120
+  fi
 }
 
 # ============================================================
@@ -434,17 +428,15 @@ main() {
     case "$MODULE" in
       maas)          cleanup_maas_residual ;;
       observability) cleanup_observability_residual ;;
-      benchmarks)    cleanup_benchmarks_residual ;;
       evaluation)    cleanup_evaluation_residual ;;
       database)      log "Database resources are cleaned up as part of maas (redhat-ods-applications namespace)." ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks, evaluation, database" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, evaluation, database" >&2
         exit 1
         ;;
     esac
   else
     cleanup_evaluation_residual
-    cleanup_benchmarks_residual
     cleanup_observability_residual
     cleanup_maas_residual
   fi

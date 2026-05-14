@@ -10,8 +10,7 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 | **MaaS**          | `modules/maas/`          | Model serving with API governance          | None (base module)            |
 | **Observability** | `modules/observability/` | Metrics, dashboards, alerts                | MaaS (for vLLM metrics)       |
 | **Traceability**  | Part of observability    | Request tracing with OpenTelemetry + Tempo | Observability module          |
-| **Benchmarks**    | `modules/benchmarks/`    | Load testing and performance baselines     | MaaS (models must be running) |
-| **Evaluation**    | `modules/evaluation/`    | MLflow tracking, experiment comparison     | None (independent)            |
+| **Evaluation**    | `modules/evaluation/`    | Quality eval, MLflow tracking, GuideLLM benchmarks | MaaS (models must be running) |
 
 
 ## Implementation Order
@@ -118,7 +117,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **Not evaluated yet:**
 > - [ ] OSSM 3 meshConfig custom sin conflicto con cluster-ingress-operator
-### Phase 3: Benchmarks
+### Phase 3: Benchmarks (merged into evaluation module -- see [ADR-0007](0007-merge-benchmarks-into-evaluation.md))
 
 Goal: identify system limits with repeatable load tests.
 
@@ -161,9 +160,9 @@ Goal: identify system limits with repeatable load tests.
 
 **Why GuideLLM over Mooncake trace replay (2026-05-13)**: GuideLLM (vLLM project, v0.6.0) is significantly more mature -- collects TTFT/ITL/throughput natively, supports sweep profiles to auto-discover operating ranges, outputs JSON/CSV/HTML, and installs with `pip`. Mooncake trace replay scripts required substantial adaptation and lacked automated sweep. Trade-off: GuideLLM doesn't support controlled prefix sharing (relevant for KV cache benchmarks); revisit if prefix-cache-aware routing becomes a priority.
 
-### Phase 4: Evaluation (DONE)
+### Phase 4: Evaluation (DONE -- now includes benchmarks, see [ADR-0007](0007-merge-benchmarks-into-evaluation.md))
 
-Goal: unified evaluation platform for model quality and experiment tracking.
+Goal: unified evaluation platform for model quality, experiment tracking, and performance benchmarks.
 
 - [x] Deploy EvalHub (TrustyAI) as evaluation control plane
   - Providers: lm-evaluation-harness, guidellm, garak, lighteval

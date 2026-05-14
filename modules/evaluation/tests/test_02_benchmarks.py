@@ -1,4 +1,4 @@
-"""Benchmarks module E2E tests.
+"""GuideLLM benchmarks tests (merged into evaluation module, see ADR-0007).
 
 Tests split into two groups:
 - Template validation (no cluster required, always run)
@@ -11,12 +11,12 @@ import pytest
 import yaml
 
 
-CHART_PATH = "modules/benchmarks/charts/benchmarks"
+CHART_PATH = "modules/evaluation/charts/evaluation"
 
 
 def _helm_template(extra_args: str = "") -> str:
     result = subprocess.run(
-        f"helm template benchmarks {CHART_PATH} {extra_args}",
+        f"helm template evaluation {CHART_PATH} {extra_args}",
         shell=True,
         capture_output=True,
         text=True,
@@ -25,10 +25,16 @@ def _helm_template(extra_args: str = "") -> str:
     return result.stdout
 
 
-def _get_job(extra_args: str = "") -> dict:
-    output = _helm_template(f"--set job.enabled=true {extra_args}")
+def _get_benchmarks_docs(extra_args: str = "") -> list:
+    output = _helm_template(extra_args)
     docs = list(yaml.safe_load_all(output))
-    return next(d for d in docs if d and d["kind"] == "Job")
+    return [d for d in docs if d and d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "benchmarks"]
+
+
+def _get_job(extra_args: str = "") -> dict:
+    output = _helm_template(f"--set benchmarks.job.enabled=true {extra_args}")
+    docs = list(yaml.safe_load_all(output))
+    return next(d for d in docs if d and d["kind"] == "Job" and "benchmarks" in d["metadata"]["name"])
 
 
 def _get_job_script(extra_args: str = "") -> str:
@@ -39,21 +45,24 @@ def _get_job_script(extra_args: str = "") -> str:
 # --- Template Validation (no cluster needed) ---
 
 
-class TestHelmTemplate:
-    def test_infra_only_renders_namespace_pvc_sa(self):
-        output = _helm_template()
-        docs = list(yaml.safe_load_all(output))
-        kinds = {d["kind"] for d in docs if d}
-        assert "Namespace" in kinds
+class TestBenchmarksHelmTemplate:
+    def test_infra_renders_pvc_sa_ca(self):
+        docs = _get_benchmarks_docs()
+        kinds = {d["kind"] for d in docs}
         assert "PersistentVolumeClaim" in kinds
         assert "ServiceAccount" in kinds
+        assert "ConfigMap" in kinds
         assert "Job" not in kinds
 
+    def test_benchmarks_disabled_renders_nothing(self):
+        docs = _get_benchmarks_docs("--set benchmarks.enabled=false")
+        assert len(docs) == 0
+
     def test_job_enabled_renders_job(self):
-        output = _helm_template("--set job.enabled=true")
+        output = _helm_template("--set benchmarks.job.enabled=true")
         docs = list(yaml.safe_load_all(output))
-        kinds = {d["kind"] for d in docs if d}
-        assert "Job" in kinds
+        job_kinds = [d for d in docs if d and d["kind"] == "Job" and "benchmarks" in d["metadata"]["name"]]
+        assert len(job_kinds) == 1
 
     def test_job_uses_correct_image(self):
         job = _get_job()
@@ -71,15 +80,15 @@ class TestHelmTemplate:
         assert "benchmarks-results" in pvc_names
 
     def test_job_profile_in_script(self):
-        script = _get_job_script("--set benchmark.profile=sweep")
+        script = _get_job_script("--set benchmarks.benchmark.profile=sweep")
         assert "--rate-type \"sweep\"" in script
 
     def test_job_name_includes_profile(self):
-        job = _get_job("--set benchmark.profile=constant")
+        job = _get_job("--set benchmarks.benchmark.profile=constant")
         assert "constant" in job["metadata"]["name"]
 
     def test_auth_token_sets_env_and_backend_kwargs(self):
-        job = _get_job("--set benchmark.authToken=test123")
+        job = _get_job("--set benchmarks.benchmark.authToken=test123")
         container = job["spec"]["template"]["spec"]["containers"][0]
         env_names = [e["name"] for e in container.get("env", [])]
         assert "AUTH_TOKEN" in env_names
@@ -116,14 +125,18 @@ class TestHelmTemplate:
         assert "SSL_CERT_FILE" in env_names
 
     def test_ca_bundle_configmap_has_inject_label(self):
-        output = _helm_template()
-        docs = list(yaml.safe_load_all(output))
-        cm = next(d for d in docs if d and d["kind"] == "ConfigMap")
+        docs = _get_benchmarks_docs()
+        cm = next(d for d in docs if d["kind"] == "ConfigMap")
         labels = cm["metadata"]["labels"]
         assert labels.get("config.openshift.io/inject-trusted-cabundle") == "true"
 
+    def test_all_resources_in_evaluation_namespace(self):
+        docs = _get_benchmarks_docs()
+        for doc in docs:
+            assert doc["metadata"]["namespace"] == "evaluation"
 
-# --- Cluster Validation (requires oc login + deployed benchmarks infra) ---
+
+# --- Cluster Validation (requires oc login + deployed evaluation infra) ---
 
 
 @pytest.fixture(scope="module")
@@ -138,22 +151,18 @@ def cluster_available():
 @pytest.fixture(scope="module")
 def infra_deployed(cluster_available):
     result = subprocess.run(
-        "oc get ns benchmarks",
+        "oc get ns evaluation",
         shell=True, capture_output=True, text=True, check=False
     )
     if result.returncode != 0:
-        pytest.skip("Benchmarks namespace not found -- infra not deployed")
+        pytest.skip("Evaluation namespace not found -- infra not deployed")
 
 
-class TestClusterInfra:
-    def test_namespace_exists(self, infra_deployed, oc, benchmark_namespace):
-        result = oc(f"get ns {benchmark_namespace}")
-        assert benchmark_namespace in result
-
-    def test_pvc_exists(self, infra_deployed, oc, benchmark_namespace):
-        result = oc(f"get pvc benchmarks-results -n {benchmark_namespace}")
+class TestBenchmarksClusterInfra:
+    def test_pvc_exists(self, infra_deployed, oc, evaluation_namespace):
+        result = oc(f"get pvc benchmarks-results -n {evaluation_namespace}")
         assert "benchmarks-results" in result
 
-    def test_serviceaccount_exists(self, infra_deployed, oc, benchmark_namespace):
-        result = oc(f"get sa benchmarks-runner -n {benchmark_namespace}")
+    def test_serviceaccount_exists(self, infra_deployed, oc, evaluation_namespace):
+        result = oc(f"get sa benchmarks-runner -n {evaluation_namespace}")
         assert "benchmarks-runner" in result

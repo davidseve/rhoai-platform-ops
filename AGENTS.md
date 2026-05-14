@@ -4,9 +4,9 @@ This file provides guidance to AI coding agents (Cursor, Claude Code, etc.) when
 
 ## Project Overview
 
-RHOAI Platform Operations -- a modular GitOps repository for deploying and operating Red Hat OpenShift AI (RHOAI) infrastructure. Each module (database, MaaS, observability, benchmarks, evaluation) is independently deployable via Helm or ArgoCD. The project prioritizes Red Hat products, Helm-first validation, idempotent tests, and Architecture Decision Records for every non-obvious choice.
+RHOAI Platform Operations -- a modular GitOps repository for deploying and operating Red Hat OpenShift AI (RHOAI) infrastructure. Each module (database, MaaS, observability, evaluation) is independently deployable via Helm or ArgoCD. The project prioritizes Red Hat products, Helm-first validation, idempotent tests, and Architecture Decision Records for every non-obvious choice.
 
-**Maturity:** Database, MaaS, observability, benchmarks, and evaluation modules deployed and tested
+**Maturity:** Database, MaaS, observability, and evaluation modules deployed and tested
 
 ## Quick Commands
 
@@ -40,25 +40,21 @@ make argocd-branch-current # Point ArgoCD manifests to the current git branch
 make argocd-branch-main   # Point ArgoCD manifests back to main
 make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit branch
 
-# Benchmarks module
-make deploy-benchmarks    # Helm install benchmarks infra (namespace, PVC, SA, CA bundle)
+# Evaluation module (includes EvalHub, MLflow, GuideLLM benchmarks)
+make deploy-evaluation    # Helm install EvalHub + MLflow + benchmarks infra
+make run-evaluation EVAL_TASK=arc_easy EVAL_LIMIT=10  # Run LMEvalJob quality evaluation
 make run-benchmark BENCHMARK_SCENARIO=gateway BENCHMARK_TARGET=https://...  # Gateway (default)
 make run-benchmark BENCHMARK_SCENARIO=baseline   # Direct to model (no gateway)
 make run-benchmark BENCHMARK_SCENARIO=stress BENCHMARK_TARGET=https://...   # Sweep auto-discovery
 make run-benchmark BENCHMARK_SCENARIO=slo BENCHMARK_TARGET=https://...      # Constant 4 RPS
-make test-benchmarks      # pytest modules/benchmarks/tests/
-make undeploy-benchmarks  # Helm uninstall benchmarks
-
-# Evaluation module
-make deploy-evaluation    # Helm install EvalHub + MLflow (requires TrustyAI + MLflow operators)
+make test-evaluation      # pytest modules/evaluation/tests/
 make undeploy-evaluation  # Helm uninstall evaluation
 
 # Cluster cleanup
 make cluster-cleanup      # Remove ALL resources (skip confirmation)
 make cluster-cleanup-maas # Remove only MaaS resources
 make cluster-cleanup-observability # Remove only observability resources
-make cluster-cleanup-benchmarks # Remove only benchmarks resources
-make cluster-cleanup-evaluation # Remove only evaluation resources
+make cluster-cleanup-evaluation # Remove only evaluation resources (includes benchmarks)
 make cluster-cleanup-database # Remove only database resources
 make cluster-cleanup-dry  # Dry-run: show what would be deleted
 
@@ -93,16 +89,11 @@ modules/
     tests/                # E2E tests (inference, in-cluster, governance)
     docs/                 # Architecture, Gateway, troubleshooting
 
-  benchmarks/             # GuideLLM load testing (infra via ArgoCD, Jobs on-demand)
+  evaluation/             # Unified LLM evaluation: EvalHub (quality), MLflow (tracking), GuideLLM (performance)
     charts/
-      benchmarks/         # Namespace, PVC, SA, GuideLLM K8s Job
+      evaluation/         # EvalHub CR, MLflow CR, GuideLLM Job, DB secrets, routes, CA bundles
     tests/                # E2E tests (template validation + cluster infra)
-    docs/                 # BENCHMARKS.md
-
-  evaluation/             # EvalHub + MLflow (RHOAI 3.4 Tech Preview)
-    charts/
-      evaluation/         # EvalHub CR, MLflow CR, DB secrets, routes, CA bundle
-    docs/                 # EVALUATION.md
+    docs/                 # EVALUATION.md, BENCHMARKS.md
 ```
 
 ### ArgoCD App-of-Apps
@@ -162,7 +153,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Tracing:** Red Hat build of OpenTelemetry + Tempo (see [ADR-0004](docs/adr/0004-tracing-stack.md))
 - **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
 - **Database:** Shared PostgreSQL 16 in redhat-ods-applications (used by MaaS API, MLflow, EvalHub)
-- **Benchmarks:** GuideLLM v0.6.0+ as K8s Job (infra via ArgoCD, Jobs on-demand)
+- **Benchmarks:** GuideLLM v0.6.0+ as K8s Job within evaluation module (infra via ArgoCD, Jobs on-demand)
 - **Evaluation:** EvalHub (TrustyAI) + MLflow tracking server (RHOAI 3.4 Tech Preview)
 - **GitOps:** ArgoCD with app-of-apps pattern
 
@@ -185,6 +176,6 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - [Observability](modules/observability/docs/OBSERVABILITY.md)
 - [MaaS Architecture](modules/maas/docs/ARCHITECTURE.md)
 - [Gateway and Route](modules/maas/docs/GATEWAY-AND-ROUTE.md)
-- [Benchmarks](modules/benchmarks/docs/BENCHMARKS.md)
 - [Evaluation](modules/evaluation/docs/EVALUATION.md)
+- [Benchmarks](modules/evaluation/docs/BENCHMARKS.md)
 - [ADRs](docs/adr/)

@@ -109,44 +109,7 @@ undeploy-maas: ## Undeploy MaaS via Helm
 	-$(HELM) uninstall maas-platform 2>/dev/null
 	-$(HELM) uninstall maas-operators 2>/dev/null
 
-# --- Benchmarks Module ---
-
-BENCHMARK_SCENARIO ?= gateway
-BENCHMARK_TARGET ?=
-BENCHMARK_TOKEN ?=
-
-.PHONY: deploy-benchmarks
-deploy-benchmarks: ## Deploy benchmarks infra (namespace, PVC, SA) via Helm
-	$(HELM) upgrade --install benchmarks modules/benchmarks/charts/benchmarks --timeout 2m
-
-.PHONY: run-benchmark
-run-benchmark: ## Run a benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo, BENCHMARK_TARGET=url)
-	@echo "=== Running benchmark scenario: $(BENCHMARK_SCENARIO) ==="
-	@JOB_YAML=$$($(HELM) template benchmarks modules/benchmarks/charts/benchmarks \
-		--set job.enabled=true \
-		$(if $(filter baseline stress slo,$(BENCHMARK_SCENARIO)),-f modules/benchmarks/charts/benchmarks/values-$(BENCHMARK_SCENARIO).yaml) \
-		$(if $(BENCHMARK_TARGET),--set benchmark.target=$(BENCHMARK_TARGET)) \
-		$(if $(BENCHMARK_TOKEN),--set benchmark.authToken=$(BENCHMARK_TOKEN)) \
-		--show-only templates/job.yaml); \
-	JOB_NAME=$$(echo "$$JOB_YAML" | grep "^  name:" | head -1 | awk '{print $$2}'); \
-	echo "$$JOB_YAML" | $(OC) create -f - && \
-	echo "Waiting for job/$$JOB_NAME to complete..." && \
-	$(OC) wait --for=condition=complete job/$$JOB_NAME -n benchmarks --timeout=1800s && \
-	echo "=== Job completed ===" && \
-	$(OC) logs job/$$JOB_NAME -n benchmarks
-
-.PHONY: test-benchmarks
-test-benchmarks: ## Run Benchmarks E2E tests
-	$(PYTHON) -m venv modules/benchmarks/tests/.venv
-	modules/benchmarks/tests/.venv/bin/pip install -q -r modules/benchmarks/tests/requirements.txt
-	modules/benchmarks/tests/.venv/bin/pytest modules/benchmarks/tests/ -v; \
-	  rc=$$?; rm -rf modules/benchmarks/tests/.venv; exit $$rc
-
-.PHONY: undeploy-benchmarks
-undeploy-benchmarks: ## Undeploy benchmarks via Helm
-	-$(HELM) uninstall benchmarks 2>/dev/null
-
-# --- Evaluation Module ---
+# --- Evaluation Module (includes GuideLLM benchmarks, see ADR-0007) ---
 
 .PHONY: deploy-evaluation
 deploy-evaluation: ## Deploy evaluation (EvalHub + MLflow) via Helm
@@ -173,6 +136,26 @@ test-evaluation: ## Run Evaluation E2E tests
 	modules/evaluation/tests/.venv/bin/pip install -q -r modules/evaluation/tests/requirements.txt
 	modules/evaluation/tests/.venv/bin/pytest modules/evaluation/tests/ -v; \
 	  rc=$$?; rm -rf modules/evaluation/tests/.venv; exit $$rc
+
+BENCHMARK_SCENARIO ?= gateway
+BENCHMARK_TARGET ?=
+BENCHMARK_TOKEN ?=
+
+.PHONY: run-benchmark
+run-benchmark: ## Run a GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo, BENCHMARK_TARGET=url)
+	@echo "=== Running benchmark scenario: $(BENCHMARK_SCENARIO) ==="
+	@JOB_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
+		--set benchmarks.job.enabled=true \
+		$(if $(filter baseline stress slo,$(BENCHMARK_SCENARIO)),-f modules/evaluation/charts/evaluation/values-$(BENCHMARK_SCENARIO).yaml) \
+		$(if $(BENCHMARK_TARGET),--set benchmarks.benchmark.target=$(BENCHMARK_TARGET)) \
+		$(if $(BENCHMARK_TOKEN),--set benchmarks.benchmark.authToken=$(BENCHMARK_TOKEN)) \
+		--show-only templates/benchmarks-job.yaml); \
+	JOB_NAME=$$(echo "$$JOB_YAML" | grep "^  name:" | head -1 | awk '{print $$2}'); \
+	echo "$$JOB_YAML" | $(OC) create -f - && \
+	echo "Waiting for job/$$JOB_NAME to complete..." && \
+	$(OC) wait --for=condition=complete job/$$JOB_NAME -n evaluation --timeout=1800s && \
+	echo "=== Job completed ===" && \
+	$(OC) logs job/$$JOB_NAME -n evaluation
 
 .PHONY: undeploy-evaluation
 undeploy-evaluation: ## Undeploy evaluation via Helm
@@ -206,9 +189,9 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 
 WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
-# parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, benchmarks, evaluation)
-MIN_APPS ?= 11
-APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops|benchmarks|evaluation|database'
+# parent + 10 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, evaluation)
+MIN_APPS ?= 10
+APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops|evaluation|database'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
@@ -311,12 +294,8 @@ cluster-cleanup-maas: ## Remove only MaaS resources from the cluster
 cluster-cleanup-observability: ## Remove only observability resources from the cluster
 	./scripts/cluster-cleanup.sh --yes observability
 
-.PHONY: cluster-cleanup-benchmarks
-cluster-cleanup-benchmarks: ## Remove only benchmarks resources from the cluster
-	./scripts/cluster-cleanup.sh --yes benchmarks
-
 .PHONY: cluster-cleanup-evaluation
-cluster-cleanup-evaluation: ## Remove only evaluation resources from the cluster
+cluster-cleanup-evaluation: ## Remove only evaluation resources (includes benchmarks) from the cluster
 	./scripts/cluster-cleanup.sh --yes evaluation
 
 .PHONY: cluster-cleanup-database
@@ -334,10 +313,10 @@ deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
 .PHONY: test-all
-test-all: test-observability test-maas test-benchmarks test-evaluation ## Run all module tests
+test-all: test-observability test-maas test-evaluation ## Run all module tests
 
 .PHONY: undeploy-all
-undeploy-all: undeploy-evaluation undeploy-benchmarks undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
+undeploy-all: undeploy-evaluation undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
 
 # --- Validation ---
 
@@ -350,7 +329,6 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template maas-operators modules/maas/charts/operators
 	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
-	$(HELM) template benchmarks modules/benchmarks/charts/benchmarks
 	$(HELM) template evaluation modules/evaluation/charts/evaluation
 	$(HELM) template argocd-apps argocd/apps
 
@@ -363,7 +341,6 @@ lint: ## Helm lint all charts
 	$(HELM) lint modules/maas/charts/operators
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model
-	$(HELM) lint modules/benchmarks/charts/benchmarks
 	$(HELM) lint modules/evaluation/charts/evaluation
 	$(HELM) lint argocd/apps
 
