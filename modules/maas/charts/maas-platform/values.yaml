@@ -99,8 +99,9 @@ tiers:
         users: []
 
 # TelemetryPolicy: enriches Limitador metrics with user/group/model labels
+# Disabled: responseBodyJSON() CEL expression not supported by Authorino, causes 403
 telemetry:
-  enabled: true
+  enabled: false
 
 # ServiceMonitor for Limitador metrics scraping
 monitoring:
