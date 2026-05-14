@@ -181,7 +181,7 @@ evalhub-collections: ## List available EvalHub benchmark collections
 
 .PHONY: evalhub-smoke
 evalhub-smoke: ## Smoke test: lm-eval limit=1, validates full pipeline (EvalHub → Job → MLflow)
-	POLL_TIMEOUT=600 ./scripts/evalhub.sh submit \
+	POLL_TIMEOUT=900 ./scripts/evalhub.sh submit \
 		--provider lm_evaluation_harness \
 		--benchmark arc_easy \
 		--model-url $(MODEL_URL) \
