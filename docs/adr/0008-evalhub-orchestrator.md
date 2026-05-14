@@ -50,6 +50,7 @@ New Makefile targets (`evalhub-eval`, `evalhub-benchmark`, etc.) use `scripts/ev
 - **TLS resolved via `model.auth.secret_ref`**: EvalHub-created pods don't set `REQUESTS_CA_BUNDLE` by default, but `model.auth.secret_ref` mounts a K8s Secret at `/var/run/secrets/model/`. A `ca_cert` key in the Secret is used as `verify_certificate` by the adapter. Create a Secret with the OpenShift service-serving CA to use internal KServe URLs.
 - **`model.name` vs tokenizer**: `model.name` must match the vLLM `--served-model-name`. Use `parameters.tokenizer` to specify the HuggingFace model ID for tokenizer download.
 - **MLflow logging requires `experiment` field**: The `experiment.name` field must be included in the job submission payload for the adapter to log metrics to MLflow. Without it, MLflow experiments are created but runs are not logged. The `evalhub.sh` script adds this field automatically.
+- **MLflow Tracing not yet instrumented**: The MLflow server supports trace ingestion (`/v1/traces` OTLP endpoint, available since RHOAI 3.3), but the EvalHub adapter does not emit traces — only final metrics. Tracked: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The EvalHub ADR (`ODH-ADR-EH-0001`) plans dual tracing (parent trace from EvalHub, child spans from benchmark pods via AdapterFramework SDK).
 - Tech Preview means potential instability or breaking changes
 - Custom providers (BYOP) with tenant scope don't resolve in job submissions (TP bug, tracked)
 

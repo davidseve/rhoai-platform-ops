@@ -157,7 +157,7 @@ curl -sk "https://${MLFLOW_ROUTE}/api/2.0/mlflow/runs/search" \
 - **EVAL_LIMIT recommended for CPU models**: Evaluations generate sustained inference load. vLLM on CPU can OOMKill under heavy load (e.g. full arc_easy = 2376 calls). Use `EVAL_LIMIT=10` (default) for testing, increase for final evaluations on GPU.
 - **Garak timeout**: Security scans (`garak` provider) may timeout at 600s on CPU models.
 - **Lighteval ignores `--limit`**: The lighteval adapter evaluates the full dataset regardless of the `limit` parameter.
-- **MLflow Traces**: The `/api/2.0/mlflow/traces` API exists but EvalHub does not instrument with `mlflow.trace()`. Only final metrics are logged. Full tracing (LLM calls, reasoning steps) is expected in RHOAI 3.4 GA.
+- **MLflow Traces**: The MLflow server exposes the `/v1/traces` OTLP endpoint (documented since [RHOAI 3.3 architecture](https://github.com/opendatahub-io/architecture-context)) and can persist traces. However, the EvalHub adapter does not instrument LLM calls with `mlflow.trace()` yet — only final metrics are logged. Tracked upstream: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The [EvalHub ADR](https://github.com/opendatahub-io/architecture-decision-records) (`ODH-ADR-EH-0001`) describes a dual tracing model where EvalHub creates the parent trace and benchmark pods emit spans via the AdapterFramework SDK, but this is not yet implemented.
 - **Custom providers (BYOP)**: Custom providers with tenant scope don't resolve in job submissions (TP bug).
 
 ## Detailed Documentation
