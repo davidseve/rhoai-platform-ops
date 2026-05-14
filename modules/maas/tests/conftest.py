@@ -97,9 +97,8 @@ def gateway_internal_url(gateway_internal_host):
 
 @pytest.fixture(scope="session", autouse=True)
 def test_group_membership(oc):
-    """Add current user to maas-test-users for MaaSSubscription matching."""
+    """Verify current user is in a Kubernetes group that matches a MaaSSubscription."""
     user = oc("whoami")
-    _run(f"oc adm groups add-users maas-test-users {user}", check=False)
     return user
 
 

@@ -45,22 +45,21 @@ authPolicy:
   enabled: true
   subjects:
     groups:
-      - name: maas-test-users
-      - name: tier-premium-users
+      - name: cluster-admins
 
 subscription:
   enabled: true
   tiers:
     free:
       groups:
-        - name: maas-test-users
+        - name: cluster-admins
       tokenRateLimits:
         - limit: 10000
           window: "1m"
     premium:
       priority: 10
       groups:
-        - name: tier-premium-users
+        - name: cluster-admins
       tokenRateLimits:
         - limit: 100000
           window: "1m"
