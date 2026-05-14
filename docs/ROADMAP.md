@@ -80,6 +80,9 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 - Persistent Tempo storage (switch from memory to PV/S3 backend)
 - Trace-based SLO alerts (PrometheusRule from spanmetrics)
 - **Kuadrant WASM CEL errors (resolved in GA)**: EA2 had ~333 errors/hour caused by `groups_str` bug in maas-controller TRLP predicates (PR #543). Fixed in RHOAI 3.4 GA — MaaSAuthPolicy uses API key subscription scoping instead of `groups_str`. Verify `kuadrant_errors` drops to ~0 after GA deployment.
+- **TelemetryPolicy CEL incompatibility (blocked)**: `responseBodyJSON("/model")` and `auth.identity.selected_subscription` are Kuadrant WASM expressions, NOT valid Authorino CEL. When MaaSAuthPolicy is active, Authorino parses these as metric labels and fails with `failed to parse CEL expression`, causing 403 on ALL requests. **Workaround**: `telemetry.enabled: false`. **Next step**: evaluate if Tenant CR with `spec.telemetry.enabled: true` handles this correctly (Phase 2a).
+- **MaaSAuthPolicy 403 on API key inference (investigating)**: API keys create and validate internally (`/internal/v1/api-keys/validate` → `valid: true`), but Authorino returns 403 on inference. Possibly a failing OPA rule (`auth-valid`, `require-group-membership`, `subscription-valid`) or TLS issue between Authorino and maas-api callback. **Next step**: `oc set env deploy/authorino -n kuadrant-system LOG_LEVEL=debug` on a clean cluster to identify the failing rule.
+- **AuthPolicy per-model behavior**: MaaSAuthPolicy creates AuthPolicies that accept OCP tokens ONLY for `/v1/models` (listing). Inference (`/v1/chat/completions`) requires API keys (`sk-oai-*`). This is by design in RHOAI 3.4 GA. Tests using OCP tokens for inference must be refactored to use API keys.
 - **Gateway production hardening**: tune Authorino limits/HPA, connection pooling, client retry guidance
 - **Cluster Observability Operator (COO)**: instalar cuando el observability stack de RHOAI pase a GA (estimado 3.5+). COO habilita dashboards nativos en la consola OpenShift (PersesDashboard), UIPlugins de tracing/troubleshooting, y detección de incidentes (Korrel8r). Prerequisito para `observabilityDashboard: true` en OdhDashboardConfig. No conflicta con Grafana/OTel/Tempo actuales. Ya preparado en `values.yaml` con `observabilityDashboard: false`.
 
@@ -111,6 +114,12 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **EA2 known bug (fixed in GA):** Token rate limits didn't fire in EA2 -- `maas-controller` TRLP predicates used `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview put groups in `auth.identity.user.groups`. Fixed in GA via [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543). MaaSAuthPolicy enabled, xfail markers removed.
 >
+> **GA validation (2026-05-14) — key findings:**
+> - MaaSSubscription `owner.groups` must use **Kubernetes groups** (from TokenReview), NOT OpenShift Group objects. TokenReview returns `cluster-admins`, `system:authenticated:oauth`, `system:authenticated` — but NOT `maas-test-users` or `tier-premium-users`. Fixed in commit `3d9e5ca`.
+> - TelemetryPolicy disabled (`telemetry.enabled: false`) — `responseBodyJSON()` is a Kuadrant WASM function, not valid Authorino CEL. Causes 403 on all requests when MaaSAuthPolicy is active. Fixed in commit `205d39f`.
+> - MaaSAuthPolicy 403 on API key inference — **unresolved blocker**. API keys create and validate correctly, but Authorino denies inference requests. Needs debug-level Authorino logging on a clean cluster. See [memory: cleanup candidates](../modules/maas/docs/ARCHITECTURE.md).
+> - AuthPolicy per-model design: OCP tokens accepted for `/v1/models` listing only; inference requires API keys (`sk-oai-*`). This is by design — inference tests need `maas_api_key` fixture, not `maas_token`.
+>
 > **Evaluated (2026-05-11):**
 > - [x] GatewayClass tracing nativo — **NOT AVAILABLE**. `data-science-gateway-class` uses `openshift.io/gateway-controller/v1` (Istio managed by cluster-ingress-operator). The managed Istio CR cannot be customized with `extensionProviders` for OTel. Would require independent OSSM 3 or upstream controller changes.
 > - [x] RHCL operator: mover a `openshift-operators` — **IMPLEMENTED** on branch `feat/rhcl-openshift-operators`. Subscription moved from `kuadrant-system` to `openshift-operators` (global OperatorGroup). OperatorGroup removed. Kuadrant CR stays in `kuadrant-system`.
@@ -118,6 +127,10 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **Not evaluated yet:**
 > - [ ] OSSM 3 meshConfig custom sin conflicto con cluster-ingress-operator
+> - [ ] Tenant CR (`oc get tenant -A`) — check if auto-created, whether `spec.telemetry.enabled: true` fixes TelemetryPolicy CEL issue
+> - [ ] Authorino ServiceMonitor — check if maas-api exposes metrics port in `redhat-ods-applications`
+> - [ ] Dashboard flag `modelAsService` — verify valid fields in GA OdhDashboardConfig, check `observabilityDashboard` GA status
+> - [ ] Unified endpoint routing — check if LLMInferenceService supports routing by payload (single path for all models)
 ### Phase 3: Benchmarks
 
 Goal: identify system limits with repeatable load tests.
