@@ -23,12 +23,8 @@ See [ADR-0007](../../../docs/adr/0007-merge-benchmarks-into-evaluation.md) for t
 
 ```bash
 # Deploy infrastructure (EvalHub + MLflow + benchmarks infra)
+# The model-auth Secret (service-serving CA) is created automatically by a post-install hook
 make deploy-evaluation
-
-# Create model-auth Secret (required for internal TLS to KServe services)
-oc create secret generic model-auth -n evaluation \
-    --from-literal=ca_cert="$(oc get cm openshift-service-ca.crt -n evaluation \
-        -o jsonpath='{.data.service-ca\.crt}')"
 
 # Run quality evaluation via EvalHub API (internal KServe URL)
 make evalhub-eval EVALHUB_BENCHMARK=arc_easy \
@@ -94,13 +90,12 @@ EvalHub-created pods need TLS trust and authentication to access model endpoints
 | `api-key` | API key, set as `OPENAI_API_KEY` in the pod | Only for authenticated endpoints |
 | `hf-token` | HuggingFace token for gated models/datasets | Only for gated resources |
 
-**Recommended setup** — internal KServe URL with service-CA:
+The `model-auth` Secret with `ca_cert` is created automatically by a Helm post-install hook (`model-auth-init` Job) that reads the `openshift-service-ca.crt` ConfigMap. No manual setup required.
 
+To add `api-key` or `hf-token` to the existing Secret:
 ```bash
-# Create Secret with OpenShift service-serving CA
-oc create secret generic model-auth -n evaluation \
-    --from-literal=ca_cert="$(oc get cm openshift-service-ca.crt -n evaluation \
-        -o jsonpath='{.data.service-ca\.crt}')"
+oc patch secret model-auth -n evaluation --type merge \
+    -p '{"stringData": {"api-key": "<token>"}}'
 ```
 
 The internal URL bypasses gateway authentication (no `api-key` needed):
@@ -158,6 +153,7 @@ curl -sk "https://${MLFLOW_ROUTE}/api/2.0/mlflow/runs/search" \
 - **Garak timeout**: Security scans (`garak` provider) may timeout at 600s on CPU models.
 - **Lighteval ignores `--limit`**: The lighteval adapter evaluates the full dataset regardless of the `limit` parameter.
 - **MLflow Traces**: The MLflow server exposes the `/v1/traces` OTLP endpoint (documented since [RHOAI 3.3 architecture](https://github.com/opendatahub-io/architecture-context)) and can persist traces. However, the EvalHub adapter does not instrument LLM calls with `mlflow.trace()` yet — only final metrics are logged. Tracked upstream: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The [EvalHub ADR](https://github.com/opendatahub-io/architecture-decision-records) (`ODH-ADR-EH-0001`) describes a dual tracing model where EvalHub creates the parent trace and benchmark pods emit spans via the AdapterFramework SDK, but this is not yet implemented.
+- **External authenticated endpoints**: The `api-key` in `model.auth.secret_ref` is mounted at `/var/run/secrets/model/api-key` and exposed as `ModelCredentials.api_key` by the SDK (`auth.py`), but it is **not** set as `OPENAI_API_KEY` environment variable automatically. Each adapter decides how to use it. GuideLLM and lm-eval read `OPENAI_API_KEY` from the environment natively, so external authenticated endpoints may not work out-of-the-box. Use internal KServe URLs (no auth needed) for reliable evaluations; external gateway URLs only make sense for measuring real gateway latency.
 - **Custom providers (BYOP)**: Custom providers with tenant scope don't resolve in job submissions (TP bug).
 
 ## Detailed Documentation

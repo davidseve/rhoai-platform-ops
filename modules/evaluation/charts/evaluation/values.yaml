@@ -36,6 +36,9 @@ evalhub:
   enabled: true
   name: evalhub
   replicas: 1
+  # Model auth Secret (created by post-install hook with service-serving CA)
+  modelAuth:
+    secretName: model-auth
   # Providers to mount from OOTB ConfigMaps
   providers:
     - lm-evaluation-harness
