@@ -105,11 +105,13 @@ tiers:
       - name: tier-premium-users
         users: []
 
-# TelemetryPolicy: enriches Limitador metrics with user/group/model labels.
-# Telemetry: managed by maas-controller via Tenant CR (spec.telemetry.enabled).
-# The controller creates both TelemetryPolicy and Istio Telemetry automatically.
-# Enable via: oc patch tenant default-tenant -n models-as-a-service --type merge \
-#   -p '{"spec":{"telemetry":{"enabled":true}}}'
+# Tenant CR: auto-created by maas-controller, but we manage spec.telemetry via SSA.
+# ArgoCD (enabled: true): template + ServerSideApply merges with controller's Tenant.
+# Helm (enabled: false): Makefile does `oc patch` after deploy instead.
+tenant:
+  enabled: true
+  telemetry:
+    enabled: true
 
 # ServiceMonitor for Limitador metrics scraping
 monitoring:

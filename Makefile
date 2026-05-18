@@ -58,7 +58,7 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 	@$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s
 	@echo "=== Phase 2: Platform (operator CRs, DSC, Gateway, monitoring) ==="
 	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform \
-		--set grafana.enabled=$(GRAFANA_ENABLED) --wait --timeout 15m
+		--set grafana.enabled=$(GRAFANA_ENABLED) --set tenant.enabled=false --wait --timeout 15m
 	@echo "Waiting for DSC to be Ready..."
 	@for i in $$(seq 1 120); do \
 		status=$$($(OC) get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null); \
@@ -67,6 +67,10 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 		if [ $$i -eq 120 ]; then echo "ERROR: DSC not Ready after 10 minutes"; exit 1; fi; \
 		sleep 5; \
 	done
+	@echo "Enabling Tenant telemetry..."
+	@$(OC) patch tenant default-tenant -n models-as-a-service --type merge \
+		-p '{"spec":{"telemetry":{"enabled":true}}}' 2>/dev/null || \
+		echo "  Tenant not found yet (will be patched after models deploy)"
 	@echo "Waiting for OdhDashboardConfig..."
 	@for i in $$(seq 1 60); do \
 		if $(OC) get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications &>/dev/null; then \
