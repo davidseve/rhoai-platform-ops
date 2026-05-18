@@ -161,11 +161,11 @@ class TestTokenRateLimitIsolation:
     """model2 should not be affected by model1's token exhaustion."""
 
     def test_model2_tokens_not_exhausted(
-        self, maas_url, maas_api_key, inference_path_model2
+        self, maas_url, maas_api_key_model2, inference_path_model2
     ):
         url = f"{maas_url}{inference_path_model2}"
         headers = {
-            "Authorization": f"Bearer {maas_api_key['key']}",
+            "Authorization": f"Bearer {maas_api_key_model2['key']}",
             "Content-Type": "application/json",
         }
         payload = {

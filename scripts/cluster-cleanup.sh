@@ -134,9 +134,16 @@ cleanup_maas_residual() {
     run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
   fi
 
-  # DataScienceCluster / DSCInitialization can block namespace deletion
+  # DataScienceCluster / DSCInitialization can block namespace deletion.
+  # Clear finalizers first — if the operator is already gone, the finalizer will never resolve.
   log "Deleting DataScienceCluster and DSCInitialization..."
-  run "$OC delete datasciencecluster --all --timeout=120s --ignore-not-found"
+  for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
+    run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+  run "$OC delete datasciencecluster --all --timeout=60s --ignore-not-found"
+  for dsci in $($OC get dscinitialization -o name 2>/dev/null); do
+    run "$OC patch '$dsci' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
   run "$OC delete dscinitialization --all --timeout=30s --ignore-not-found"
 
   # Kuadrant CR must be deleted before its operator namespace
@@ -164,11 +171,29 @@ cleanup_maas_residual() {
     run "$OC delete csv --all -n '$ns' --ignore-not-found"
     run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
   done
-  # RHCL operator lives in openshift-operators (global OG); only delete its Subscription/CSV
-  log "Deleting RHCL operator from openshift-operators..."
-  run "$OC delete subscription rhcl-operator -n openshift-operators --ignore-not-found"
-  for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep rhcl || true); do
-    run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
+  # RHCL operator lives in openshift-operators (global OG); only delete its Subscription/CSV.
+  # OLM also creates dependency subscriptions (authorino-operator, limitador-operator,
+  # dns-operator, servicemeshoperator3) that survive deletion of the parent subscription.
+  log "Deleting RHCL operator and OLM dependency subscriptions from openshift-operators..."
+  # servicemeshoperator3 is owned by the cluster ingress operator (annotation
+  # ingress.operator.openshift.io/owned), not by RHCL -- do not delete it.
+  local rhcl_subs="rhcl-operator authorino-operator limitador-operator dns-operator"
+  for sub in $rhcl_subs; do
+    for s in $($OC get subscription -n openshift-operators -o name 2>/dev/null | grep "subscription.operators.coreos.com/${sub}" || true); do
+      run "$OC delete '$s' -n openshift-operators --ignore-not-found"
+    done
+  done
+  local rhcl_csv_patterns="rhcl authorino limitador dns-operator"
+  for pat in $rhcl_csv_patterns; do
+    for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep "$pat" || true); do
+      run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
+    done
+  done
+  # cert-manager-operator namespace may also hold dependency CSVs
+  for pat in $rhcl_csv_patterns; do
+    for csv in $($OC get csv -n cert-manager-operator -o name 2>/dev/null | grep "$pat" || true); do
+      run "$OC delete '$csv' -n cert-manager-operator --ignore-not-found"
+    done
   done
 
   # Namespaces

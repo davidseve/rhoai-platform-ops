@@ -229,12 +229,12 @@ class TestModel2ChatCompletions:
     """Verify inference works on the second model (tinyllama-fast) with API key."""
 
     def test_model2_inference_returns_200(
-        self, maas_url, maas_api_key, inference_path_model2, chat_payload_model2
+        self, maas_url, maas_api_key_model2, inference_path_model2, chat_payload_model2
     ):
         resp = requests.post(
             f"{maas_url}{inference_path_model2}",
             headers={
-                "Authorization": f"Bearer {maas_api_key['key']}",
+                "Authorization": f"Bearer {maas_api_key_model2['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload_model2,
@@ -244,12 +244,12 @@ class TestModel2ChatCompletions:
         assert resp.status_code == 200
 
     def test_model2_response_has_choices(
-        self, maas_url, maas_api_key, inference_path_model2, chat_payload_model2
+        self, maas_url, maas_api_key_model2, inference_path_model2, chat_payload_model2
     ):
         resp = requests.post(
             f"{maas_url}{inference_path_model2}",
             headers={
-                "Authorization": f"Bearer {maas_api_key['key']}",
+                "Authorization": f"Bearer {maas_api_key_model2['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload_model2,

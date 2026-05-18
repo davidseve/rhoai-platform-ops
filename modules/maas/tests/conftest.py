@@ -119,15 +119,19 @@ def maas_token(oc_token):
 
 
 @pytest.fixture(scope="session")
-def maas_api_key(maas_url, oc_token, test_group_membership):
-    """Generate a MaaS API key via the maas-api service (cached per session)."""
+def maas_api_key(maas_url, oc_token, model_name, test_group_membership):
+    """Generate a MaaS API key bound to the primary model's premium subscription."""
     resp = requests.post(
         f"{maas_url}/maas-api/v1/api-keys",
         headers={
             "Authorization": f"Bearer {oc_token}",
             "Content-Type": "application/json",
         },
-        json={"name": "e2e-test-key", "expiration": "30m"},
+        json={
+            "name": "e2e-test-key",
+            "expiration": "30m",
+            "subscription": f"{model_name}-premium",
+        },
         verify=False,
         timeout=15,
     )
@@ -159,6 +163,29 @@ def maas_free_api_key(maas_url, oc_token, model_name):
     data = resp.json()
     if "free" not in data.get("subscription", ""):
         pytest.skip(f"API key not bound to free subscription: {data.get('subscription')}")
+    return data
+
+
+@pytest.fixture(scope="session")
+def maas_api_key_model2(maas_url, oc_token, model2_name, test_group_membership):
+    """Generate a MaaS API key bound to the second model's premium subscription."""
+    resp = requests.post(
+        f"{maas_url}/maas-api/v1/api-keys",
+        headers={
+            "Authorization": f"Bearer {oc_token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "name": "e2e-test-key-model2",
+            "expiration": "30m",
+            "subscription": f"{model2_name}-premium",
+        },
+        verify=False,
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    assert data.get("key"), "API key for model2 is empty"
     return data
 
 

@@ -57,6 +57,8 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 	@echo "Waiting for PostgreSQL pod..."
 	@$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s
 	@echo "=== Phase 2: Platform (operator CRs, DSC, Gateway, monitoring) ==="
+	@$(OC) get ns observability &>/dev/null || $(OC) create ns observability
+	@$(OC) get ns models-as-a-service &>/dev/null || $(OC) create ns models-as-a-service
 	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform \
 		--set grafana.enabled=$(GRAFANA_ENABLED) --set tenant.enabled=false --wait --timeout 15m
 	@echo "Waiting for DSC to be Ready..."
