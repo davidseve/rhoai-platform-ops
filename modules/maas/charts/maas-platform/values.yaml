@@ -68,6 +68,10 @@ gateway:
   #   annotate the gateway svc with service.beta.openshift.io/serving-cert-secret-name
   #   e.g. maas-gateway-service-tls
   tlsSecretName: ingress-certs
+  # Gateway listener hostname (e.g. maas.apps.cluster.example.com).
+  # Required for RHOAI dashboard API keys UI (maas-ui auto-discovers this).
+  # Must match route.host. Uses wildcard DNS/cert: *.apps.<clusterDomain>.
+  hostname: ""
   modelNamespaces: []
 
 route:
