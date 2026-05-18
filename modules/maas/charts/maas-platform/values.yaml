@@ -102,12 +102,10 @@ tiers:
         users: []
 
 # TelemetryPolicy: enriches Limitador metrics with user/group/model labels.
-# Disabled: Tenant CR auto-creates TelemetryPolicy with WASM expressions
-# (responseBodyJSON, auth.identity.selected_subscription) that Authorino
-# cannot parse as CEL. Errors are non-fatal (metric labels only) but noisy.
-# Leave disabled until upstream fixes WASM/CEL expression separation.
-telemetry:
-  enabled: false
+# Telemetry: managed by maas-controller via Tenant CR (spec.telemetry.enabled).
+# The controller creates both TelemetryPolicy and Istio Telemetry automatically.
+# Enable via: oc patch tenant default-tenant -n models-as-a-service --type merge \
+#   -p '{"spec":{"telemetry":{"enabled":true}}}'
 
 # ServiceMonitor for Limitador metrics scraping
 monitoring:

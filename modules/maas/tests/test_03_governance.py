@@ -267,8 +267,9 @@ class TestGovernanceResources:
         )
 
     def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
+        """TelemetryPolicy created by maas-controller when Tenant telemetry is enabled."""
         if not has_telemetrypolicy:
-            pytest.skip("TelemetryPolicy not deployed")
+            pytest.skip("TelemetryPolicy not deployed (Tenant telemetry disabled)")
         out = oc(f"get telemetrypolicy -n {gateway_namespace} --no-headers")
         assert "maas-telemetry" in out
 
