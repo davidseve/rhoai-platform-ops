@@ -13,6 +13,10 @@ connectivityLink:
   source: redhat-operators
   sourceNamespace: openshift-marketplace
 
+kuadrant:
+  # Namespace for Kuadrant CR and Limitador (not the operator subscription)
+  namespace: kuadrant-system
+
 certManager:
   enabled: false
 

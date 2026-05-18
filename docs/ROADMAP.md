@@ -125,12 +125,37 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > - [x] RHCL operator: mover a `openshift-operators` — **IMPLEMENTED** on branch `feat/rhcl-openshift-operators`. Subscription moved from `kuadrant-system` to `openshift-operators` (global OperatorGroup). OperatorGroup removed. Kuadrant CR stays in `kuadrant-system`.
 > - [x] WASM trace ID propagation (Limitador) — **NOT AVAILABLE**. Kuadrant 1.3.x: W3C `traceparent` headers NOT propagated to WASM modules. Known upstream limitation, no fix available. See [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/).
 >
-> **Not evaluated yet:**
+> **Not evaluated yet (pending clean cluster deployment):**
 > - [ ] OSSM 3 meshConfig custom sin conflicto con cluster-ingress-operator
 > - [ ] Tenant CR (`oc get tenant -A`) — check if auto-created, whether `spec.telemetry.enabled: true` fixes TelemetryPolicy CEL issue
 > - [ ] Authorino ServiceMonitor — check if maas-api exposes metrics port in `redhat-ods-applications`
 > - [ ] Dashboard flag `modelAsService` — verify valid fields in GA OdhDashboardConfig, check `observabilityDashboard` GA status
 > - [ ] Unified endpoint routing — check if LLMInferenceService supports routing by payload (single path for all models)
+> - [ ] Kuadrant/Authorino namespace — verify if `kuadrant-system` or `rh-connectivity-link` ([upstream says `rh-connectivity-link` for RHOAI](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/install/maas-setup.md))
+> - [ ] maas-controller auto-resources conflict audit — check `gateway-default-auth`, `gateway-default-deny`, TelemetryPolicy vs Helm-managed resources
+> - [ ] MaaSAuthPolicy 403 on API key inference — re-test on clean GA cluster with debug Authorino logging
+>
+> **RHOAI 3.4 GA documentation analysis (2026-05-18):**
+>
+> Analysis of [RHOAI 3.4 official docs](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4) and [upstream MaaS setup](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/install/maas-setup.md). Key findings:
+>
+> **Version bumps (3.3 → 3.4 GA):** KServe 0.15→0.17.0, vLLM v0.13.0→v0.18.0 (CUDA), MaaS 0.0.2(TP)→0.1.1(GA), MLflow 3.6.0(TP)→3.10.1(GA), llm-d 0.7.1(GA, new), Red Hat AI Inference Server 3.4.0(GA, new).
+>
+> **New: Tenant CR** — `maas.opendatahub.io/v1alpha1 Tenant` auto-created by maas-controller. `spec.telemetry.enabled: true` makes the controller manage TelemetryPolicy + Istio Telemetry. Could fix CEL blocker. Name must be `default-tenant` (CEL enforced).
+>
+> **New: maas-controller auto-resources** — controller creates `gateway-default-auth` AuthPolicy, `gateway-default-deny` TokenRateLimitPolicy, TelemetryPolicy, DestinationRule, NetworkPolicy. Need conflict audit with Helm templates.
+>
+> **GatewayClassName:** Upstream docs use `openshift-default`, we use `data-science-gateway-class` (created by RHOAI when KServe Managed). Keeping current value — validate on cluster.
+>
+> **Gateway listener config:** Upstream defines HTTP(80)+HTTPS(443) with hostname and `from: All`. We have HTTPS-only, no hostname, `from: Selector`. More restrictive = better security. Validate HTTPRoutes are accepted.
+>
+> **vLLM CPU x86_64:** Red Hat does NOT publish an x86_64 CPU image (`odh-vllm-cpu-rhel9` only has ppc64le/s390x). Custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` remains necessary. Base community image (`quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9`) has no newer versions than 0.3.
+>
+> **Kuadrant namespace:** Upstream mentions `AUTHORINO_NAMESPACE=rh-connectivity-link` for RHOAI. Hardcoded `kuadrant-system` in templates replaced with `{{ .Values.kuadrant.namespace }}` for flexibility.
+>
+> **Deprecations:** TGIS, ModelMesh, Serverless KServe, Kubeflow v1 Training Operator — none used in this project.
+>
+> **Installation flow:** Database → Gateway → DSC → Models. Current sync-waves: 0(operators+DB) → 1(platform+gateway+DSC) → 2(models). Close enough — ArgoCD retries handle ordering within a wave.
 ### Phase 3: Benchmarks
 
 Goal: identify system limits with repeatable load tests.
