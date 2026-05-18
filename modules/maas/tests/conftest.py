@@ -138,9 +138,28 @@ def maas_api_key(maas_url, oc_token, test_group_membership):
 
 
 @pytest.fixture(scope="session")
-def api_key_subscription(maas_api_key):
-    """Subscription name from the API key response (e.g. 'tinyllama-test-free')."""
-    return maas_api_key.get("subscription", "")
+def maas_free_api_key(maas_url, oc_token, model_name):
+    """Generate an API key explicitly bound to the free-tier subscription."""
+    resp = requests.post(
+        f"{maas_url}/maas-api/v1/api-keys",
+        headers={
+            "Authorization": f"Bearer {oc_token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "name": "e2e-free-tier-key",
+            "expiration": "30m",
+            "subscription": f"{model_name}-free",
+        },
+        verify=False,
+        timeout=15,
+    )
+    if resp.status_code not in (200, 201):
+        pytest.skip(f"Could not create free-tier API key: {resp.status_code} {resp.text[:200]}")
+    data = resp.json()
+    if "free" not in data.get("subscription", ""):
+        pytest.skip(f"API key not bound to free subscription: {data.get('subscription')}")
+    return data
 
 
 # ---------------------------------------------------------------------------

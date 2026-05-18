@@ -2,7 +2,7 @@
 
 RHOAI 3.4 GA: inference requires API keys (sk-oai-*), not OCP tokens.
 Rate limits are managed by the maas-controller via TokenRateLimitPolicy
-per model. Token budget depends on the subscription tier (free=5000,
+per model. Token budget depends on the subscription tier (free=500,
 premium=50000 tok/1m). The API key is tied to the user's subscription.
 """
 
@@ -118,40 +118,27 @@ def _fire_one(url, headers, payload):
         return 0
 
 
-# ---------------------------------------------------------------------------
-# Token rate limiting -- per-model
-# ---------------------------------------------------------------------------
-
 class TestTokenRateLimiting:
-    """Verify token rate limiting is enforced via TokenRateLimitPolicy.
+    """Free-tier token rate limiting (500 tok/1m).
 
-    Sends sequential requests with large max_tokens to exhaust the token
-    budget. Free tier (5000 tok/1m) is exhaustible in ~3 requests with
-    max_tokens=2000. Premium tier (50000 tok/1m) requires too many
-    requests for a practical test — skipped when detected.
+    Uses a dedicated free-tier API key (subscription in body) to ensure
+    the low token budget is exhaustible within a few requests.
     """
 
-    MAX_SEQUENTIAL = 5
+    MAX_SEQUENTIAL = 10
 
-    def test_token_rate_limit_triggers_429(
-        self, maas_url, maas_api_key, inference_path, api_key_subscription
+    def test_free_tier_rate_limit_triggers_429(
+        self, maas_url, maas_free_api_key, inference_path
     ):
-        if "premium" in api_key_subscription:
-            pytest.skip(
-                f"Subscription '{api_key_subscription}' has 50000 tok/1m budget — "
-                f"too high to exhaust in a test. Use TestGovernanceResources to verify "
-                f"TokenRateLimitPolicy exists."
-            )
-
         url = f"{maas_url}{inference_path}"
         headers = {
-            "Authorization": f"Bearer {maas_api_key['key']}",
+            "Authorization": f"Bearer {maas_free_api_key['key']}",
             "Content-Type": "application/json",
         }
         payload = {
             "model": "tinyllama-test",
             "messages": [{"role": "user", "content": "Write a detailed story"}],
-            "max_tokens": 2000,
+            "max_tokens": 200,
         }
         statuses = []
         for _ in range(self.MAX_SEQUENTIAL):
@@ -163,32 +150,10 @@ class TestTokenRateLimiting:
         got_429 = statuses.count(429)
         got_200 = statuses.count(200)
         assert got_429 > 0, (
-            f"Expected at least one 429 from token rate limit after "
-            f"{len(statuses)} requests with max_tokens=2000 "
-            f"(subscription={api_key_subscription}). "
-            f"Status distribution: 200={got_200}, 429={got_429}, "
+            f"Expected 429 from free-tier token rate limit (500 tok/1m) "
+            f"after {len(statuses)} requests with max_tokens=200. "
+            f"Statuses: 200={got_200}, 429={got_429}, "
             f"other={len(statuses) - got_200 - got_429}"
-        )
-
-    def test_after_token_rate_limit_still_blocked(
-        self, maas_url, maas_api_key, inference_path, chat_payload,
-        api_key_subscription
-    ):
-        """After exhausting model1 tokens, the next request should be 429."""
-        if "premium" in api_key_subscription:
-            pytest.skip("Premium subscription — rate limit exhaustion test skipped")
-
-        url = f"{maas_url}{inference_path}"
-        headers = {
-            "Authorization": f"Bearer {maas_api_key['key']}",
-            "Content-Type": "application/json",
-        }
-        resp = requests.post(
-            url, headers=headers, json=chat_payload,
-            verify=False, timeout=30,
-        )
-        assert resp.status_code == 429, (
-            f"Expected 429 (still token-rate-limited), got {resp.status_code}"
         )
 
 

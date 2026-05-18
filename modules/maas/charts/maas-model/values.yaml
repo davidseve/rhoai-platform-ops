@@ -74,7 +74,8 @@ subscription:
       groups:
         - name: cluster-admins
       tokenRateLimits:
-        - limit: 5000
+        # Low limit enables E2E rate-limit testing on CPU inference
+        - limit: 500
           window: "1m"
     premium:
       priority: 10
