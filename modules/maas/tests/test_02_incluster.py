@@ -114,11 +114,11 @@ curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/api-keys" \
         assert "key" in body, f"No API key in response: {body}"
         assert body["key"].startswith("sk-oai-")
 
-    def test_inference_via_internal_gateway(self, maas_token):
-        """Inference via the internal Gateway ClusterIP."""
+    def test_inference_via_internal_gateway(self, maas_api_key):
+        """Inference via the internal Gateway ClusterIP with API key."""
         script = f"""
 curl -sk "{GATEWAY_INTERNAL}/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions" \
-  -H "Authorization: Bearer {maas_token}" \
+  -H "Authorization: Bearer {maas_api_key['key']}" \
   -H "Content-Type: application/json" \
   -d '{{"model":"{MODEL_NAME}","messages":[{{"role":"user","content":"Hi"}}],"max_tokens":10}}'
 """

@@ -110,10 +110,10 @@ def oc_token(oc):
 
 @pytest.fixture(scope="session")
 def maas_token(oc_token):
-    """OCP token for inference requests.
+    """OCP token for model listing and API key generation.
 
-    MaaSAuthPolicy supports both OCP tokens and API keys.
-    This fixture validates the OCP token auth path.
+    RHOAI 3.4 GA: OCP tokens are accepted ONLY for /v1/models (listing).
+    Inference requires API keys (sk-oai-*). Use maas_api_key for inference.
     """
     return oc_token
 
@@ -135,6 +135,12 @@ def maas_api_key(maas_url, oc_token, test_group_membership):
     data = resp.json()
     assert data.get("key"), "API key is empty"
     return data
+
+
+@pytest.fixture(scope="session")
+def api_key_subscription(maas_api_key):
+    """Subscription name from the API key response (e.g. 'tinyllama-test-free')."""
+    return maas_api_key.get("subscription", "")
 
 
 # ---------------------------------------------------------------------------

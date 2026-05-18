@@ -73,7 +73,7 @@ def _query_tempo(oc, params="limit=5"):
 
 
 def test_traces_visible_after_inference(
-    oc, tracing_enabled, maas_url, maas_token, maas_inference_path
+    oc, tracing_enabled, maas_url, maas_api_key, maas_inference_path
 ):
     """Send inference request and verify traces appear in Tempo.
 
@@ -83,7 +83,7 @@ def test_traces_visible_after_inference(
     resp = requests.post(
         f"{maas_url}{maas_inference_path}",
         headers={
-            "Authorization": f"Bearer {maas_token}",
+            "Authorization": f"Bearer {maas_api_key['key']}",
             "Content-Type": "application/json",
         },
         json={
@@ -113,7 +113,7 @@ def test_traces_visible_after_inference(
 
 
 def test_trace_spans_cover_full_stack(
-    oc, tracing_enabled, maas_url, maas_token, maas_inference_path
+    oc, tracing_enabled, maas_url, maas_api_key, maas_inference_path
 ):
     """Verify trace spans represent the full request path.
 
@@ -128,7 +128,7 @@ def test_trace_spans_cover_full_stack(
             requests.post(
                 f"{maas_url}{maas_inference_path}",
                 headers={
-                    "Authorization": f"Bearer {maas_token}",
+                    "Authorization": f"Bearer {maas_api_key['key']}",
                     "Content-Type": "application/json",
                 },
                 json={
