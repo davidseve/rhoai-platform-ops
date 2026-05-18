@@ -4,8 +4,11 @@ global:
 
 mode: llminferenceservice
 
+# RHOAI 3.4 GA: maas-controller creates the models-as-a-service namespace.
+# With ArgoCD, set to false (ArgoCD uses CreateNamespace=true in syncPolicy).
+# Helm models chart runs after platform, so namespace already exists.
 namespace:
-  create: true
+  create: false
 
 model:
   storageUri: "oci://quay.io/rh-aiservices-bu/tinyllama:1.0"

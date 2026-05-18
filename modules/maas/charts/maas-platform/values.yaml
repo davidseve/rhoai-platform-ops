@@ -1,5 +1,6 @@
-# RHOAI 3.4 auto-creates DSCI only if the operator creates the namespace.
-# When deploying via Helm (namespace pre-created), we must manage DSCI ourselves.
+# RHOAI 3.4 auto-creates DSCI when the operator starts.
+# With ArgoCD, set to true to declaratively manage DSCI (ArgoCD adopts the resource).
+# With Helm install, set to false (operator auto-creates it, Helm can't adopt).
 dsci:
   managed: true
 
@@ -41,7 +42,9 @@ datasciencecluster:
       managementState: Removed
 
 dashboard:
-  # The auto-created OdhDashboardConfig lacks MaaS/GenAI flags; manage it via Helm.
+  # The auto-created OdhDashboardConfig lacks MaaS/GenAI flags; manage it via Helm/ArgoCD.
+  # Requires dashboard CRD (available after DSC with dashboard: Managed reconciles).
+  # ArgoCD handles CRD ordering via SkipDryRunOnMissingResource annotation on the template.
   crEnabled: true
   genAiStudio: true
   modelAsService: true
@@ -98,8 +101,11 @@ tiers:
       - name: tier-premium-users
         users: []
 
-# TelemetryPolicy: enriches Limitador metrics with user/group/model labels
-# Disabled: responseBodyJSON() CEL expression not supported by Authorino, causes 403
+# TelemetryPolicy: enriches Limitador metrics with user/group/model labels.
+# Disabled: Tenant CR auto-creates TelemetryPolicy with WASM expressions
+# (responseBodyJSON, auth.identity.selected_subscription) that Authorino
+# cannot parse as CEL. Errors are non-fatal (metric labels only) but noisy.
+# Leave disabled until upstream fixes WASM/CEL expression separation.
 telemetry:
   enabled: false
 
@@ -133,6 +139,11 @@ kuadrant:
   enabled: true
   namespace: kuadrant-system
   observability: true
+  # Authorino TLS: mount OpenShift service-ca bundle so Authorino trusts maas-api cert.
+  # Required for API key validation (Authorino → maas-api HTTPS callbacks).
+  # Runs as ArgoCD post-sync Job (setup-authorino-tls.sh equivalent).
+  authorinoTls:
+    enabled: true
 
 leaderWorkerSet:
   enabled: true
