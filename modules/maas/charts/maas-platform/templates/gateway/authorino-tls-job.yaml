@@ -31,10 +31,7 @@ rules:
   verbs: ["get", "create", "update"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list", "watch", "update"]
-- apiGroups: ["apps"]
-  resources: ["replicasets"]
-  verbs: ["get", "list"]
+  verbs: ["get", "update"]
 - apiGroups: ["operator.authorino.kuadrant.io"]
   resources: ["authorinos"]
   verbs: ["get", "patch"]
@@ -198,8 +195,19 @@ spec:
             echo "  SSL_CERT_FILE already set, skipping"
           fi
 
-          echo "Step 7: Wait for Authorino rollout..."
-          oc rollout status deploy/authorino -n "$NAMESPACE" --timeout=120s
+          echo "Step 7: Wait for Authorino to be ready..."
+          for i in $(seq 1 60); do
+            READY=$(oc get deploy authorino -n "$NAMESPACE" \
+              -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            DESIRED=$(oc get deploy authorino -n "$NAMESPACE" \
+              -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "1")
+            if [ "$READY" = "$DESIRED" ] && [ "$READY" != "0" ]; then
+              echo "  Authorino ready ($READY/$DESIRED)"
+              break
+            fi
+            echo "  waiting ($i/60, ready=$READY/$DESIRED)..."
+            sleep 2
+          done
 
           echo "Step 8: Re-annotate Gateway to trigger EnvoyFilter creation..."
           GATEWAY_NS="{{ .Values.gateway.namespace }}"
