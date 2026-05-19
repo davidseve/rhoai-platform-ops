@@ -44,9 +44,9 @@ make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit
 # Evaluation module (EvalHub orchestrator + MLflow + benchmarks infra)
 make deploy-evaluation    # Helm install EvalHub + MLflow + benchmarks infra
 make evalhub-eval EVALHUB_BENCHMARK=arc_easy MODEL_URL=https://... EVAL_LIMIT=10  # Quality eval via EvalHub API
-make evalhub-benchmark MODEL_URL=https://...  # Performance benchmark (default: throughput)
+make evalhub-benchmark MODEL_URL=https://...  # Performance benchmark (GuideLLM throughput, max-seconds=30)
 make evalhub-smoke MODEL_URL=https://...      # Smoke test: lm-eval limit=1, full pipeline validation
-make evalhub-security MODEL_URL=https://...   # Quick security scan via Garak
+make evalhub-security MODEL_URL=https://...   # Security scan via Garak (GPU only — too slow on CPU)
 make evalhub-status JOB_ID=<uuid>   # Check job status
 make evalhub-jobs                   # List all evaluation jobs
 make evalhub-providers              # List available providers and benchmarks
