@@ -12,8 +12,14 @@ spec:
       namespace: {{ .Values.global.namespace }}
   subjects:
     groups:
-      {{- range .Values.authPolicy.subjects.groups }}
+      {{- $seen := dict }}
+      {{- range $tierName, $tier := .Values.subscription.tiers }}
+      {{- range $tier.groups }}
+      {{- if not (hasKey $seen .name) }}
+      {{- $_ := set $seen .name true }}
       - name: {{ .name }}
+      {{- end }}
+      {{- end }}
       {{- end }}
     {{- if .Values.authPolicy.subjects.users }}
     users:

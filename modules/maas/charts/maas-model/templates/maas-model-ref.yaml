@@ -1,4 +1,4 @@
-{{- if .Values.subscription.enabled }}
+{{- if .Values.modelRef.enabled }}
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata:
@@ -16,10 +16,8 @@ metadata:
     {{- if .useCase }}
     opendatahub.io/genai-use-case: {{ .useCase | quote }}
     {{- end }}
-    {{- if .contextWindow }}
-    opendatahub.io/context-window: {{ .contextWindow | quote }}
     {{- end }}
-    {{- end }}
+    opendatahub.io/context-window: {{ $.Values.model.maxModelLen | quote }}
 spec:
   modelRef:
     kind: LLMInferenceService

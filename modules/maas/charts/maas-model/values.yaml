@@ -2,8 +2,6 @@ global:
   name: tinyllama-test
   namespace: models-as-a-service
 
-mode: llminferenceservice
-
 # RHOAI 3.4 GA: maas-controller creates the models-as-a-service namespace.
 # With ArgoCD, set to false (ArgoCD uses CreateNamespace=true in syncPolicy).
 # Helm models chart runs after platform, so namespace already exists.
@@ -22,7 +20,6 @@ images:
     # GPU:              quay.io/modh/vllm:rhoai-2.20-cuda (default llm-d image)
     repository: "quay.io/dseveria/vllm-cpu-openai-ubi9"
     tag: "0.3-otel"
-  ocCli: "registry.redhat.io/openshift4/ose-cli:latest"
 
 resources:
   requests:
@@ -44,27 +41,21 @@ tracing:
   otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
   serviceName: ""   # defaults to model servedName
 
-# Annotations for MaaSModelRef (returned in /v1/models API response)
+# MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
 modelRef:
+  enabled: true
   displayName: "TinyLlama 1.1B Test"
   description: "CPU-only TinyLlama for development and testing"
   useCase: "chat"
-  contextWindow: "2048"
-
-rbac:
-  enabled: true
 
 # MaaSAuthPolicy: enables API key authentication for this model.
-# Creates Kuadrant AuthPolicies that validate API keys via MaaS API callback.
-# Required for: API key management UI, subscription-scoped rate limits,
-# subscription label in metrics, X-MaaS-Subscription header injection.
+# Groups are derived automatically from subscription.tiers — do NOT define groups here.
+# Only define individual users if needed (authPolicy.subjects.users).
 authPolicy:
   enabled: true
-  subjects:
-    groups:
-      - name: cluster-admins
+  subjects: {}
 
-# MaaSSubscription: creates MaaSModelRef + per-tier MaaSSubscription CRs.
+# MaaSSubscription: creates per-tier MaaSSubscription CRs.
 # The maas-controller watches these and creates TokenRateLimitPolicy automatically.
 # Groups must be Kubernetes groups (from TokenReview), not OpenShift Groups.
 subscription:
