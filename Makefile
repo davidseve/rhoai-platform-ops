@@ -460,8 +460,19 @@ full-redeploy: cluster-cleanup bootstrap-argocd ## Cleanup everything + redeploy
 deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
+.PHONY: test-evalhub
+test-evalhub: ## Run EvalHub E2E tests (parallelized: security on tinyllama-test, smoke+benchmark on tinyllama-fast)
+	@echo "=== EvalHub E2E: launching security scan against tinyllama-test (background) ==="
+	$(MAKE) evalhub-security MODEL_NAME=tinyllama-test & \
+	security_pid=$$!; \
+	echo "=== EvalHub E2E: running smoke + benchmark against tinyllama-fast ===" && \
+	$(MAKE) evalhub-smoke MODEL_NAME=tinyllama-fast && \
+	$(MAKE) evalhub-benchmark MODEL_NAME=tinyllama-fast && \
+	echo "=== EvalHub E2E: waiting for security scan to finish ===" && \
+	wait $$security_pid
+
 .PHONY: test-all
-test-all: test-observability test-maas test-evaluation evalhub-smoke evalhub-benchmark evalhub-security ## Run all module tests (includes EvalHub smoke + benchmark + security)
+test-all: test-observability test-maas test-evaluation test-evalhub ## Run all module tests (includes EvalHub E2E)
 
 .PHONY: undeploy-all
 undeploy-all: undeploy-evaluation undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
