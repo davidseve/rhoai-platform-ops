@@ -19,7 +19,8 @@ spec:
     - {{ . }}
     {{- end }}
   database:
-    secret: evalhub-db
+    type: {{ .Values.evalhub.database.type }}
+    secret: {{ .Values.evalhub.database.secret }}
   env:
     - name: MLFLOW_TRACKING_URI
       value: "https://{{ .Values.mlflow.name }}.redhat-ods-applications.svc:8443"

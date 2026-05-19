@@ -36,6 +36,10 @@ evalhub:
   enabled: true
   name: evalhub
   replicas: 1
+  # Database backend for EvalHub (postgresql requires evalhub-db Secret)
+  database:
+    type: postgresql
+    secret: evalhub-db
   # Model auth Secret (created by post-install hook with service-serving CA)
   modelAuth:
     secretName: model-auth
