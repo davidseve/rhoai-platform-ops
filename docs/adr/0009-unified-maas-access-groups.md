@@ -1,4 +1,4 @@
-# ADR-0007: Unified MaaS Access Groups
+# ADR-0009: Unified MaaS Access Groups
 
 ## Status
 

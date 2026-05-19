@@ -174,7 +174,10 @@ For production evaluations (GPU models), remove limits: `--benchmark sweep` for 
 - **Garak 600s → 900s + cap**: The default adapter timeout is 600s, insufficient for CPU inference. `soft_probe_prompt_cap=10` reduces prompts per probe ([trustyai-garak docs](https://github.com/trustyai-explainability/llama-stack-provider-trustyai-garak)).
 - **Lighteval**: Ignores `--limit` parameter. Use benchmarks with small datasets instead of hellaswag (~10k items, causes OOMKill).
 
-## Known Limitations (RHOAI 3.4 TP)
+## Known Limitations (RHOAI 3.4)
+
+> **Component maturity:** MLflow (GA), LMEval (GA), TrustyAI (GA), EvalHub (**Tech Preview**).
+> EvalHub limitations below are specific to the TP release and may change in future GA.
 
 - **EVAL_LIMIT recommended for CPU models**: Evaluations generate sustained inference load. vLLM on CPU can OOMKill under heavy load (e.g. full arc_easy = 2376 calls). Use `EVAL_LIMIT=10` (default) for testing, increase for final evaluations on GPU.
 - **Garak timeout**: Security scans (`garak` provider) default to 600s timeout in the adapter. On CPU models, use `--timeout 900` (or higher) and `--extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":10}}}'` to reduce probe scope. See `make evalhub-security`.
@@ -182,6 +185,25 @@ For production evaluations (GPU models), remove limits: `--benchmark sweep` for 
 - **MLflow Traces**: The MLflow server exposes the `/v1/traces` OTLP endpoint (documented since [RHOAI 3.3 architecture](https://github.com/opendatahub-io/architecture-context)) and can persist traces. However, the EvalHub adapter does not instrument LLM calls with `mlflow.trace()` yet — only final metrics are logged. Tracked upstream: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The [EvalHub ADR](https://github.com/opendatahub-io/architecture-decision-records) (`ODH-ADR-EH-0001`) describes a dual tracing model where EvalHub creates the parent trace and benchmark pods emit spans via the AdapterFramework SDK, but this is not yet implemented.
 - **External authenticated endpoints**: The `api-key` in `model.auth.secret_ref` is mounted at `/var/run/secrets/model/api-key` and exposed as `ModelCredentials.api_key` by the SDK (`auth.py`), but it is **not** set as `OPENAI_API_KEY` environment variable automatically. Each adapter decides how to use it. GuideLLM and lm-eval read `OPENAI_API_KEY` from the environment natively, so external authenticated endpoints may not work out-of-the-box. Use internal KServe URLs (no auth needed) for reliable evaluations; external gateway URLs only make sense for measuring real gateway latency.
 - **Custom providers (BYOP)**: Custom providers with tenant scope don't resolve in job submissions (TP bug).
+
+## Alternatives to the Bash Script
+
+### EvalHub SDK CLI
+
+The `eval-hub-sdk` (v0.4.0+) provides a Python CLI as an alternative to `scripts/evalhub.sh`:
+
+```bash
+pip install eval-hub-sdk
+evalhub submit --provider lm_evaluation_harness --benchmark arc_easy --model-url <url>
+evalhub list
+evalhub status <job-id>
+```
+
+The SDK offers typed request/response objects, retry logic, and streaming logs. Use it when integrating evaluations into CI pipelines or notebooks.
+
+### OCI Artifacts
+
+EvalHub generates immutable OCI artifacts for each completed evaluation. These artifacts contain the full evaluation record (config, metrics, logs) and can be pushed to a container registry for auditing and reproducibility. This feature is available but not yet integrated into this project's workflow.
 
 ## Detailed Documentation
 
