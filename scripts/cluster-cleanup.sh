@@ -166,17 +166,13 @@ cleanup_maas_residual() {
 
   # Operator subscriptions / CSVs (in operator namespaces, not chart-managed)
   log "Deleting operator subscriptions and CSVs..."
-  for ns in redhat-ods-operator leader-worker-set; do
+  for ns in redhat-ods-operator redhat-connectivity-link leader-worker-set; do
     run "$OC delete subscription --all -n '$ns' --ignore-not-found"
     run "$OC delete csv --all -n '$ns' --ignore-not-found"
     run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
   done
-  # RHCL operator lives in openshift-operators (global OG); only delete its Subscription/CSV.
-  # OLM also creates dependency subscriptions (authorino-operator, limitador-operator,
-  # dns-operator, servicemeshoperator3) that survive deletion of the parent subscription.
-  log "Deleting RHCL operator and OLM dependency subscriptions from openshift-operators..."
-  # servicemeshoperator3 is owned by the cluster ingress operator (annotation
-  # ingress.operator.openshift.io/owned), not by RHCL -- do not delete it.
+  # Legacy: RHCL may have been installed in openshift-operators (pre-dedicated-namespace).
+  # Clean up any residual subscriptions/CSVs there too.
   local rhcl_subs="rhcl-operator authorino-operator limitador-operator dns-operator"
   for sub in $rhcl_subs; do
     for s in $($OC get subscription -n openshift-operators -o name 2>/dev/null | grep "subscription.operators.coreos.com/${sub}" || true); do
@@ -189,23 +185,17 @@ cleanup_maas_residual() {
       run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
     done
   done
-  # cert-manager-operator namespace may also hold dependency CSVs
-  for pat in $rhcl_csv_patterns; do
-    for csv in $($OC get csv -n cert-manager-operator -o name 2>/dev/null | grep "$pat" || true); do
-      run "$OC delete '$csv' -n cert-manager-operator --ignore-not-found"
-    done
-  done
 
   # Namespaces
   log "Deleting namespaces..."
   for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
-            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
+            redhat-ods-operator redhat-connectivity-link "$kuadrant_ns" leader-worker-set; do
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
 
   # Wait for namespace termination (parallel)
   for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
-            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
+            redhat-ods-operator redhat-connectivity-link "$kuadrant_ns" leader-worker-set; do
     wait_ns_gone "$ns" 120 &
   done
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
@@ -347,6 +337,7 @@ verify_cleanup() {
     "redhat-ods-applications"
     "redhat-ods-monitoring"
     "redhat-ods-operator"
+    "redhat-connectivity-link"
     "kuadrant-system"
     "leader-worker-set"
     "observability"
