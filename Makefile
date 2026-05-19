@@ -6,6 +6,7 @@ OC ?= oc
 PYTHON ?= python3
 GRAFANA_ENABLED ?= false
 BRANCH ?=
+CLUSTER_DOMAIN ?= $(shell $(OC) get ingress.config cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
 
 # --- Observability Module ---
 
@@ -194,8 +195,14 @@ undeploy-benchmarks: ## Undeploy benchmarks via Helm
 # --- ArgoCD (Stable Deployment) ---
 
 .PHONY: deploy-argocd
-deploy-argocd: ## Deploy app-of-apps via ArgoCD
-	$(OC) apply -f argocd/app-of-apps.yaml
+deploy-argocd: ## Deploy app-of-apps via ArgoCD (auto-detects CLUSTER_DOMAIN)
+	@if [ -z "$(CLUSTER_DOMAIN)" ]; then \
+		echo "ERROR: Cannot detect cluster domain. Set CLUSTER_DOMAIN manually:"; \
+		echo "  make deploy-argocd CLUSTER_DOMAIN=apps.ocp.sandbox1476.opentlc.com"; \
+		exit 1; \
+	fi
+	@echo "Deploying app-of-apps (clusterDomain=$(CLUSTER_DOMAIN))..."
+	CLUSTER_DOMAIN=$(CLUSTER_DOMAIN) envsubst '$$CLUSTER_DOMAIN' < argocd/app-of-apps.yaml | $(OC) apply -f -
 
 .PHONY: status
 status: ## Check ArgoCD application sync status

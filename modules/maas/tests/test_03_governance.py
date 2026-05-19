@@ -276,3 +276,27 @@ class TestGovernanceResources:
     def test_tier_groups_exist(self, oc):
         out = oc("get groups --no-headers")
         assert out.strip(), "No groups found in cluster"
+
+
+class TestGatewayHostname:
+    """Gateway and Route must have a custom hostname (maas.apps.<cluster>)."""
+
+    def test_gateway_has_custom_hostname(self, oc, gateway_name, gateway_namespace):
+        hostname = oc(
+            f"get gateway {gateway_name} -n {gateway_namespace} "
+            "-o jsonpath='{.spec.listeners[0].hostname}'"
+        ).strip("'")
+        assert hostname, "Gateway listener has no hostname configured"
+        assert hostname.startswith("maas."), (
+            f"Gateway hostname should start with 'maas.' but got: {hostname}"
+        )
+
+    def test_route_has_custom_host(self, oc, gateway_name, gateway_namespace):
+        host = oc(
+            f"get route {gateway_name} -n {gateway_namespace} "
+            "-o jsonpath='{.spec.host}'"
+        ).strip("'")
+        assert host, "Route has no custom host configured"
+        assert host.startswith("maas."), (
+            f"Route host should start with 'maas.' but got: {host}"
+        )
