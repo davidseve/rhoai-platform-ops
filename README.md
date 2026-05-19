@@ -35,7 +35,8 @@ make test-all               # observability + MaaS tests
 ### 4. Deploy with ArgoCD (for stable)
 
 ```bash
-make deploy-argocd
+make deploy-argocd                                         # auto-detects cluster domain
+make deploy-argocd CLUSTER_DOMAIN=apps.example.com         # manual override
 ```
 
 ## Modules
@@ -45,7 +46,7 @@ make deploy-argocd
 | ----------------- | ------- | ------------------------------------------------------------- |
 | **maas**          | Ready   | Models-as-a-Service: RHOAI + Kuadrant API governance          |
 | **observability** | Ready   | Grafana dashboards, vLLM metrics, alerts, distributed tracing |
-| **benchmarks**    | Planned | Load testing with inference-perf                              |
+| **benchmarks**    | Ready   | Load testing with GuideLLM                                    |
 | **evaluation**    | Planned | MLflow tracking and model evaluation                          |
 
 

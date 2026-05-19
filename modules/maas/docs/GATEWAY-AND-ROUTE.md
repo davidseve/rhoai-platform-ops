@@ -59,7 +59,7 @@ route:
 **Additional step** (after Gateway Service is created):
 
 ```bash
-oc annotate svc maas-default-gateway-openshift-default \
+oc annotate svc maas-default-gateway-data-science-gateway-class \
   -n openshift-ingress \
   service.beta.openshift.io/serving-cert-secret-name=maas-gateway-service-tls
 ```

@@ -67,7 +67,7 @@ Goal: trace individual requests through the full stack (client -> gateway -> mod
 
 Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context and [PHASE-2B-PLAN.md](PHASE-2B-PLAN.md) for the detailed implementation plan.
 
-#### Completado
+#### Completed
 
 - [x] **vLLM CPU image con OpenTelemetry** -- imagen custom `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` con `opentelemetry-sdk`, `opentelemetry-exporter-otlp`, etc. ([Containerfile](../modules/maas/images/vllm-cpu-otel/Containerfile))
 - [x] **vLLM tracing funcional** -- `--otlp-traces-endpoint` CLI arg (vLLM v0.7.3 ignora env vars OTEL), spans visibles en Tempo
@@ -75,7 +75,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 - [x] **Dashboards de tracing** -- Trace Exploration (service map, latency, request rate) + Trace Search (tabla con filtro por servicio y Trace ID clickable)
 - [x] **Datasource UIDs determinísticos** -- `uid: prometheus` y `uid: tempo` para evitar roturas por UIDs aleatorios del operador Grafana
 
-#### Pendiente
+#### Pending
 
 - Persistent Tempo storage (switch from memory to PV/S3 backend)
 - Trace-based SLO alerts (PrometheusRule from spanmetrics)

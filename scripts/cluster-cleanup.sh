@@ -137,6 +137,14 @@ cleanup_maas_residual() {
       run "$OC patch '$lis' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
     run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
+
+    # Tenant CR finalizer (maas.opendatahub.io/tenant-finalizer) blocks namespace deletion.
+    # See https://redhat.atlassian.net/browse/RHOAIENG-63298
+    log "Clearing Tenant CR finalizers..."
+    for tenant in $($OC get tenant -n "$model_ns" -o name 2>/dev/null); do
+      run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
   fi
 
   # DataScienceCluster / DSCInitialization can block namespace deletion.
@@ -332,6 +340,11 @@ cleanup_argocd() {
       run "$OC patch '$lis' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
     run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
+    # Tenant CR finalizer — RHOAIENG-63298
+    for tenant in $($OC get tenant -n "$model_ns" -o name 2>/dev/null); do
+      run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
   fi
   for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
     run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
