@@ -279,6 +279,20 @@ wait_argocd_app_gone() {
   done
 }
 
+delete_apps_and_wait() {
+  local wave_label="$1"; shift
+  local apps=("$@")
+  log "Deleting $wave_label apps: ${apps[*]}"
+  for app in "${apps[@]}"; do
+    if $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; then
+      run "argocd_core app delete '$app' --cascade -y"
+    fi
+  done
+  for app in "${apps[@]}"; do
+    wait_argocd_app_gone "$app" 120
+  done
+}
+
 cleanup_argocd() {
   log "=== Removing ArgoCD Applications ==="
 
@@ -299,28 +313,42 @@ cleanup_argocd() {
   # --core requires the active namespace to be the ArgoCD namespace
   run "$OC project '$ARGOCD_NS'"
 
-  # 1. Delete app-of-apps first to stop child recreation
-  log "Deleting app-of-apps (cascade)..."
+  # ArgoCD app-of-apps deletes all child apps simultaneously (sync-waves only
+  # control creation order, not deletion order). This causes stuck namespaces
+  # because operators (wave 0) are removed before their CRs (wave 2) resolve
+  # finalizers. Workaround: disable auto-sync, then delete in reverse wave order.
+  # TODO: Replace with PreDelete hooks when OpenShift GitOps ships ArgoCD 3.3+.
+
+  # 1. Disable auto-sync on app-of-apps to prevent child recreation
+  log "Disabling auto-sync on app-of-apps..."
+  run "argocd_core app set rhoai-platform-ops --sync-policy none"
+
+  # 2. Pre-clean CRs with finalizers BEFORE deleting any apps.
+  #    The operators must still be running when we clear these.
+  log "Pre-cleaning CRs with finalizers..."
+  local model_ns="models-as-a-service"
+  if $OC get ns "$model_ns" &>/dev/null; then
+    for lis in $($OC get llminferenceservice -n "$model_ns" -o name 2>/dev/null); do
+      run "$OC patch '$lis' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
+  fi
+  for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
+    run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+  for dsci in $($OC get dscinitialization -o name 2>/dev/null); do
+    run "$OC patch '$dsci' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+
+  # 3. Delete child apps in reverse wave order (wave 2 → 1 → 0)
+  delete_apps_and_wait "wave 2" maas-model-fast maas-model benchmarks
+  delete_apps_and_wait "wave 1" maas-platform maas-db observability-tracing observability-grafana
+  delete_apps_and_wait "wave 0" maas-operators observability-operators
+
+  # 4. Delete app-of-apps last
+  log "Deleting app-of-apps..."
   run "argocd_core app delete rhoai-platform-ops --cascade -y"
-  wait_argocd_app_gone "rhoai-platform-ops" 180
-
-  # 2. Delete child apps with cascade
-  local apps=(
-    benchmarks
-    maas-model-fast maas-model maas-platform maas-db maas-operators
-    observability-tracing observability-grafana observability-operators
-  )
-  for app in "${apps[@]}"; do
-    if $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; then
-      log "  Deleting $app (cascade)..."
-      run "argocd_core app delete '$app' --cascade -y"
-    fi
-  done
-
-  # 3. Wait for all apps to terminate
-  for app in "${apps[@]}"; do
-    wait_argocd_app_gone "$app" 120
-  done
+  wait_argocd_app_gone "rhoai-platform-ops" 60
 
   # Restore previous namespace
   run "$OC project '$prev_ns'"

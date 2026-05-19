@@ -22,13 +22,19 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["services"]
-  verbs: ["get", "patch"]
+  verbs: ["get", "update"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
 - apiGroups: [""]
   resources: ["configmaps"]
-  verbs: ["get"]
+  verbs: ["get", "create", "update"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "patch"]
+  verbs: ["get", "update"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list"]
 - apiGroups: ["operator.authorino.kuadrant.io"]
   resources: ["authorinos"]
   verbs: ["get", "patch"]
@@ -66,7 +72,7 @@ metadata:
 rules:
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["gateways"]
-  verbs: ["get", "patch"]
+  verbs: ["get", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
