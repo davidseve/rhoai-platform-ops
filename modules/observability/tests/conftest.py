@@ -134,7 +134,11 @@ def maas_api_key(maas_url, maas_token):
             "Authorization": f"Bearer {maas_token}",
             "Content-Type": "application/json",
         },
-        json={"name": "observability-e2e-key", "expiration": "30m"},
+        json={
+            "name": "observability-e2e-key",
+            "expiration": "30m",
+            "subscription": f"{MAAS_MODEL_NAME}-premium",
+        },
         verify=False,
         timeout=15,
     )
