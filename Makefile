@@ -461,7 +461,7 @@ deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
 .PHONY: test-all
-test-all: test-observability test-maas test-evaluation evalhub-smoke evalhub-benchmark ## Run all module tests (includes EvalHub smoke + benchmark)
+test-all: test-observability test-maas test-evaluation evalhub-smoke evalhub-benchmark evalhub-security ## Run all module tests (includes EvalHub smoke + benchmark + security)
 
 .PHONY: undeploy-all
 undeploy-all: undeploy-evaluation undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
