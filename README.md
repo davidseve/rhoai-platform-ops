@@ -35,7 +35,8 @@ make test-all               # observability + MaaS tests
 ### 4. Deploy with ArgoCD (for stable)
 
 ```bash
-make deploy-argocd
+make deploy-argocd                                         # auto-detects cluster domain
+make deploy-argocd CLUSTER_DOMAIN=apps.example.com         # manual override
 ```
 
 ## Modules
@@ -45,7 +46,7 @@ make deploy-argocd
 | ----------------- | ------- | ------------------------------------------------------------- |
 | **maas**          | Ready   | Models-as-a-Service: RHOAI + Kuadrant API governance          |
 | **observability** | Ready   | Grafana dashboards, vLLM metrics, alerts, distributed tracing |
-| **benchmarks**    | Planned | Load testing with inference-perf                              |
+| **benchmarks**    | Ready   | Load testing with GuideLLM                                    |
 | **evaluation**    | Planned | MLflow tracking and model evaluation                          |
 
 
@@ -72,16 +73,16 @@ Enable/disable modules in `argocd/apps/values.yaml` under `modules:`.
 ## Tested Versions
 
 
-| Component                      | Version |
-| ------------------------------ | ------- |
-| OpenShift                      | 4.20.8  |
-| RHOAI                          | 3.4.0-ea.2 (beta) |
-| Red Hat Connectivity Link      | 1.3.2   |
-| cert-manager                   | 1.18.1  |
-| LeaderWorkerSet                | 1.0.0   |
-| OpenShift GitOps (ArgoCD)      | 1.20.1  |
-| Grafana Operator               | 5.22.2  |
-| Red Hat build of OpenTelemetry | 0.20.0  |
-| Red Hat build of Tempo         | 0.20.0  |
+| Component                      | Version   |
+| ------------------------------ | --------- |
+| OpenShift                      | 4.20.8    |
+| RHOAI                          | 3.4.0 (GA)|
+| Red Hat Connectivity Link      | 1.3.3     |
+| cert-manager                   | 1.19.0    |
+| LeaderWorkerSet                | 1.0.0     |
+| OpenShift GitOps (ArgoCD)      | 1.20.3    |
+| Grafana Operator               | 5.22.2    |
+| Red Hat build of OpenTelemetry | 0.144.0-3 |
+| Red Hat build of Tempo         | 0.20.0-3  |
 
 

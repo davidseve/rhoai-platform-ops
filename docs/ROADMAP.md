@@ -66,7 +66,7 @@ Goal: trace individual requests through the full stack (client -> gateway -> mod
 
 Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) for context and [PHASE-2B-PLAN.md](PHASE-2B-PLAN.md) for the detailed implementation plan.
 
-#### Completado
+#### Completed
 
 - [x] **vLLM CPU image con OpenTelemetry** -- imagen custom `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` con `opentelemetry-sdk`, `opentelemetry-exporter-otlp`, etc. ([Containerfile](../modules/maas/images/vllm-cpu-otel/Containerfile))
 - [x] **vLLM tracing funcional** -- `--otlp-traces-endpoint` CLI arg (vLLM v0.7.3 ignora env vars OTEL), spans visibles en Tempo
@@ -74,12 +74,16 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 - [x] **Dashboards de tracing** -- Trace Exploration (service map, latency, request rate) + Trace Search (tabla con filtro por servicio y Trace ID clickable)
 - [x] **Datasource UIDs determinísticos** -- `uid: prometheus` y `uid: tempo` para evitar roturas por UIDs aleatorios del operador Grafana
 
-#### Pendiente
+#### Pending
 
 - Persistent Tempo storage (switch from memory to PV/S3 backend)
 - Trace-based SLO alerts (PrometheusRule from spanmetrics)
-- **Kuadrant WASM auth timeout (blocker for high concurrency)**: timeout hardcoded a 200ms, causa 500 errors con >=4 requests paralelos. **Nota (2026-05-12)**: el ratio actual de errores es ~0.09/s (~333/hour) pero NO son timeouts. Son errores de evaluación CEL causados por el bug `groups_str`: cada request evalúa ~6 descriptores TRLP que referencia `auth.identity.groups_str` (Null), generando `CelError::Resolve { UnexpectedType { got: "Null", want: "Arc<String>" } }`. Las requests NO fallan (200/201), los errores son internos al pipeline de rate limiting. Se resolverán con GA + PR #543 (fix de `groups_str`)
-- **InstallPlan auto-approval in wait-healthy (workaround)**: OLM creates `servicemeshoperator3` as an RHCL dependency with `installPlanApproval: Manual`, blocking fresh deploys. Current fix: `wait-healthy` auto-approves pending InstallPlans in `openshift-operators` each iteration. Revisit when pinning all operator `startingCSV` versions — at that point, switch all subscriptions to `Manual` with controlled approval as a bootstrap step.
+- **Kuadrant WASM CEL errors (resolved in GA)**: EA2 had ~333 errors/hour caused by `groups_str` bug in maas-controller TRLP predicates (PR #543). Fixed in RHOAI 3.4 GA — MaaSAuthPolicy uses API key subscription scoping instead of `groups_str`. Verify `kuadrant_errors` drops to ~0 after GA deployment.
+- **TelemetryPolicy CEL incompatibility (non-fatal in GA)**: `responseBodyJSON("/model")` and `auth.identity.selected_subscription` are Kuadrant WASM expressions, NOT valid Authorino CEL. Tenant CR with `telemetry.enabled: true` auto-creates a TelemetryPolicy with these expressions. Authorino logs `failed to parse CEL expression` errors — **non-fatal** (metric label evaluation only, not auth decisions). **GA finding (2026-05-18)**: Unlike EA2 where this caused 403 errors (conflated with TLS issue), in GA these CEL errors are strictly cosmetic. The 403 was caused by Authorino→maas-api TLS trust, not CEL. Tenant `telemetry.enabled: true` is safe to use. **Impact**: Limitador metrics lack `model`, `subscription`, `organization_id`, and `cost_center` labels — only aggregate gateway-level metrics. Per-model attribution requires Kuadrant to separate WASM and Authorino CEL expression evaluation. **Current approach**: Tenant `telemetry.enabled: true` enabled via Helm template (ArgoCD SSA). **Re-evaluate in RHOAI 3.5+** for per-model metric labels.
+- **MaaSAuthPolicy 403 on API key inference (RESOLVED 2026-05-18)**: Root cause was Authorino→maas-api TLS trust. Fix: mount `openshift-service-ca.crt` ConfigMap + `SSL_CERT_FILE` env var. Automated as ArgoCD PostSync Job (`authorino-tls-job.yaml`). See commit `552276c`.
+- **Gateway→Authorino listener TLS (RESOLVED 2026-05-19)**: Initially marked as "not feasible" due to 500 errors when enabling `listener.tls.enabled: true` on the Authorino CR. Root cause was RBAC issues in the PostSync Job, not the TLS setup itself. The `security.opendatahub.io/authorino-tls-bootstrap: "true"` Gateway annotation correctly triggers the Kuadrant controller to create the `*-authn-ssl` EnvoyFilter with TLS transport. **Fix**: restored full 8-step TLS setup in PostSync Job (`authorino-tls-job.yaml`) with complete RBAC (services, secrets, configmaps, deployments, authorinos in kuadrant-system + gateways, envoyfilters in openshift-ingress). Steps: (1) annotate Authorino service for serving cert, (2) wait for cert secret, (3) enable listener TLS on Authorino CR, (4-6) outbound CA trust (service-ca ConfigMap + volume + SSL_CERT_FILE), (7) wait for readiness, (8) trigger Gateway EnvoyFilter reconciliation.
+- **AuthPolicy per-model behavior**: MaaSAuthPolicy creates AuthPolicies that accept OCP tokens ONLY for `/v1/models` (listing). Inference (`/v1/chat/completions`) requires API keys (`sk-oai-*`). This is by design in RHOAI 3.4 GA. Tests using OCP tokens for inference must be refactored to use API keys.
+- **ArgoCD PreDelete hooks for ordered cleanup**: ArgoCD sync-waves control creation order but NOT deletion order between child apps in app-of-apps (all children delete simultaneously). This causes stuck `models-as-a-service` namespace because operators (wave 0) are deleted before their CRs (wave 2) resolve finalizers. ArgoCD 3.3+ adds `argocd.argoproj.io/hook: PreDelete` — add a PreDelete Job to `maas-operators` that clears LLMInferenceService/DSC/DSCI finalizers before operators are removed. **Blocked on**: OpenShift GitOps shipping ArgoCD 3.3+ (current: GitOps 1.20.3 = ArgoCD 2.x). **Workaround**: `scripts/cluster-cleanup.sh` deletes apps in reverse wave order manually. See [ArgoCD 3.3 PreDelete](https://dev.to/x4nent/argocd-33-predelete-hook-making-gitops-deletion-a-safe-lifecycle-3f28).
 - **Gateway production hardening**: tune Authorino limits/HPA, connection pooling, client retry guidance
 - **Cluster Observability Operator (COO)**: instalar cuando el observability stack de RHOAI pase a GA (estimado 3.5+). COO habilita dashboards nativos en la consola OpenShift (PersesDashboard), UIPlugins de tracing/troubleshooting, y detección de incidentes (Korrel8r). Prerequisito para `observabilityDashboard: true` en OdhDashboardConfig. No conflicta con Grafana/OTel/Tempo actuales. Ya preparado en `values.yaml` con `observabilityDashboard: false`.
 
@@ -99,7 +103,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **Referencias**: [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/), [RHCL Observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1/html-single/connectivity_link_observability_guide/index)
 >
-> **Status (2026-05-07)**: RHOAI 3.4 EA2 evaluated on branch `feat/enhanced-dashboards`. See [ADR-0005](adr/0005-maas-subscription-model.md).
+> **Status (2026-05-14)**: RHOAI 3.4 GA available. Operator channel updated to `stable-3.4`. MaaSAuthPolicy enabled. See [ADR-0005](adr/0005-maas-subscription-model.md).
 >
 > **Evaluated:**
 > - [x] maas-controller AuthPolicy management -- `opendatahub.io/managed: "false"` works in 3.4. `cleanup-authn-hook` disabled.
@@ -109,16 +113,58 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > - [x] New CRDs: Tenant (auto-created), MaaSModelRef, MaaSSubscription, gateway-default-auth/deny (auto-created by controller).
 > - [x] New DSC components: `rawDeploymentServiceConfig: Headed`, `sparkoperator: Removed`, `kserve.wva: Removed`.
 >
-> **EA2 known bug:** Token rate limits don't fire -- `maas-controller` TRLP predicates use `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview puts groups in `auth.identity.user.groups`. Fixed upstream in [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543), expected in GA.
+> **EA2 known bug (fixed in GA):** Token rate limits didn't fire in EA2 -- `maas-controller` TRLP predicates used `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview put groups in `auth.identity.user.groups`. Fixed in GA via [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543). MaaSAuthPolicy enabled, xfail markers removed.
+>
+> **GA validation (2026-05-14) — key findings:**
+> - MaaSSubscription `owner.groups` must use **Kubernetes groups** (from TokenReview), NOT OpenShift Group objects. TokenReview returns `cluster-admins`, `system:authenticated:oauth`, `system:authenticated` — but NOT `maas-test-users` or `tier-premium-users`. Fixed in commit `3d9e5ca`.
+> - TelemetryPolicy disabled (`telemetry.enabled: false`) — `responseBodyJSON()` is a Kuadrant WASM function, not valid Authorino CEL. Causes 403 on all requests when MaaSAuthPolicy is active. Fixed in commit `205d39f`.
+> - MaaSAuthPolicy 403 on API key inference — **RESOLVED (2026-05-18)**. Root cause: Authorino could not reach maas-api's `/internal/v1/api-keys/validate` endpoint because it did not trust the OpenShift service-ca certificate. Fix: mount `openshift-service-ca.crt` ConfigMap into Authorino deployment and set `SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca.crt`. Upstream documents this in `scripts/setup-authorino-tls.sh`. Must be automated in Helm charts.
+> - AuthPolicy per-model design: OCP tokens accepted for `/v1/models` listing only; inference (`/v1/chat/completions`) requires API keys (`sk-oai-*`). Multiple subscriptions require `X-MaaS-Subscription` header. This is by design — inference tests need `maas_api_key` fixture, not `maas_token`.
 >
 > **Evaluated (2026-05-11):**
 > - [x] GatewayClass tracing nativo — **NOT AVAILABLE**. `data-science-gateway-class` uses `openshift.io/gateway-controller/v1` (Istio managed by cluster-ingress-operator). The managed Istio CR cannot be customized with `extensionProviders` for OTel. Would require independent OSSM 3 or upstream controller changes.
 > - [x] RHCL operator: mover a `openshift-operators` — **IMPLEMENTED** on branch `feat/rhcl-openshift-operators`. Subscription moved from `kuadrant-system` to `openshift-operators` (global OperatorGroup). OperatorGroup removed. Kuadrant CR stays in `kuadrant-system`.
 > - [x] WASM trace ID propagation (Limitador) — **NOT AVAILABLE**. Kuadrant 1.3.x: W3C `traceparent` headers NOT propagated to WASM modules. Known upstream limitation, no fix available. See [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/).
 >
-> **Not evaluated yet:**
-> - [ ] OSSM 3 meshConfig custom sin conflicto con cluster-ingress-operator
-### Phase 3: Benchmarks (merged into evaluation module -- see [ADR-0007](0007-merge-benchmarks-into-evaluation.md))
+> **Evaluated (2026-05-18, clean cluster OCP 4.20.8 + RHOAI 3.4 GA):**
+> - [x] Tenant CR — auto-created as `default-tenant` in `models-as-a-service` namespace with `spec.telemetry.enabled: true`. Controller creates TelemetryPolicy + Istio Telemetry automatically.
+> - [x] TelemetryPolicy CEL — **STILL BROKEN in GA**. Tenant creates `maas-telemetry` TelemetryPolicy with WASM expressions (`responseBodyJSON("/model")`, `auth.identity.selected_subscription`). Authorino logs `failed to parse CEL expression` errors but these are **non-fatal** (metric label errors only, not auth denials). The CEL errors do NOT cause 403 — the 403 was from TLS. Patch Tenant to `telemetry.enabled: false` to suppress errors; controller does NOT auto-delete the TelemetryPolicy.
+> - [x] MaaSAuthPolicy 403 on API key inference — **RESOLVED**. Root cause was Authorino→maas-api TLS trust. See GA validation findings above.
+> - [x] Kuadrant/Authorino namespace — confirmed **`kuadrant-system`** on RHOAI 3.4 GA (not `rh-connectivity-link`). Upstream docs are misleading for RHOAI installations.
+> - [x] maas-controller auto-resources — controller creates: `gateway-default-auth` AuthPolicy (Enforced: False, overridden by per-model policies), `gateway-default-deny` TokenRateLimitPolicy, TelemetryPolicy, DestinationRule, NetworkPolicy. Per-model: `maas-auth-<model>` AuthPolicy (Enforced: True), `maas-trlp-<model>` TRLP. No conflicts with Helm resources when `opendatahub.io/managed: "false"` is set.
+> - [x] Authorino TLS setup — requires manual steps from upstream `scripts/setup-authorino-tls.sh`: (1) annotate service for cert, (2) mount `openshift-service-ca.crt` ConfigMap, (3) set `SSL_CERT_FILE` env var. The `authorino-tls-bootstrap` Gateway annotation creates EnvoyFilter for Gateway→Authorino TLS but does NOT handle Authorino→maas-api outbound trust.
+> - [x] HTTPRoute paths — RHOAI 3.4 GA uses namespaced paths: `/models-as-a-service/<model>/v1/chat/completions`. Tests must use full path.
+> - [x] DSCI auto-creation — operator creates `default-dsci` automatically. Helm should NOT manage it (`dsci.managed: false`).
+> - [x] `models-as-a-service` namespace — created by maas-controller. Helm must use `namespace.create: false`.
+>
+> **Evaluated (2026-05-18, continued):**
+> - [x] OSSM 3 meshConfig — **NOT APPLICABLE**. RHOAI 3.4 GA uses `openshift.io/gateway-controller/v1` (cluster-ingress-operator managed Istio). OSSM 3 is NOT required and would conflict. The managed Istio cannot be customized with `extensionProviders`. Gateway tracing remains blocked until Kuadrant supports tracing natively or the controller allows custom Istio config.
+> - [x] Authorino ServiceMonitor — **NOT INVESTIGATED** (low priority). maas-api runs in `redhat-ods-applications` and likely exposes a metrics port, but scraping it requires a ServiceMonitor in that namespace. Deferred to Phase 3+ when FinOps dashboards need maas-api metrics (API key usage, subscription counts).
+> - [x] Dashboard flags `modelAsService` + `observabilityDashboard` — **VALIDATED**. `genAiStudio: true` and `modelAsService: true` are required in OdhDashboardConfig for the MaaS/GenAI Studio UI. Both work in GA. `observabilityDashboard: true` requires Cluster Observability Operator (COO), which is NOT deployed — left as `false`. See `values.yaml` dashboard section.
+> - [x] Unified endpoint routing — **NOT AVAILABLE in 3.4 GA**. LLMInferenceService creates per-model HTTPRoutes with namespaced paths (`/<namespace>/<model>/v1/...`). No routing-by-payload (model field in JSON body) support. Each model requires its own path prefix. Single-endpoint routing would require a custom HTTPRoute or middleware — not worth the complexity for current use cases.
+>
+> **RHOAI 3.4 GA documentation analysis (2026-05-18):**
+>
+> Analysis of [RHOAI 3.4 official docs](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4) and [upstream MaaS setup](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/install/maas-setup.md). Key findings:
+>
+> **Version bumps (3.3 → 3.4 GA):** KServe 0.15→0.17.0, vLLM v0.13.0→v0.18.0 (CUDA), MaaS 0.0.2(TP)→0.1.1(GA), MLflow 3.6.0(TP)→3.10.1(GA), llm-d 0.7.1(GA, new), Red Hat AI Inference Server 3.4.0(GA, new).
+>
+> **New: Tenant CR** — `maas.opendatahub.io/v1alpha1 Tenant` auto-created by maas-controller. `spec.telemetry.enabled: true` makes the controller manage TelemetryPolicy + Istio Telemetry. Could fix CEL blocker. Name must be `default-tenant` (CEL enforced).
+>
+> **New: maas-controller auto-resources** — controller creates `gateway-default-auth` AuthPolicy, `gateway-default-deny` TokenRateLimitPolicy, TelemetryPolicy, DestinationRule, NetworkPolicy. Need conflict audit with Helm templates.
+>
+> **GatewayClassName:** Upstream docs use `openshift-default`, we use `data-science-gateway-class` (created by RHOAI when KServe Managed). Keeping current value — validate on cluster.
+>
+> **Gateway listener config:** Upstream defines HTTP(80)+HTTPS(443) with hostname and `from: All`. We have HTTPS-only, no hostname, `from: Selector`. More restrictive = better security. Validate HTTPRoutes are accepted.
+>
+> **vLLM CPU x86_64:** Red Hat does NOT publish an x86_64 CPU image (`odh-vllm-cpu-rhel9` only has ppc64le/s390x). Custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` remains necessary. Base community image (`quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9`) has no newer versions than 0.3.
+>
+> **Kuadrant namespace:** Upstream mentions `AUTHORINO_NAMESPACE=rh-connectivity-link` for RHOAI. Hardcoded `kuadrant-system` in templates replaced with `{{ .Values.kuadrant.namespace }}` for flexibility.
+>
+> **Deprecations:** TGIS, ModelMesh, Serverless KServe, Kubeflow v1 Training Operator — none used in this project.
+>
+> **Installation flow:** Database → Gateway → DSC → Models. Current sync-waves: 0(operators+DB) → 1(platform+gateway+DSC) → 2(models). Close enough — ArgoCD retries handle ordering within a wave.
+### Phase 3: Benchmarks (merged into evaluation module -- see [ADR-0007](adr/0007-merge-benchmarks-into-evaluation.md))
 
 Goal: identify system limits with repeatable load tests.
 

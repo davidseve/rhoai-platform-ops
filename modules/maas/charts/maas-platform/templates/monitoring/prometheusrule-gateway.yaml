@@ -17,8 +17,8 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "MaaS gateway auth timeout (WASM 200ms limit)"
-            description: "The Kuadrant WASM filter is timing out at {{ "{{ $value | humanize }}" }} req/s. Auth evaluation exceeds the hardcoded 200ms timeout under concurrent load."
+            summary: "MaaS gateway WASM filter errors"
+            description: "The Kuadrant WASM filter is reporting errors at {{ "{{ $value | humanize }}" }} req/s. Check Limitador and auth pipeline health."
 
         - alert: MaaSBackend5xx
           expr: |

@@ -32,7 +32,8 @@ make test-all             # Run all module tests
 make undeploy-all         # Undeploy everything
 
 # ArgoCD (stable deployment)
-make deploy-argocd        # Apply app-of-apps
+make deploy-argocd        # Apply app-of-apps (auto-detects CLUSTER_DOMAIN from cluster)
+make deploy-argocd CLUSTER_DOMAIN=apps.example.com  # Manual override
 make wait-healthy         # Wait for all ArgoCD apps Synced+Healthy and pods Ready
 make bootstrap-argocd     # deploy-argocd + wait-healthy + test-all (full pipeline)
 make status               # Check ArgoCD sync status
@@ -87,6 +88,7 @@ modules/
   maas/                   # Models-as-a-Service (RHOAI + Kuadrant)
     charts/
       operators/          # RHOAI, Kuadrant, LeaderWorkerSet operators
+      maas-db/            # PostgreSQL for maas-api (deployed before platform)
       maas-platform/      # DSCI, DSC, Gateway, Route, tiers, monitoring, vLLM PodMonitor/SLO, dashboards
       maas-model/         # LLMInferenceService, RBAC, rate limits
     tests/                # E2E tests (inference, in-cluster, governance)

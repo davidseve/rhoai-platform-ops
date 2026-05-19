@@ -25,6 +25,17 @@ GATEWAY_SVC = f"{GATEWAY_NAME}-{GATEWAY_CLASS}"
 GATEWAY_INTERNAL = (
     f"https://{GATEWAY_SVC}.{GATEWAY_NAMESPACE}.svc.cluster.local"
 )
+
+def _get_gateway_hostname() -> str:
+    """Get the Gateway listener hostname for in-cluster Host header."""
+    result = subprocess.run(
+        f"oc get route {GATEWAY_NAME} -n {GATEWAY_NAMESPACE} "
+        "-o jsonpath='{.spec.host}'",
+        shell=True, capture_output=True, text=True,
+    )
+    return result.stdout.strip("'")
+
+GATEWAY_HOSTNAME = _get_gateway_hostname()
 MODEL_SVC = (
     f"https://{MODEL_NAME}-kserve-workload-svc"
     f".{MODEL_NAMESPACE}.svc.cluster.local:8000"
@@ -104,7 +115,8 @@ class TestInClusterGateway:
     def test_api_key_via_internal_gateway(self, oc_token):
         """Generate a MaaS API key hitting the ClusterIP from an in-cluster pod."""
         script = f"""
-curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/api-keys" \
+curl -sk -X POST "https://{GATEWAY_HOSTNAME}/maas-api/v1/api-keys" \
+  --resolve "{GATEWAY_HOSTNAME}:443:$(getent hosts {GATEWAY_SVC}.{GATEWAY_NAMESPACE}.svc.cluster.local | awk '{{print $1}}')" \
   -H "Authorization: Bearer {oc_token}" \
   -H "Content-Type: application/json" \
   -d '{{"name":"e2e-incluster-test","expiration":"10m"}}'
@@ -114,11 +126,12 @@ curl -sk -X POST "{GATEWAY_INTERNAL}/maas-api/v1/api-keys" \
         assert "key" in body, f"No API key in response: {body}"
         assert body["key"].startswith("sk-oai-")
 
-    def test_inference_via_internal_gateway(self, maas_token):
-        """Inference via the internal Gateway ClusterIP."""
+    def test_inference_via_internal_gateway(self, maas_api_key):
+        """Inference via the internal Gateway ClusterIP with API key."""
         script = f"""
-curl -sk "{GATEWAY_INTERNAL}/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions" \
-  -H "Authorization: Bearer {maas_token}" \
+curl -sk "https://{GATEWAY_HOSTNAME}/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions" \
+  --resolve "{GATEWAY_HOSTNAME}:443:$(getent hosts {GATEWAY_SVC}.{GATEWAY_NAMESPACE}.svc.cluster.local | awk '{{print $1}}')" \
+  -H "Authorization: Bearer {maas_api_key['key']}" \
   -H "Content-Type: application/json" \
   -d '{{"model":"{MODEL_NAME}","messages":[{{"role":"user","content":"Hi"}}],"max_tokens":10}}'
 """

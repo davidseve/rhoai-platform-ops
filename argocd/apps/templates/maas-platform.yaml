@@ -16,6 +16,12 @@ spec:
       parameters:
         - name: grafana.enabled
           value: "{{ .Values.modules.observability.enabled }}"
+        {{- if .Values.clusterDomain }}
+        - name: gateway.hostname
+          value: "maas.{{ .Values.clusterDomain }}"
+        - name: route.host
+          value: "maas.{{ .Values.clusterDomain }}"
+        {{- end }}
       valueFiles:
         - values.yaml
   destination:

@@ -2,144 +2,148 @@
 
 ## Overview
 
-The `kuadrant-readiness-hook.yaml` PostSync hook configures Authorino with listener TLS and outbound `service-ca` trust, following the [official MaaS `setup-authorino-tls.sh`](https://github.com/opendatahub-io/models-as-a-service/blob/main/scripts/setup-authorino-tls.sh). This is required so Authorino can:
+The `authorino-tls-job.yaml` ArgoCD PostSync Job configures Authorino with two TLS capabilities required for MaaS to function:
 
-1. Accept TLS connections from the Gateway (Envoy → Authorino gRPC)
-2. Make outbound HTTPS calls to `maas-api` for tier metadata lookup (Authorino → maas-api)
+1. **Listener TLS** (Gateway → Authorino) — Envoy connects to Authorino over gRPC for `extAuthz`. The Gateway controller creates an EnvoyFilter (`*-authn-ssl`) that forces TLS on this connection. Authorino must have a valid serving certificate.
+2. **Outbound CA trust** (Authorino → maas-api) — Authorino calls `maas-api` over HTTPS to validate API keys. Since `maas-api` uses an OpenShift `service-ca`-signed certificate, Authorino must trust the cluster CA.
 
-Without this setup, requests through the `maas-default-gateway` fail with **HTTP 500**.
+Without this setup, Gateway requests fail with **HTTP 500** (listener TLS) or **HTTP 403** (outbound CA trust).
 
-## Background: Gateway 500 Errors (RHOAI ≤ 3.1)
+## How it works (8 steps)
 
-> [!NOTE]
-> This issue should **not** occur from RHOAI 3.2 onwards due to optional EnvoyFilter creation ([RHOAIENG-39326](https://issues.redhat.com/browse/RHOAIENG-39326)).
-> With RHOAI 3.3.2 the fix should be fully stable — **pending validation on our clusters**.
+The PostSync Job in `modules/maas/charts/maas-platform/templates/gateway/authorino-tls-job.yaml` runs after every ArgoCD sync:
 
-### Symptom
+| Step | Action | Why |
+| ---- | ------ | --- |
+| 1 | Annotate Authorino service with `serving-cert-secret-name` | Triggers OpenShift service-ca to generate a TLS cert |
+| 2 | Wait for cert secret | The annotation is async; cert appears after ~5s |
+| 3 | Patch Authorino CR `listener.tls.enabled: true` | Authorino starts accepting TLS on its gRPC listener |
+| 4 | Create `openshift-service-ca.crt` ConfigMap | Injected with cluster CA bundle by service-ca operator |
+| 5 | Mount ConfigMap as volume on Authorino deployment | Makes the CA cert file available to the container |
+| 6 | Set `SSL_CERT_FILE` env var | Go's `crypto/tls` uses this for outbound verification |
+| 7 | Wait for Authorino readiness | Steps 5-6 trigger a rollout; wait for all replicas ready |
+| 8 | Trigger Gateway EnvoyFilter reconciliation | Annotate Gateway to create `*-authn-ssl` EnvoyFilter |
 
-All requests through the `maas-default-gateway` returned HTTP 500:
+Steps 1-3 solve listener TLS. Steps 4-6 solve outbound CA trust. Step 8 ensures the Gateway data plane is updated.
 
-```
-POST /maas-api/v1/tokens → 500 Internal Server Error
-```
+## RBAC
 
-While:
-- Direct ClusterIP calls to `maas-api` succeeded
-- Tokens were valid (passed `TokenReview`)
-- `HTTPRoutes` were `Accepted`
-- No `maas-api` or Authorino logs were produced
-- Removing `AuthPolicy` / `RateLimitPolicy` had no effect
-- Even an `allow-anonymous` AuthPolicy still returned 500
+The Job creates two Roles (not ClusterRoles) with minimal permissions:
 
-This pattern indicates a data-plane `extAuthz` connectivity failure, not an authentication or routing error.
+**`authorino-tls-setup`** in `kuadrant-system`:
+- `services`: get, update, patch (annotate service)
+- `secrets`: get (read cert secret)
+- `configmaps`: get, create, update, patch (service-ca ConfigMap)
+- `deployments`: get, update, patch (volume mount, env var)
+- `authorinos`: get, patch (enable listener TLS)
 
-### Root Cause
+**`authorino-tls-gateway`** in `openshift-ingress`:
+- `gateways`: get, update, patch (annotate for EnvoyFilter)
+- `envoyfilters`: get, list (check if already created)
 
-OpenShift AI / KServe creates an EnvoyFilter (`openshift-ai-inference-authn-ssl`) that forces TLS origination for all Envoy traffic to the Authorino `extAuthz` upstream cluster. The failure chain:
+All hook resources use `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation`.
 
-1. The EnvoyFilter forces TLS on the Envoy → Authorino connection
-2. Authorino was deployed in plain HTTP mode (no TLS listener)
-3. Envoy initiated a TLS handshake; Authorino responded with plain HTTP
-4. Connection failed at the transport socket layer — before any HTTP exchange
-5. Envoy returned 500 immediately; no request ever reached Authorino or `maas-api`
+> **Note on `patch` verb**: `oc annotate`, `oc set volume`, and `oc set env` use the HTTP PATCH method internally. RBAC rules must include `patch`, not just `update`.
 
-The EnvoyFilter was intended only for the `openshift-ai-inference` gateway, but an [Istio bug in v1.26.2 / OSSM 3.1](https://github.com/istio/istio/issues/56417) caused it to apply to **all** gateways (including `maas-default-gateway`), because it has `priority: -1` and `targetRefs` scoping was not enforced correctly.
+## Manual deployment (without ArgoCD)
 
-### Resolution
-
-Align Authorino with the [official RHOAI GA KServe guide](https://github.com/opendatahub-io/kserve/tree/release-v0.15/docs/samples/llmisvc/ocp-setup-for-GA) for TLS-secured Authorino:
-
-1. **Mint a serving certificate** — Annotate the service so OpenShift's `service-ca` operator generates a TLS cert:
+When deploying with `helm install` (no PostSync hooks), run the equivalent steps:
 
 ```bash
-oc annotate svc/authorino-authorino-authorization \
-  service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert \
-  -n kuadrant-system
-```
+NS=kuadrant-system
+GATEWAY_NS=openshift-ingress
+GATEWAY_NAME=maas-default-gateway
 
-2. **Enable listener TLS** — Patch the Authorino CR to use the generated cert:
+# Step 1: Annotate Authorino service for serving cert
+oc annotate service authorino-authorino-authorization -n $NS \
+  service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert --overwrite
 
-```bash
-oc patch authorino authorino -n kuadrant-system --type=merge -p '{
+# Step 2: Wait for cert secret
+oc wait --for=jsonpath='{.type}'=kubernetes.io/tls secret/authorino-server-cert \
+  -n $NS --timeout=60s 2>/dev/null || \
+  echo "Waiting for cert..." && sleep 10
+
+# Step 3: Enable listener TLS on Authorino
+oc patch authorino authorino -n $NS --type=merge -p '{
   "spec": {
     "listener": {
       "tls": {
         "enabled": true,
-        "certSecretRef": {
-          "name": "authorino-server-cert"
-        }
+        "certSecretRef": {"name": "authorino-server-cert"}
       }
     }
   }
 }'
+
+# Step 4: Create service-ca ConfigMap
+oc create configmap openshift-service-ca.crt -n $NS 2>/dev/null || true
+oc annotate configmap openshift-service-ca.crt -n $NS \
+  service.beta.openshift.io/inject-cabundle=true --overwrite
+
+# Step 5: Mount volume
+oc set volume deploy/authorino -n $NS --add \
+  --name=openshift-service-ca \
+  --type=configmap \
+  --configmap-name=openshift-service-ca.crt \
+  --mount-path=/etc/ssl/certs/openshift-service-ca \
+  --read-only
+
+# Step 6: Set SSL_CERT_FILE
+oc set env deploy/authorino -n $NS \
+  SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca.crt
+
+# Step 7: Wait for readiness
+oc rollout status deploy/authorino -n $NS --timeout=120s
+
+# Step 8: Trigger EnvoyFilter
+oc annotate gateway $GATEWAY_NAME -n $GATEWAY_NS \
+  security.opendatahub.io/authorino-tls-bootstrap="true" --overwrite
 ```
 
-3. **Mount service-ca for outbound trust** — So Authorino can call `maas-api` over HTTPS:
+## Diagnosing issues
 
 ```bash
-oc patch authorino authorino -n kuadrant-system --type=merge -p '{
-  "spec": {
-    "volumes": {
-      "items": [{
-        "name": "service-ca",
-        "configMaps": ["openshift-service-ca.crt"],
-        "mountPath": "/etc/ssl/certs/openshift-service-ca"
-      }]
-    }
-  }
-}'
+# Check listener TLS config
+oc get authorino authorino -n kuadrant-system \
+  -o jsonpath='{.spec.listener.tls}'
 
-oc set env deployment/authorino -n kuadrant-system \
-  SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca.crt \
-  REQUESTS_CA_BUNDLE=/etc/ssl/certs/openshift-service-ca/service-ca.crt
+# Check SSL_CERT_FILE env var
+oc get deploy authorino -n kuadrant-system \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSL_CERT_FILE")].value}'
+
+# Check service-ca volume mount
+oc get deploy authorino -n kuadrant-system \
+  -o jsonpath='{.spec.template.spec.volumes[?(@.name=="openshift-service-ca")]}'
+
+# Check EnvoyFilter exists
+oc get envoyfilter -n openshift-ingress | grep authn-ssl
+
+# Check for TLS errors (should be empty after fix)
+oc logs deploy/authorino -n kuadrant-system --tail=50 | grep -E "tls|certificate|x509"
+
+# Check PostSync Job logs
+oc logs job/authorino-tls-setup -n kuadrant-system
 ```
 
-All three steps are automated by the `kuadrant-readiness-hook.yaml` PostSync hook. See [KUADRANT-READINESS-HOOK.md](KUADRANT-READINESS-HOOK.md) for details.
+## Background
 
-## RHOAI Version Matrix
+### Why Authorino needs listener TLS
 
-| RHOAI Version | EnvoyFilter behavior | Authorino TLS required? | Status |
-| ------------- | -------------------- | ----------------------- | ------ |
-| 3.1           | Always created, leaks to all gateways (Istio bug) | **Yes** — without it, all extAuthz calls fail | Workaround applied |
-| 3.2           | Optional creation ([RHOAIENG-39326](https://issues.redhat.com/browse/RHOAIENG-39326)) | Yes — still best practice, prevents future regressions | Supported |
-| 3.3.2         | Fixed scoping expected | Yes — but the 500 bug should not occur even without it | **Pending validation** |
-| 3.4 EA2       | `security.opendatahub.io/authorino-tls-bootstrap: "true"` on Gateway + `opendatahub.io/managed: "false"` | Expected automatic via maas-controller | **Testing** — kuadrant-readiness-hook disabled |
+OpenShift AI / KServe configures the Gateway's Envoy proxy to connect to Authorino over TLS for `extAuthz` checks. When the Gateway annotation `security.opendatahub.io/authorino-tls-bootstrap: "true"` is set, the Kuadrant controller creates an EnvoyFilter (`*-authn-ssl`) that forces TLS transport on the Envoy → Authorino connection. If Authorino has no TLS listener, this connection fails at the transport layer — Envoy returns HTTP 500 before any request reaches Authorino.
 
-> [!IMPORTANT]
-> RHOAI 3.3.2 should fully resolve the EnvoyFilter scoping issue. We need to validate on our clusters that:
-> 1. The `openshift-ai-inference-authn-ssl` EnvoyFilter no longer leaks to `maas-default-gateway`
-> 2. Authorino TLS setup still works correctly (listener TLS + outbound service-ca trust)
-> 3. The PostSync hook completes without errors
->
-> Track validation in the team's deployment checklist.
+### Why Authorino needs service-ca trust
 
-## How the Hook Automates This
-
-The `kuadrant-readiness-hook.yaml` PostSync Job runs on every ArgoCD sync and performs:
-
-1. Waits for Kuadrant CR readiness (handles `MissingDependency`)
-2. Annotates the Authorino service for serving cert generation
-3. Patches the Authorino CR for listener TLS + `service-ca` volume mount
-4. Sets `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` env vars on the Authorino deployment
-5. Restarts Limitador pods and waits for rollouts
-6. Restarts Envoy Gateway pods to reload WasmPlugin config
-
-See [KUADRANT-READINESS-HOOK.md](KUADRANT-READINESS-HOOK.md) for the full hook documentation.
-
-## Involved Components
-
-- **OpenShift Service Mesh (OSSM)** v3.x (Istio)
-- **Kuadrant / Authorino** — `extAuthz` for Gateway API `AuthPolicies`
-- **OpenShift AI / KServe** — creates the `openshift-ai-inference-authn-ssl` EnvoyFilter
-- **Gateway API** — `maas-default-gateway` (MaaS) + `openshift-ai-inference` (KServe default)
-- **Envoy** — ingress gateway that connects to Authorino over gRPC
+MaaS API keys (`sk-oai-*`) are validated by Authorino calling `maas-api`'s `/internal/v1/api-keys/validate` endpoint over HTTPS. The `maas-api` service uses an OpenShift `service-ca`-signed certificate. Authorino's base image includes ~148 public CA certificates but **not** the OpenShift `service-ca` CA. Without mounting the CA bundle and setting `SSL_CERT_FILE`, Authorino returns HTTP 403 (auth failure) because it cannot verify the maas-api certificate.
 
 ## References
 
-- [Root cause analysis (Bartosz Majsak)](https://gist.github.com/bartoszmajsak/99934c4acf39cd6639ae19efa985c0c6)
+- [Official MaaS setup-authorino-tls.sh](https://github.com/opendatahub-io/models-as-a-service/blob/main/scripts/setup-authorino-tls.sh)
 - [RHOAI GA KServe setup — SSL Authorino](https://github.com/opendatahub-io/kserve/tree/release-v0.15/docs/samples/llmisvc/ocp-setup-for-GA)
-- [RHOAIENG-39326 — Optional EnvoyFilter creation](https://issues.redhat.com/browse/RHOAIENG-39326)
-- [CONNLINK-528](https://issues.redhat.com/browse/CONNLINK-528)
-- [Kuadrant/kuadrant-operator#1531](https://github.com/Kuadrant/kuadrant-operator/issues/1531)
-- [istio/istio#56417 — EnvoyFilter scoping bug](https://github.com/istio/istio/issues/56417)
-- [opendatahub-io/models-as-a-service#227 — Align MaaS with RHOAI/ODH](https://github.com/opendatahub-io/models-as-a-service/pull/227)
+- [RHOAI 3.4 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4)
+
+## Version History
+
+| RHOAI | Hook file | Notes |
+| ----- | --------- | ----- |
+| 3.1–3.3 | `kuadrant-readiness-hook.yaml` | Also handled Kuadrant MissingDependency recovery + Limitador/Envoy restarts |
+| 3.4 GA | `authorino-tls-job.yaml` | Simplified to TLS-only (MissingDependency no longer occurs in 3.4) |

@@ -1,0 +1,242 @@
+{{- if and .Values.kuadrant.enabled .Values.kuadrant.authorinoTls.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: authorino-tls-setup
+  namespace: {{ .Values.kuadrant.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: authorino-tls-setup
+  namespace: {{ .Values.kuadrant.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "create", "update", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["operator.authorino.kuadrant.io"]
+  resources: ["authorinos"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: authorino-tls-setup
+  namespace: {{ .Values.kuadrant.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: authorino-tls-setup
+subjects:
+- kind: ServiceAccount
+  name: authorino-tls-setup
+  namespace: {{ .Values.kuadrant.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: authorino-tls-gateway
+  namespace: {{ .Values.gateway.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["networking.istio.io"]
+  resources: ["envoyfilters"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: authorino-tls-gateway
+  namespace: {{ .Values.gateway.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: authorino-tls-gateway
+subjects:
+- kind: ServiceAccount
+  name: authorino-tls-setup
+  namespace: {{ .Values.kuadrant.namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: authorino-tls-setup
+  namespace: {{ .Values.kuadrant.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      serviceAccountName: authorino-tls-setup
+      restartPolicy: OnFailure
+      containers:
+      - name: setup
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          NAMESPACE="{{ .Values.kuadrant.namespace }}"
+          GATEWAY_NS="{{ .Values.gateway.namespace }}"
+          GATEWAY_NAME="{{ .Values.gateway.name }}"
+
+          echo "Step 1: Annotate Authorino service for serving cert..."
+          oc annotate service authorino-authorino-authorization \
+            -n "$NAMESPACE" \
+            service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert \
+            --overwrite
+
+          echo "Step 2: Wait for cert secret..."
+          for i in $(seq 1 30); do
+            if oc get secret authorino-server-cert -n "$NAMESPACE" 2>/dev/null; then
+              echo "  cert secret found"
+              break
+            fi
+            echo "  waiting ($i/30)..."
+            sleep 2
+          done
+
+          echo "Step 3: Enable Authorino listener TLS..."
+          CURRENT_TLS=$(oc get authorino authorino -n "$NAMESPACE" \
+            -o jsonpath='{.spec.listener.tls.enabled}' 2>/dev/null || echo "")
+          if [ "$CURRENT_TLS" != "true" ]; then
+            echo "  Patching Authorino CR..."
+            oc patch authorino authorino -n "$NAMESPACE" --type=merge --patch '{
+              "spec": {
+                "listener": {
+                  "tls": {
+                    "enabled": true,
+                    "certSecretRef": {
+                      "name": "authorino-server-cert"
+                    }
+                  }
+                }
+              }
+            }'
+          else
+            echo "  Listener TLS already enabled, skipping"
+          fi
+
+          echo "Step 4: Ensure service-ca ConfigMap exists..."
+          if ! oc get configmap openshift-service-ca.crt -n "$NAMESPACE" 2>/dev/null; then
+            echo "  Creating openshift-service-ca.crt ConfigMap..."
+            oc create configmap openshift-service-ca.crt -n "$NAMESPACE"
+            oc annotate configmap openshift-service-ca.crt -n "$NAMESPACE" \
+              service.beta.openshift.io/inject-cabundle=true --overwrite
+            echo "  Waiting for CA injection..."
+            for i in $(seq 1 15); do
+              DATA=$(oc get configmap openshift-service-ca.crt -n "$NAMESPACE" \
+                -o jsonpath='{.data}' 2>/dev/null || echo "")
+              if [ -n "$DATA" ] && [ "$DATA" != "{}" ]; then
+                echo "  CA bundle injected"
+                break
+              fi
+              sleep 2
+            done
+          else
+            echo "  ConfigMap already exists"
+          fi
+
+          echo "Step 5: Add service-ca volume to Authorino deployment..."
+          HAS_VOLUME=$(oc get deploy authorino -n "$NAMESPACE" \
+            -o jsonpath='{.spec.template.spec.volumes[?(@.name=="openshift-service-ca")].name}' 2>/dev/null || echo "")
+
+          if [ -z "$HAS_VOLUME" ]; then
+            echo "  Adding openshift-service-ca volume..."
+            oc set volume deploy/authorino -n "$NAMESPACE" --add \
+              --name=openshift-service-ca \
+              --type=configmap \
+              --configmap-name=openshift-service-ca.crt \
+              --mount-path=/etc/ssl/certs/openshift-service-ca \
+              --read-only
+          else
+            echo "  Volume already exists, skipping"
+          fi
+
+          echo "Step 6: Set SSL_CERT_FILE env var..."
+          CURRENT_CERT=$(oc get deploy authorino -n "$NAMESPACE" \
+            -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSL_CERT_FILE")].value}' 2>/dev/null || echo "")
+
+          if [ "$CURRENT_CERT" != "/etc/ssl/certs/openshift-service-ca/service-ca.crt" ]; then
+            echo "  Setting SSL_CERT_FILE..."
+            oc set env deploy/authorino -n "$NAMESPACE" \
+              SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca.crt
+          else
+            echo "  SSL_CERT_FILE already set, skipping"
+          fi
+
+          echo "Step 7: Wait for Authorino to be ready..."
+          for i in $(seq 1 60); do
+            READY=$(oc get deploy authorino -n "$NAMESPACE" \
+              -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            DESIRED=$(oc get deploy authorino -n "$NAMESPACE" \
+              -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "1")
+            if [ "$READY" = "$DESIRED" ] && [ "$READY" != "0" ]; then
+              echo "  Authorino ready ($READY/$DESIRED)"
+              break
+            fi
+            echo "  waiting ($i/60, ready=$READY/$DESIRED)..."
+            sleep 2
+          done
+
+          echo "Step 8: Trigger Gateway EnvoyFilter for TLS..."
+          EXISTING_EF=$(oc get envoyfilter "${GATEWAY_NAME}-authn-ssl" -n "$GATEWAY_NS" 2>/dev/null && echo "exists" || echo "")
+          if [ -z "$EXISTING_EF" ]; then
+            echo "  EnvoyFilter not found, triggering reconciliation..."
+            oc annotate gateway "$GATEWAY_NAME" -n "$GATEWAY_NS" \
+              security.opendatahub.io/authorino-tls-bootstrap- --overwrite 2>/dev/null || true
+            sleep 3
+            oc annotate gateway "$GATEWAY_NAME" -n "$GATEWAY_NS" \
+              security.opendatahub.io/authorino-tls-bootstrap="true" --overwrite
+            echo "  Waiting for EnvoyFilter..."
+            for i in $(seq 1 30); do
+              if oc get envoyfilter "${GATEWAY_NAME}-authn-ssl" -n "$GATEWAY_NS" 2>/dev/null; then
+                echo "  EnvoyFilter created"
+                break
+              fi
+              echo "  waiting ($i/30)..."
+              sleep 2
+            done
+          else
+            echo "  EnvoyFilter already exists, skipping"
+          fi
+
+          echo "Authorino TLS setup complete."
+{{- end }}

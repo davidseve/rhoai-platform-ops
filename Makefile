@@ -6,6 +6,7 @@ OC ?= oc
 PYTHON ?= python3
 GRAFANA_ENABLED ?= false
 BRANCH ?=
+CLUSTER_DOMAIN ?= $(shell $(OC) get ingress.config cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
 
 # --- Observability Module ---
 
@@ -65,8 +66,10 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 		done; \
 	done
 	@echo "=== Phase 2: Platform (operator CRs, DSC, Gateway, monitoring) ==="
+	@$(OC) get ns observability &>/dev/null || $(OC) create ns observability
+	@$(OC) get ns models-as-a-service &>/dev/null || $(OC) create ns models-as-a-service
 	$(HELM) upgrade --install maas-platform modules/maas/charts/maas-platform \
-		--set grafana.enabled=$(GRAFANA_ENABLED) --wait --timeout 15m
+		--set grafana.enabled=$(GRAFANA_ENABLED) --set tenant.enabled=false --wait --timeout 15m
 	@echo "Waiting for DSC to be Ready..."
 	@for i in $$(seq 1 120); do \
 		status=$$($(OC) get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null); \
@@ -75,6 +78,56 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 		if [ $$i -eq 120 ]; then echo "ERROR: DSC not Ready after 10 minutes"; exit 1; fi; \
 		sleep 5; \
 	done
+	@echo "Enabling Tenant telemetry..."
+	@$(OC) patch tenant default-tenant -n models-as-a-service --type merge \
+		-p '{"spec":{"telemetry":{"enabled":true}}}' 2>/dev/null || \
+		echo "  Tenant not found yet (will be patched after models deploy)"
+	@echo "=== Phase 2b: Authorino TLS setup ==="
+	@echo "Annotating Authorino service for serving cert..."
+	@$(OC) annotate service authorino-authorino-authorization -n kuadrant-system \
+		service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert --overwrite
+	@echo "Waiting for cert secret..."
+	@for i in $$(seq 1 30); do \
+		if $(OC) get secret authorino-server-cert -n kuadrant-system 2>/dev/null; then break; fi; \
+		echo "  waiting ($$i/30)..."; sleep 2; \
+	done
+	@echo "Enabling Authorino listener TLS..."
+	@$(OC) patch authorino authorino -n kuadrant-system --type=merge \
+		-p '{"spec":{"listener":{"tls":{"enabled":true,"certSecretRef":{"name":"authorino-server-cert"}}}}}'
+	@echo "Checking service-ca ConfigMap..."
+	@$(OC) get configmap openshift-service-ca.crt -n kuadrant-system 2>/dev/null || \
+		($(OC) create configmap openshift-service-ca.crt -n kuadrant-system && \
+		 $(OC) annotate configmap openshift-service-ca.crt -n kuadrant-system \
+			service.beta.openshift.io/inject-cabundle=true --overwrite && sleep 5)
+	@echo "Adding service-ca volume to Authorino..."
+	@$(OC) get deploy authorino -n kuadrant-system \
+		-o jsonpath='{.spec.template.spec.volumes[?(@.name=="openshift-service-ca")].name}' 2>/dev/null | \
+		grep -q openshift-service-ca || \
+		$(OC) set volume deploy/authorino -n kuadrant-system --add \
+			--name=openshift-service-ca --type=configmap \
+			--configmap-name=openshift-service-ca.crt \
+			--mount-path=/etc/ssl/certs/openshift-service-ca --read-only
+	@echo "Setting SSL_CERT_FILE..."
+	@CURRENT=$$($(OC) get deploy authorino -n kuadrant-system \
+		-o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSL_CERT_FILE")].value}' 2>/dev/null); \
+		if [ "$$CURRENT" != "/etc/ssl/certs/openshift-service-ca/service-ca.crt" ]; then \
+			$(OC) set env deploy/authorino -n kuadrant-system \
+				SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca.crt; \
+		fi
+	@echo "Waiting for Authorino rollout..."
+	@$(OC) rollout status deploy/authorino -n kuadrant-system --timeout=120s
+	@echo "Triggering Gateway EnvoyFilter for TLS..."
+	@$(OC) get envoyfilter maas-default-gateway-authn-ssl -n openshift-ingress 2>/dev/null || \
+		($(OC) annotate gateway maas-default-gateway -n openshift-ingress \
+			security.opendatahub.io/authorino-tls-bootstrap- --overwrite 2>/dev/null; \
+		 sleep 3; \
+		 $(OC) annotate gateway maas-default-gateway -n openshift-ingress \
+			security.opendatahub.io/authorino-tls-bootstrap=true --overwrite; \
+		 for i in $$(seq 1 30); do \
+			if $(OC) get envoyfilter maas-default-gateway-authn-ssl -n openshift-ingress 2>/dev/null; then \
+				echo "  EnvoyFilter created"; break; fi; \
+			echo "  waiting ($$i/30)..."; sleep 2; \
+		 done)
 	@echo "Waiting for OdhDashboardConfig..."
 	@for i in $$(seq 1 60); do \
 		if $(OC) get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications &>/dev/null; then \
@@ -245,8 +298,14 @@ run-benchmark: ## [DEPRECATED] Run GuideLLM Job directly — use 'make evalhub-b
 # --- ArgoCD (Stable Deployment) ---
 
 .PHONY: deploy-argocd
-deploy-argocd: ## Deploy app-of-apps via ArgoCD
-	$(OC) apply -f argocd/app-of-apps.yaml
+deploy-argocd: ## Deploy app-of-apps via ArgoCD (auto-detects CLUSTER_DOMAIN)
+	@if [ -z "$(CLUSTER_DOMAIN)" ]; then \
+		echo "ERROR: Cannot detect cluster domain. Set CLUSTER_DOMAIN manually:"; \
+		echo "  make deploy-argocd CLUSTER_DOMAIN=apps.ocp.sandbox1476.opentlc.com"; \
+		exit 1; \
+	fi
+	@echo "Deploying app-of-apps (clusterDomain=$(CLUSTER_DOMAIN))..."
+	CLUSTER_DOMAIN=$(CLUSTER_DOMAIN) envsubst '$$CLUSTER_DOMAIN' < argocd/app-of-apps.yaml | $(OC) apply -f -
 
 .PHONY: status
 status: ## Check ArgoCD application sync status

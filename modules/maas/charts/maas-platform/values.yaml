@@ -1,5 +1,6 @@
-# RHOAI 3.4 auto-creates DSCI only if the operator creates the namespace.
-# When deploying via Helm (namespace pre-created), we must manage DSCI ourselves.
+# RHOAI 3.4 auto-creates DSCI when the operator starts.
+# With ArgoCD, set to true to declaratively manage DSCI (ArgoCD adopts the resource).
+# With Helm install, set to false (operator auto-creates it, Helm can't adopt).
 dsci:
   managed: true
 
@@ -49,7 +50,9 @@ datasciencecluster:
       managementState: Removed
 
 dashboard:
-  # The auto-created OdhDashboardConfig lacks MaaS/GenAI flags; manage it via Helm.
+  # The auto-created OdhDashboardConfig lacks MaaS/GenAI flags; manage it via Helm/ArgoCD.
+  # Requires dashboard CRD (available after DSC with dashboard: Managed reconciles).
+  # ArgoCD handles CRD ordering via SkipDryRunOnMissingResource annotation on the template.
   crEnabled: true
   genAiStudio: true
   modelAsService: true
@@ -73,6 +76,10 @@ gateway:
   #   annotate the gateway svc with service.beta.openshift.io/serving-cert-secret-name
   #   e.g. maas-gateway-service-tls
   tlsSecretName: ingress-certs
+  # Gateway listener hostname (e.g. maas.apps.cluster.example.com).
+  # Required for RHOAI dashboard API keys UI (maas-ui auto-discovers this).
+  # Must match route.host. Uses wildcard DNS/cert: *.apps.<clusterDomain>.
+  hostname: ""
   modelNamespaces: []
 
 route:
@@ -106,9 +113,13 @@ tiers:
       - name: tier-premium-users
         users: []
 
-# TelemetryPolicy: enriches Limitador metrics with user/group/model labels
-telemetry:
+# Tenant CR: auto-created by maas-controller, but we manage spec.telemetry via SSA.
+# ArgoCD (enabled: true): template + ServerSideApply merges with controller's Tenant.
+# Helm (enabled: false): Makefile does `oc patch` after deploy instead.
+tenant:
   enabled: true
+  telemetry:
+    enabled: true
 
 # ServiceMonitor for Limitador metrics scraping
 monitoring:
@@ -140,6 +151,11 @@ kuadrant:
   enabled: true
   namespace: kuadrant-system
   observability: true
+  # Authorino TLS: mount OpenShift service-ca bundle so Authorino trusts maas-api cert.
+  # Required for API key validation (Authorino → maas-api HTTPS callbacks).
+  # Runs as ArgoCD post-sync Job (setup-authorino-tls.sh equivalent).
+  authorinoTls:
+    enabled: true
 
 leaderWorkerSet:
   enabled: true

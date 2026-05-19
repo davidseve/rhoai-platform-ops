@@ -1,20 +1,16 @@
 """Governance enforcement: authentication, authorization, and rate limits.
 
-RHOAI 3.4 MaaSSubscription model: rate limits are managed by the
-maas-controller via TokenRateLimitPolicy per model.  tinyllama-test has
-free-tier limits (5000 tok/1m) and tinyllama-fast (10000 tok/1m).
+RHOAI 3.4 GA: inference requires API keys (sk-oai-*), not OCP tokens.
+Rate limits are managed by the maas-controller via TokenRateLimitPolicy
+per model. Token budget depends on the subscription tier (free=500,
+premium=50000 tok/1m). The API key is tied to the user's subscription.
 """
-
-import os
-import subprocess
 
 import pytest
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-TOKEN_RATE_BURST = int(os.getenv("MAAS_TOKEN_RATE_BURST", "15"))
 
 
 # ---------------------------------------------------------------------------
@@ -122,43 +118,27 @@ def _fire_one(url, headers, payload):
         return 0
 
 
-# ---------------------------------------------------------------------------
-# Token rate limiting -- per-model
-# ---------------------------------------------------------------------------
-
 class TestTokenRateLimiting:
-    """tinyllama-test free-tier subscription: 5000 tok/1m.
+    """Free-tier token rate limiting (500 tok/1m).
 
-    Sends sequential requests with max_tokens=500 (~520 tokens each including
-    prompt).  ~10 successful responses exhaust the budget.  At least one of
-    TOKEN_RATE_BURST requests must return 429.
-
-    RHOAI 3.4 EA2 bug: odh-model-controller AuthPolicy exposes groups in
-    auth.identity.user.groups (array), but maas-controller TRLP predicates
-    reference auth.identity.groups_str (comma-separated string).  The
-    predicates never match, so rate limits don't fire.
+    Uses a dedicated free-tier API key (subscription in body) to ensure
+    the low token budget is exhaustible within a few requests.
     """
 
-    MAX_SEQUENTIAL = 3
+    MAX_SEQUENTIAL = 10
 
-    @pytest.mark.xfail(
-        reason="EA2: AuthPolicy groups_str may not be populated. "
-        "MaaSAuthPolicy should create per-model AuthPolicy that populates it. "
-        "If this xpasses, remove the marker.",
-        strict=False,
-    )
-    def test_token_rate_limit_triggers_429(
-        self, maas_url, maas_token, inference_path
+    def test_free_tier_rate_limit_triggers_429(
+        self, maas_url, maas_free_api_key, inference_path
     ):
         url = f"{maas_url}{inference_path}"
         headers = {
-            "Authorization": f"Bearer {maas_token}",
+            "Authorization": f"Bearer {maas_free_api_key['key']}",
             "Content-Type": "application/json",
         }
         payload = {
             "model": "tinyllama-test",
-            "messages": [{"role": "user", "content": "Say hi"}],
-            "max_tokens": 50,
+            "messages": [{"role": "user", "content": "Write a detailed story"}],
+            "max_tokens": 200,
         }
         statuses = []
         for _ in range(self.MAX_SEQUENTIAL):
@@ -170,44 +150,22 @@ class TestTokenRateLimiting:
         got_429 = statuses.count(429)
         got_200 = statuses.count(200)
         assert got_429 > 0, (
-            f"Expected at least one 429 from token rate limit after "
-            f"{len(statuses)} requests with max_tokens=50 "
-            f"(free-tier token limit=5000 tok/1m). "
-            f"Status distribution: 200={got_200}, 429={got_429}, "
+            f"Expected 429 from free-tier token rate limit (500 tok/1m) "
+            f"after {len(statuses)} requests with max_tokens=200. "
+            f"Statuses: 200={got_200}, 429={got_429}, "
             f"other={len(statuses) - got_200 - got_429}"
-        )
-
-    @pytest.mark.xfail(
-        reason="EA2: AuthPolicy groups_str may not be populated.",
-        strict=False,
-    )
-    def test_after_token_rate_limit_still_blocked(
-        self, maas_url, maas_token, inference_path, chat_payload
-    ):
-        """After exhausting model1 tokens, the next request should be 429."""
-        url = f"{maas_url}{inference_path}"
-        headers = {
-            "Authorization": f"Bearer {maas_token}",
-            "Content-Type": "application/json",
-        }
-        resp = requests.post(
-            url, headers=headers, json=chat_payload,
-            verify=False, timeout=30,
-        )
-        assert resp.status_code == 429, (
-            f"Expected 429 (still token-rate-limited), got {resp.status_code}"
         )
 
 
 class TestTokenRateLimitIsolation:
-    """model2 (10000 tok/1m) should not be affected by model1's token exhaustion."""
+    """model2 should not be affected by model1's token exhaustion."""
 
     def test_model2_tokens_not_exhausted(
-        self, maas_url, maas_token, inference_path_model2
+        self, maas_url, maas_api_key_model2, inference_path_model2
     ):
         url = f"{maas_url}{inference_path_model2}"
         headers = {
-            "Authorization": f"Bearer {maas_token}",
+            "Authorization": f"Bearer {maas_api_key_model2['key']}",
             "Content-Type": "application/json",
         }
         payload = {
@@ -223,7 +181,7 @@ class TestTokenRateLimitIsolation:
         got_200 = statuses.count(200)
         assert got_200 == 3, (
             f"Expected all 3 requests to model2 to succeed "
-            f"(token limit=10000 tok/1m, not shared with model1). "
+            f"(separate token budget, not shared with model1). "
             f"Got: {statuses}"
         )
 
@@ -258,13 +216,14 @@ class TestModelReadiness:
             f"HTTPRoute {model_name}-kserve-route not Accepted by any parent"
         )
 
-    def test_authpolicy_has_kubernetes_auth(self, oc_json, gateway_namespace, gateway_name):
-        """Verify the gateway AuthPolicy uses KubernetesTokenReview authentication."""
-        data = oc_json(f"get authpolicy -n {gateway_namespace}")
+    def test_authpolicy_has_kubernetes_auth(self, oc_json, model_namespace, model_name):
+        """Verify the per-model AuthPolicy uses KubernetesTokenReview.
+
+        RHOAI 3.4 GA: auth moved from Gateway-level to per-model AuthPolicies
+        targeting each model's HTTPRoute. Created by MaaSAuthPolicy controller.
+        """
+        data = oc_json(f"get authpolicy -n {model_namespace}")
         for item in data.get("items", []):
-            target = item.get("spec", {}).get("targetRef", {})
-            if target.get("name") != gateway_name:
-                continue
             auth = item.get("spec", {}).get("rules", {}).get("authentication", {})
             has_k8s_auth = any(
                 "kubernetesTokenReview" in provider
@@ -274,7 +233,7 @@ class TestModelReadiness:
             if has_k8s_auth:
                 return
         pytest.fail(
-            f"No AuthPolicy targeting '{gateway_name}' with KubernetesTokenReview found"
+            f"No AuthPolicy with KubernetesTokenReview found in {model_namespace}"
         )
 
 
@@ -299,23 +258,45 @@ class TestGovernanceResources:
 
     def test_maasauthpolicy_exists(self, oc, model_namespace, model_name):
         """MaaSAuthPolicy exists for each model, enabling API key auth."""
-        result = subprocess.run(
-            f"oc get maasauthpolicy {model_name} -n {model_namespace} "
-            f"-o jsonpath='{{.status.phase}}'",
-            shell=True, capture_output=True, text=True, check=False,
-        )
-        if result.returncode != 0:
-            pytest.skip("MaaSAuthPolicy not deployed (authPolicy.enabled: false)")
-        assert result.stdout.strip("'") in ("Active", "Pending"), (
-            f"MaaSAuthPolicy '{model_name}' not active. Got: {result.stdout}"
+        phase = oc(
+            f"get maasauthpolicy {model_name} -n {model_namespace} "
+            f"-o jsonpath='{{.status.phase}}'"
+        ).strip("'")
+        assert phase in ("Active", "Pending"), (
+            f"MaaSAuthPolicy '{model_name}' not active. Got: {phase}"
         )
 
     def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
+        """TelemetryPolicy created by maas-controller when Tenant telemetry is enabled."""
         if not has_telemetrypolicy:
-            pytest.skip("TelemetryPolicy not deployed")
+            pytest.skip("TelemetryPolicy not deployed (Tenant telemetry disabled)")
         out = oc(f"get telemetrypolicy -n {gateway_namespace} --no-headers")
         assert "maas-telemetry" in out
 
     def test_tier_groups_exist(self, oc):
         out = oc("get groups --no-headers")
         assert out.strip(), "No groups found in cluster"
+
+
+class TestGatewayHostname:
+    """Gateway and Route must have a custom hostname (maas.apps.<cluster>)."""
+
+    def test_gateway_has_custom_hostname(self, oc, gateway_name, gateway_namespace):
+        hostname = oc(
+            f"get gateway {gateway_name} -n {gateway_namespace} "
+            "-o jsonpath='{.spec.listeners[0].hostname}'"
+        ).strip("'")
+        assert hostname, "Gateway listener has no hostname configured"
+        assert hostname.startswith("maas."), (
+            f"Gateway hostname should start with 'maas.' but got: {hostname}"
+        )
+
+    def test_route_has_custom_host(self, oc, gateway_name, gateway_namespace):
+        host = oc(
+            f"get route {gateway_name} -n {gateway_namespace} "
+            "-o jsonpath='{.spec.host}'"
+        ).strip("'")
+        assert host, "Route has no custom host configured"
+        assert host.startswith("maas."), (
+            f"Route host should start with 'maas.' but got: {host}"
+        )

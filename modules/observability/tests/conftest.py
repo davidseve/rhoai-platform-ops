@@ -117,8 +117,35 @@ def maas_url(oc):
 
 @pytest.fixture(scope="session")
 def maas_token(oc):
-    """Auth token for inference (oc session token via KubernetesTokenReview)."""
+    """OCP token for model listing and API key generation.
+
+    RHOAI 3.4 GA: OCP tokens are accepted ONLY for /v1/models (listing).
+    Inference requires API keys (sk-oai-*). Use maas_api_key for inference.
+    """
     return oc("whoami -t")
+
+
+@pytest.fixture(scope="session")
+def maas_api_key(maas_url, maas_token):
+    """Generate a MaaS API key for inference (cached per session)."""
+    resp = requests.post(
+        f"{maas_url}/maas-api/v1/api-keys",
+        headers={
+            "Authorization": f"Bearer {maas_token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "name": "observability-e2e-key",
+            "expiration": "30m",
+            "subscription": f"{MAAS_MODEL_NAME}-premium",
+        },
+        verify=False,
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    assert data.get("key"), "API key is empty"
+    return data
 
 
 @pytest.fixture(scope="session")

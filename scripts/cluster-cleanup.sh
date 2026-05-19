@@ -79,6 +79,7 @@ wait_ns_gone() {
 
 force_delete_ns() {
   local ns="$1"
+  if ! $OC get ns "$ns" &>/dev/null; then return 0; fi
   log "Force-cleaning namespace $ns (clearing blocking finalizers)..."
 
   # Only target CRDs from our operators — core resources (pods, services, etc.)
@@ -147,11 +148,26 @@ cleanup_maas_residual() {
       run "$OC patch '$lis' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
     run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
+
+    # Tenant CR finalizer (maas.opendatahub.io/tenant-finalizer) blocks namespace deletion.
+    # See https://redhat.atlassian.net/browse/RHOAIENG-63298
+    log "Clearing Tenant CR finalizers..."
+    for tenant in $($OC get tenant -n "$model_ns" -o name 2>/dev/null); do
+      run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
   fi
 
-  # DataScienceCluster / DSCInitialization can block namespace deletion
+  # DataScienceCluster / DSCInitialization can block namespace deletion.
+  # Clear finalizers first — if the operator is already gone, the finalizer will never resolve.
   log "Deleting DataScienceCluster and DSCInitialization..."
-  run "$OC delete datasciencecluster --all --timeout=120s --ignore-not-found"
+  for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
+    run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+  run "$OC delete datasciencecluster --all --timeout=60s --ignore-not-found"
+  for dsci in $($OC get dscinitialization -o name 2>/dev/null); do
+    run "$OC patch '$dsci' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
   run "$OC delete dscinitialization --all --timeout=30s --ignore-not-found"
 
   # Kuadrant CR must be deleted before its operator namespace
@@ -174,28 +190,36 @@ cleanup_maas_residual() {
 
   # Operator subscriptions / CSVs (in operator namespaces, not chart-managed)
   log "Deleting operator subscriptions and CSVs..."
-  for ns in redhat-ods-operator leader-worker-set; do
+  for ns in redhat-ods-operator redhat-connectivity-link leader-worker-set; do
     run "$OC delete subscription --all -n '$ns' --ignore-not-found"
     run "$OC delete csv --all -n '$ns' --ignore-not-found"
     run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
   done
-  # RHCL operator lives in openshift-operators (global OG); only delete its Subscription/CSV
-  log "Deleting RHCL operator from openshift-operators..."
-  run "$OC delete subscription rhcl-operator -n openshift-operators --ignore-not-found"
-  for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep rhcl || true); do
-    run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
+  # Legacy: RHCL may have been installed in openshift-operators (pre-dedicated-namespace).
+  # Clean up any residual subscriptions/CSVs there too.
+  local rhcl_subs="rhcl-operator authorino-operator limitador-operator dns-operator"
+  for sub in $rhcl_subs; do
+    for s in $($OC get subscription -n openshift-operators -o name 2>/dev/null | grep "subscription.operators.coreos.com/${sub}" || true); do
+      run "$OC delete '$s' -n openshift-operators --ignore-not-found"
+    done
+  done
+  local rhcl_csv_patterns="rhcl authorino limitador dns-operator"
+  for pat in $rhcl_csv_patterns; do
+    for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep "$pat" || true); do
+      run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
+    done
   done
 
   # Namespaces
   log "Deleting namespaces..."
   for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
-            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
+            redhat-ods-operator redhat-connectivity-link "$kuadrant_ns" leader-worker-set; do
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
 
   # Wait for namespace termination (parallel)
   for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
-            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
+            redhat-ods-operator redhat-connectivity-link "$kuadrant_ns" leader-worker-set; do
     wait_ns_gone "$ns" 120 &
   done
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
@@ -274,6 +298,20 @@ wait_argocd_app_gone() {
   done
 }
 
+delete_apps_and_wait() {
+  local wave_label="$1"; shift
+  local apps=("$@")
+  log "Deleting $wave_label apps: ${apps[*]}"
+  for app in "${apps[@]}"; do
+    if $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; then
+      run "argocd_core app delete '$app' --cascade -y"
+    fi
+  done
+  for app in "${apps[@]}"; do
+    wait_argocd_app_gone "$app" 120
+  done
+}
+
 cleanup_argocd() {
   log "=== Removing ArgoCD Applications ==="
 
@@ -293,28 +331,47 @@ cleanup_argocd() {
   # --core requires the active namespace to be the ArgoCD namespace
   run "$OC project '$ARGOCD_NS'"
 
-  # 1. Delete app-of-apps first to stop child recreation
-  log "Deleting app-of-apps (cascade)..."
+  # ArgoCD app-of-apps deletes all child apps simultaneously (sync-waves only
+  # control creation order, not deletion order). This causes stuck namespaces
+  # because operators (wave 0) are removed before their CRs (wave 2) resolve
+  # finalizers. Workaround: disable auto-sync, then delete in reverse wave order.
+  # TODO: Replace with PreDelete hooks when OpenShift GitOps ships ArgoCD 3.3+.
+
+  # 1. Disable auto-sync on app-of-apps to prevent child recreation
+  log "Disabling auto-sync on app-of-apps..."
+  run "argocd_core app set rhoai-platform-ops --sync-policy none"
+
+  # 2. Pre-clean CRs with finalizers BEFORE deleting any apps.
+  #    The operators must still be running when we clear these.
+  log "Pre-cleaning CRs with finalizers..."
+  local model_ns="models-as-a-service"
+  if $OC get ns "$model_ns" &>/dev/null; then
+    for lis in $($OC get llminferenceservice -n "$model_ns" -o name 2>/dev/null); do
+      run "$OC patch '$lis' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
+    # Tenant CR finalizer — RHOAIENG-63298
+    for tenant in $($OC get tenant -n "$model_ns" -o name 2>/dev/null); do
+      run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
+  fi
+  for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
+    run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+  for dsci in $($OC get dscinitialization -o name 2>/dev/null); do
+    run "$OC patch '$dsci' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+
+  # 3. Delete child apps in reverse wave order (wave 2 → 1 → 0)
+  delete_apps_and_wait "wave 2" maas-model-fast maas-model evaluation
+  delete_apps_and_wait "wave 1" maas-platform observability-tracing observability-grafana
+  delete_apps_and_wait "wave 0" maas-operators observability-operators database
+
+  # 4. Delete app-of-apps last
+  log "Deleting app-of-apps..."
   run "argocd_core app delete rhoai-platform-ops --cascade -y"
-  wait_argocd_app_gone "rhoai-platform-ops" 180
-
-  # 2. Delete child apps with cascade
-  local apps=(
-    evaluation
-    maas-model-fast maas-model maas-platform maas-operators database
-    observability-tracing observability-grafana observability-operators
-  )
-  for app in "${apps[@]}"; do
-    if $OC get application "$app" -n "$ARGOCD_NS" &>/dev/null; then
-      log "  Deleting $app (cascade)..."
-      run "argocd_core app delete '$app' --cascade -y"
-    fi
-  done
-
-  # 3. Wait for all apps to terminate
-  for app in "${apps[@]}"; do
-    wait_argocd_app_gone "$app" 120
-  done
+  wait_argocd_app_gone "rhoai-platform-ops" 60
 
   # Restore previous namespace
   run "$OC project '$prev_ns'"
@@ -336,6 +393,7 @@ verify_cleanup() {
     "redhat-ods-applications"
     "redhat-ods-monitoring"
     "redhat-ods-operator"
+    "redhat-connectivity-link"
     "kuadrant-system"
     "leader-worker-set"
     "observability"

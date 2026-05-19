@@ -1,17 +1,23 @@
 rhoai:
   enabled: true
   namespace: redhat-ods-operator
-  channel: beta
+  channel: stable-3.4
   source: redhat-operators
   sourceNamespace: openshift-marketplace
 
 connectivityLink:
   enabled: true
-  namespace: openshift-operators
+  # Dedicated namespace avoids InstallPlan Manual approval contamination
+  # from servicemeshoperator3 in openshift-operators
+  namespace: redhat-connectivity-link
   channel: stable
   package: rhcl-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+
+kuadrant:
+  # Namespace for Kuadrant CR and Limitador (not the operator subscription)
+  namespace: kuadrant-system
 
 certManager:
   enabled: false
