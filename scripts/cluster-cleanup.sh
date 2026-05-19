@@ -79,15 +79,20 @@ wait_ns_gone() {
 
 force_delete_ns() {
   local ns="$1"
+  if ! $OC get ns "$ns" &>/dev/null; then return 0; fi
   log "Force-cleaning namespace $ns (clearing blocking finalizers)..."
 
   for resource in $($OC api-resources --verbs=list --namespaced -o name 2>/dev/null); do
+    if ! $OC get ns "$ns" &>/dev/null; then break; fi
     for item in $($OC get "$resource" -n "$ns" -o name 2>/dev/null); do
-      run "$OC patch '$item' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      $OC patch "$item" -n "$ns" --type=merge \
+        -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
     done
   done
 
-  run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
+  if $OC get ns "$ns" &>/dev/null; then
+    run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
+  fi
 }
 
 # ============================================================
