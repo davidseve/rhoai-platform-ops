@@ -1,0 +1,6 @@
+apiVersion: v2
+name: maas-db
+description: PostgreSQL database for RHOAI maas-api (API keys, subscriptions)
+type: application
+version: 0.1.0
+appVersion: "3.4"

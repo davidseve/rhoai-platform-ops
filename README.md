@@ -72,16 +72,16 @@ Enable/disable modules in `argocd/apps/values.yaml` under `modules:`.
 ## Tested Versions
 
 
-| Component                      | Version |
-| ------------------------------ | ------- |
-| OpenShift                      | 4.20.8  |
-| RHOAI                          | 3.3.1   |
-| Red Hat Connectivity Link      | 1.3.2   |
-| cert-manager                   | 1.18.1  |
-| LeaderWorkerSet                | 1.0.0   |
-| OpenShift GitOps (ArgoCD)      | 1.20.1  |
-| Grafana Operator               | 5.22.2  |
-| Red Hat build of OpenTelemetry | 0.20.0  |
-| Red Hat build of Tempo         | 0.20.0  |
+| Component                      | Version   |
+| ------------------------------ | --------- |
+| OpenShift                      | 4.20.8    |
+| RHOAI                          | 3.4.0 (GA)|
+| Red Hat Connectivity Link      | 1.3.3     |
+| cert-manager                   | 1.19.0    |
+| LeaderWorkerSet                | 1.0.0     |
+| OpenShift GitOps (ArgoCD)      | 1.20.3    |
+| Grafana Operator               | 5.22.2    |
+| Red Hat build of OpenTelemetry | 0.144.0-3 |
+| Red Hat build of Tempo         | 0.20.0-3  |
 
 

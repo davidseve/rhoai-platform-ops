@@ -1,21 +1,16 @@
 """Governance enforcement: authentication, authorization, and rate limits.
 
-Tests per-model request rate limits, token rate limits, and cross-model
-isolation.  tinyllama-test has restrictive limits (10 req/1m, 5000 tok/1m)
-and tinyllama-fast has generous limits (100 req/1m, 10000 tok/1m).
+RHOAI 3.4 GA: inference requires API keys (sk-oai-*), not OCP tokens.
+Rate limits are managed by the maas-controller via TokenRateLimitPolicy
+per model. Token budget depends on the subscription tier (free=500,
+premium=50000 tok/1m). The API key is tied to the user's subscription.
 """
-
-import os
-from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-REQUEST_RATE_BURST = int(os.getenv("MAAS_RATE_LIMIT_BURST", "15"))
-TOKEN_RATE_BURST = int(os.getenv("MAAS_TOKEN_RATE_BURST", "20"))
 
 
 # ---------------------------------------------------------------------------
@@ -82,26 +77,26 @@ class TestAuthEnforcement:
         assert resp.status_code in (401, 403)
 
 
-class TestTokenEndpointAuth:
+class TestAPIKeyEndpointAuth:
 
-    def test_token_endpoint_rejects_no_auth(self, maas_url):
+    def test_api_key_endpoint_rejects_no_auth(self, maas_url):
         resp = requests.post(
-            f"{maas_url}/maas-api/v1/tokens",
+            f"{maas_url}/maas-api/v1/api-keys",
             headers={"Content-Type": "application/json"},
-            json={"expiration": "10m"},
+            json={"name": "should-fail", "expiration": "10m"},
             verify=False,
             timeout=15,
         )
         assert resp.status_code in (401, 403)
 
-    def test_token_endpoint_rejects_invalid_token(self, maas_url):
+    def test_api_key_endpoint_rejects_invalid_token(self, maas_url):
         resp = requests.post(
-            f"{maas_url}/maas-api/v1/tokens",
+            f"{maas_url}/maas-api/v1/api-keys",
             headers={
                 "Authorization": "Bearer invalid-token-xyz",
                 "Content-Type": "application/json",
             },
-            json={"expiration": "10m"},
+            json={"name": "should-fail", "expiration": "10m"},
             verify=False,
             timeout=15,
         )
@@ -109,7 +104,7 @@ class TestTokenEndpointAuth:
 
 
 # ---------------------------------------------------------------------------
-# Request rate limiting -- per-model
+# Helper
 # ---------------------------------------------------------------------------
 
 def _fire_one(url, headers, payload):
@@ -123,136 +118,54 @@ def _fire_one(url, headers, payload):
         return 0
 
 
-class TestRequestRateLimiting:
-    """tinyllama-test free tier: 10 req/1m.
-
-    Send REQUEST_RATE_BURST (15) parallel requests; at least one must be 429.
-    """
-
-    WORKERS = 15
-
-    def test_request_rate_limit_triggers_429(
-        self, maas_url, maas_token, inference_path, chat_payload
-    ):
-        url = f"{maas_url}{inference_path}"
-        headers = {
-            "Authorization": f"Bearer {maas_token}",
-            "Content-Type": "application/json",
-        }
-        with ThreadPoolExecutor(max_workers=self.WORKERS) as pool:
-            futures = [
-                pool.submit(_fire_one, url, headers, chat_payload)
-                for _ in range(REQUEST_RATE_BURST)
-            ]
-            statuses = [f.result() for f in futures]
-
-        got_429 = statuses.count(429)
-        got_200 = statuses.count(200)
-        assert got_429 > 0, (
-            f"Expected at least one 429 after {REQUEST_RATE_BURST} requests "
-            f"(model1 free limit=10 req/1m). "
-            f"Status distribution: 200={got_200}, 429={got_429}, "
-            f"other={len(statuses) - got_200 - got_429}"
-        )
-
-    def test_after_request_rate_limit_still_blocked(
-        self, maas_url, maas_token, inference_path, chat_payload
-    ):
-        """After exhausting model1, the next request should be 429."""
-        url = f"{maas_url}{inference_path}"
-        headers = {
-            "Authorization": f"Bearer {maas_token}",
-            "Content-Type": "application/json",
-        }
-        resp = requests.post(
-            url, headers=headers, json=chat_payload,
-            verify=False, timeout=30,
-        )
-        assert resp.status_code == 429, (
-            f"Expected 429 (still rate-limited), got {resp.status_code}"
-        )
-
-
-class TestRequestRateLimitIsolation:
-    """After exhausting model1 (10 req/1m), model2 (100 req/1m) must still work."""
-
-    def test_model2_not_rate_limited(
-        self, maas_url, maas_token, inference_path_model2, chat_payload_model2
-    ):
-        url = f"{maas_url}{inference_path_model2}"
-        headers = {
-            "Authorization": f"Bearer {maas_token}",
-            "Content-Type": "application/json",
-        }
-        statuses = []
-        with ThreadPoolExecutor(max_workers=5) as pool:
-            futures = [
-                pool.submit(_fire_one, url, headers, chat_payload_model2)
-                for _ in range(5)
-            ]
-            statuses = [f.result() for f in futures]
-
-        got_200 = statuses.count(200)
-        assert got_200 == 5, (
-            f"Expected all 5 requests to model2 to succeed (limit=100 req/1m). "
-            f"Got: 200={got_200}, other={statuses}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Token rate limiting -- per-model
-# ---------------------------------------------------------------------------
-
 class TestTokenRateLimiting:
-    """tinyllama-test free tier: 5000 tok/1m.
+    """Free-tier token rate limiting (500 tok/1m).
 
-    Each request with max_tokens=500 consumes ~520 tokens (prompt+completion).
-    ~10 successful responses exhaust the budget.  Send TOKEN_RATE_BURST (20)
-    parallel requests and assert at least one returns 429.
+    Uses a dedicated free-tier API key (subscription in body) to ensure
+    the low token budget is exhaustible within a few requests.
     """
 
-    WORKERS = 15
+    MAX_SEQUENTIAL = 10
 
-    def test_token_rate_limit_triggers_429(
-        self, maas_url, maas_token, inference_path
+    def test_free_tier_rate_limit_triggers_429(
+        self, maas_url, maas_free_api_key, inference_path
     ):
         url = f"{maas_url}{inference_path}"
         headers = {
-            "Authorization": f"Bearer {maas_token}",
+            "Authorization": f"Bearer {maas_free_api_key['key']}",
             "Content-Type": "application/json",
         }
         payload = {
             "model": "tinyllama-test",
-            "messages": [{"role": "user", "content": "Write a long story about dragons"}],
-            "max_tokens": 500,
+            "messages": [{"role": "user", "content": "Write a detailed story"}],
+            "max_tokens": 200,
         }
-        with ThreadPoolExecutor(max_workers=self.WORKERS) as pool:
-            futures = [
-                pool.submit(_fire_one, url, headers, payload)
-                for _ in range(TOKEN_RATE_BURST)
-            ]
-            statuses = [f.result() for f in futures]
+        statuses = []
+        for _ in range(self.MAX_SEQUENTIAL):
+            code = _fire_one(url, headers, payload)
+            statuses.append(code)
+            if code == 429:
+                break
 
         got_429 = statuses.count(429)
         got_200 = statuses.count(200)
         assert got_429 > 0, (
-            f"Expected at least one 429 from token rate limit after "
-            f"{TOKEN_RATE_BURST} requests with max_tokens=500 "
-            f"(model1 free token limit=5000 tok/1m). "
-            f"Status distribution: 200={got_200}, 429={got_429}, "
+            f"Expected 429 from free-tier token rate limit (500 tok/1m) "
+            f"after {len(statuses)} requests with max_tokens=200. "
+            f"Statuses: 200={got_200}, 429={got_429}, "
             f"other={len(statuses) - got_200 - got_429}"
         )
 
 
 class TestTokenRateLimitIsolation:
-    """model2 (10000 tok/1m) should not be affected by model1's token exhaustion."""
+    """model2 should not be affected by model1's token exhaustion."""
 
     def test_model2_tokens_not_exhausted(
-        self, maas_url, maas_token, inference_path_model2
+        self, maas_url, maas_api_key_model2, inference_path_model2
     ):
         url = f"{maas_url}{inference_path_model2}"
         headers = {
-            "Authorization": f"Bearer {maas_token}",
+            "Authorization": f"Bearer {maas_api_key_model2['key']}",
             "Content-Type": "application/json",
         }
         payload = {
@@ -261,17 +174,14 @@ class TestTokenRateLimitIsolation:
             "max_tokens": 20,
         }
         statuses = []
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futures = [
-                pool.submit(_fire_one, url, headers, payload)
-                for _ in range(3)
-            ]
-            statuses = [f.result() for f in futures]
+        for _ in range(3):
+            code = _fire_one(url, headers, payload)
+            statuses.append(code)
 
         got_200 = statuses.count(200)
         assert got_200 == 3, (
             f"Expected all 3 requests to model2 to succeed "
-            f"(token limit=10000 tok/1m, not shared with model1). "
+            f"(separate token budget, not shared with model1). "
             f"Got: {statuses}"
         )
 
@@ -306,29 +216,24 @@ class TestModelReadiness:
             f"HTTPRoute {model_name}-kserve-route not Accepted by any parent"
         )
 
-    def test_authpolicy_has_maas_audience(self, oc_json, gateway_namespace, gateway_name):
-        data = oc_json(f"get authpolicy -n {gateway_namespace}")
-        expected = f"{gateway_name}-sa"
+    def test_authpolicy_has_kubernetes_auth(self, oc_json, model_namespace, model_name):
+        """Verify the per-model AuthPolicy uses KubernetesTokenReview.
+
+        RHOAI 3.4 GA: auth moved from Gateway-level to per-model AuthPolicies
+        targeting each model's HTTPRoute. Created by MaaSAuthPolicy controller.
+        """
+        data = oc_json(f"get authpolicy -n {model_namespace}")
         for item in data.get("items", []):
-            enforced = any(
-                c.get("type") == "Enforced" and c.get("status") == "True"
-                for c in item.get("status", {}).get("conditions", [])
+            auth = item.get("spec", {}).get("rules", {}).get("authentication", {})
+            has_k8s_auth = any(
+                "kubernetesTokenReview" in provider
+                for provider in auth.values()
+                if isinstance(provider, dict)
             )
-            if not enforced:
-                continue
-            audiences = (
-                item.get("spec", {})
-                .get("rules", {})
-                .get("authentication", {})
-                .get("service-accounts", {})
-                .get("kubernetesTokenReview", {})
-                .get("audiences", [])
-            )
-            if expected in audiences:
+            if has_k8s_auth:
                 return
         pytest.fail(
-            f"No enforced AuthPolicy has audience '{expected}'. "
-            f"Was the cleanup-authn-hook executed?"
+            f"No AuthPolicy with KubernetesTokenReview found in {model_namespace}"
         )
 
 
@@ -342,21 +247,31 @@ class TestGovernanceResources:
         )
         assert out.strip("'"), "No AuthPolicy targeting the Gateway found"
 
-    def test_ratelimitpolicy_exists(self, oc, model_namespace, model_name):
-        out = oc(f"get ratelimitpolicy -n {model_namespace} --no-headers")
-        assert f"{model_name}-rate-limits" in out
-
     def test_tokenratelimitpolicy_exists(self, oc, model_namespace, model_name):
         out = oc(
             f"get tokenratelimitpolicy -n {model_namespace} --no-headers"
         )
-        assert f"{model_name}-token-rate-limits" in out
+        assert f"maas-trlp-{model_name}" in out, (
+            f"Expected maas-controller TokenRateLimitPolicy 'maas-trlp-{model_name}' "
+            f"in namespace {model_namespace}. Got: {out}"
+        )
+
+    def test_maasauthpolicy_exists(self, oc, model_namespace, model_name):
+        """MaaSAuthPolicy exists for each model, enabling API key auth."""
+        phase = oc(
+            f"get maasauthpolicy {model_name} -n {model_namespace} "
+            f"-o jsonpath='{{.status.phase}}'"
+        ).strip("'")
+        assert phase in ("Active", "Pending"), (
+            f"MaaSAuthPolicy '{model_name}' not active. Got: {phase}"
+        )
 
     def test_telemetrypolicy_exists(self, oc, gateway_namespace, has_telemetrypolicy):
+        """TelemetryPolicy created by maas-controller when Tenant telemetry is enabled."""
         if not has_telemetrypolicy:
-            pytest.skip("TelemetryPolicy not deployed")
+            pytest.skip("TelemetryPolicy not deployed (Tenant telemetry disabled)")
         out = oc(f"get telemetrypolicy -n {gateway_namespace} --no-headers")
-        assert "user-group" in out
+        assert "maas-telemetry" in out
 
     def test_tier_groups_exist(self, oc):
         out = oc("get groups --no-headers")

@@ -1,0 +1,11 @@
+{{- if .Values.monitoring.vllm.enabled }}
+{{- range .Values.gateway.modelNamespaces }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ . }}
+  labels:
+    opendatahub.io/dashboard: "true"
+---
+{{- end }}
+{{- end }}

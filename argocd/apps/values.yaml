@@ -11,5 +11,7 @@ modules:
         enabled: true
   observability:
     enabled: true
+  benchmarks:
+    enabled: true
   evaluation:
     enabled: false

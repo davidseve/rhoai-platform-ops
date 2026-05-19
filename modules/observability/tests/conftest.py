@@ -15,7 +15,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 GRAFANA_NAMESPACE = os.getenv("GRAFANA_NAMESPACE", "observability")
 GRAFANA_NAME = os.getenv("GRAFANA_NAME", "grafana")
-MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "maas-models")
+MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "models-as-a-service")
+MAAS_MODEL_NAME = os.getenv("MAAS_MODEL_NAME", "tinyllama-test")
+MAAS_GATEWAY_NAME = os.getenv("MAAS_GATEWAY_NAME", "maas-default-gateway")
+MAAS_GATEWAY_NAMESPACE = os.getenv("MAAS_GATEWAY_NAMESPACE", "openshift-ingress")
 
 
 def _run(cmd: str, *, check: bool = True) -> subprocess.CompletedProcess:
@@ -85,6 +88,66 @@ def tempo_url():
 @pytest.fixture(scope="session")
 def collector_namespace():
     return "observability"
+
+
+@pytest.fixture(scope="session")
+def tracing_enabled(oc):
+    """Auto-detect if model pods have OTEL tracing configured. Skip if not."""
+    try:
+        args = oc(
+            f"get pods -n {MODEL_NAMESPACE} "
+            "-l app.kubernetes.io/component=llminferenceservice-workload "
+            "-o jsonpath='{.items[0].spec.containers[0].args}'"
+        ).strip("'")
+        if "--otlp-traces-endpoint" not in args:
+            pytest.skip("Tracing not configured on model pods (no --otlp-traces-endpoint)")
+    except Exception:
+        pytest.skip("Could not detect tracing status on model pods")
+
+
+@pytest.fixture(scope="session")
+def maas_url(oc):
+    """MaaS gateway URL for inference requests."""
+    host = oc(
+        f"get route {MAAS_GATEWAY_NAME} -n {MAAS_GATEWAY_NAMESPACE} "
+        "-o jsonpath='{.spec.host}'"
+    ).strip("'")
+    return f"https://{host}"
+
+
+@pytest.fixture(scope="session")
+def maas_token(oc):
+    """OCP token for model listing and API key generation.
+
+    RHOAI 3.4 GA: OCP tokens are accepted ONLY for /v1/models (listing).
+    Inference requires API keys (sk-oai-*). Use maas_api_key for inference.
+    """
+    return oc("whoami -t")
+
+
+@pytest.fixture(scope="session")
+def maas_api_key(maas_url, maas_token):
+    """Generate a MaaS API key for inference (cached per session)."""
+    resp = requests.post(
+        f"{maas_url}/maas-api/v1/api-keys",
+        headers={
+            "Authorization": f"Bearer {maas_token}",
+            "Content-Type": "application/json",
+        },
+        json={"name": "observability-e2e-key", "expiration": "30m"},
+        verify=False,
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    assert data.get("key"), "API key is empty"
+    return data
+
+
+@pytest.fixture(scope="session")
+def maas_inference_path():
+    """Inference URL path for the default model."""
+    return f"/{MODEL_NAMESPACE}/{MAAS_MODEL_NAME}/v1/chat/completions"
 
 
 @pytest.fixture(scope="session")

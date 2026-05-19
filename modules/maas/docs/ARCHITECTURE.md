@@ -1,126 +1,137 @@
 # MaaS Governance Stack — Architecture Notes
 
-## GatewayClass Decision
+Applies to: RHOAI 3.4 GA on OCP 4.20+.
 
-This deployment uses `gatewayClassName: openshift-default` instead of the RHOAI-provided `data-science-gateway-class`.
+## GatewayClass
 
-Both GatewayClasses use the same controller (`openshift.io/gateway-controller/v1`) and produce identical Gateway behavior. The choice is driven by how the `odh-model-controller` behaves:
+This deployment uses `gatewayClassName: data-science-gateway-class`, created automatically by RHOAI when KServe is `Managed` in the DataScienceCluster. Both `data-science-gateway-class` and `openshift-default` use the same controller (`openshift.io/gateway-controller/v1`) and produce identical Gateway behavior. We use `data-science-gateway-class` because it integrates with RHOAI's Authorino TLS bootstrap and MaaS controller.
 
-| GatewayClass                   | `odh-model-controller` behavior                  |
-| ------------------------------ | ------------------------------------------------ |
-| `data-science-gateway-class`   | Creates `maas-default-gateway-authn` AuthPolicy  |
-| `openshift-default`            | Still creates `maas-default-gateway-authn`       |
+## Gateway Configuration
 
-**Finding:** In RHOAI 3.3.1, `odh-model-controller` creates the conflicting `maas-default-gateway-authn` AuthPolicy regardless of the GatewayClass. The `opendatahub.io/managed: "false"` annotation is also ignored.
+```yaml
+gatewayClassName: data-science-gateway-class
+listeners:
+- name: https
+  port: 443
+  protocol: HTTPS
+  hostname: maas.apps.<cluster_domain>  # required for RHOAI dashboard API keys UI
+  tls:
+    mode: Terminate
+    certificateRefs:
+    - name: <wildcard-cert-secret>      # router-certs-default (bare-metal) or ingress-certs (cloud)
+  allowedRoutes:
+    namespaces:
+      from: Selector                    # explicit namespace list (more restrictive than upstream's "All")
+```
 
-We use `openshift-default` because:
-1. It aligns with the [official reference implementation](https://github.com/opendatahub-io/models-as-a-service)
-2. It doesn't require the `data-science-gateway-class` GatewayClass to pre-exist
-3. It's semantically cleaner (no ODH-specific naming)
+**Hostname**: The `hostname` field is required because the RHOAI dashboard (maas-ui) auto-discovers the MaaS endpoint as `maas.apps.<cluster_domain>`. Without a matching hostname on the Gateway listener, the dashboard shows "Error loading components". The hostname also enables SNI filtering — see [IN-CLUSTER-ACCESS.md](IN-CLUSTER-ACCESS.md) for the `--resolve` workaround.
+
+**Route**: An OpenShift Route (`passthrough` TLS termination) fronts the Gateway for external access. The Route host must match the Gateway listener hostname.
 
 ## Authorino TLS Bootstrap
 
 The annotation `security.opendatahub.io/authorino-tls-bootstrap: "true"` on the Gateway triggers the RHOAI platform to automatically configure an EnvoyFilter that enables TLS communication between the Gateway (Envoy) and Authorino.
 
-Without this annotation, Authorino rejects requests with TLS certificate errors because the Gateway's sidecar doesn't trust the service-ca-signed certificate that Authorino uses.
+This handles **inbound** TLS (Gateway → Authorino). For **outbound** TLS (Authorino → maas-api), the Authorino deployment must trust the OpenShift service-ca certificate. This is automated via the `authorino-tls` ArgoCD PostSync Job in `maas-platform` (equivalent to the upstream `scripts/setup-authorino-tls.sh`):
 
-This replaces three manual workarounds that were previously needed:
-- `authorino-ca.yaml` (ConfigMap with service-ca bundle)
-- `authorino-patch-job.yaml` (Job to mount CA and set SSL_CERT_DIR)
-- `authorino.serviceCA` values block
+1. Annotate the maas-api Service for service-ca cert generation
+2. Mount `openshift-service-ca.crt` ConfigMap into the Authorino deployment
+3. Set `SSL_CERT_FILE` env var to the mounted CA path
 
-## AuthPolicy Conflict (odh-model-controller)
+Without this, API key validation fails with 403 (Authorino cannot reach maas-api's `/internal/v1/api-keys/validate` endpoint).
 
-### The Problem
+## Authentication: MaaSAuthPolicy
 
-When an `LLMInferenceService` is deployed, `odh-model-controller` automatically creates:
+RHOAI 3.4 GA uses `MaaSAuthPolicy` instead of the RHOAI 3.3 `odh-model-controller` AuthPolicy. The maas-controller creates:
 
-| Resource                       | Namespace             | Purpose                      |
-| ------------------------------ | --------------------- | ---------------------------- |
-| `maas-default-gateway-authn`   | `openshift-ingress`   | Gateway-level auth (basic)   |
-| `gateway-auth-policy`          | `openshift-ingress`   | Platform MaaS auth (full)    |
+| Resource | Namespace | Purpose |
+| --- | --- | --- |
+| `gateway-default-auth` AuthPolicy | `openshift-ingress` | Gateway-level default deny (Enforced: False, overridden by per-model policies) |
+| `maas-auth-<model>` AuthPolicy | `openshift-ingress` | Per-model auth with API key validation (Enforced: True) |
+| `gateway-default-deny` TRLP | `openshift-ingress` | Default deny TokenRateLimitPolicy |
+| `maas-trlp-<model>` TRLP | `openshift-ingress` | Per-model token rate limits from MaaSSubscription |
 
-Both target the same Gateway. Kuadrant enforces only one — `maas-default-gateway-authn` wins due to specificity (it's owned by the Gateway object).
+**Auth flow:**
+1. Client sends request with `Authorization: Bearer sk-oai-...` (API key)
+2. MaaSAuthPolicy calls maas-api `/internal/v1/api-keys/validate` to verify the key
+3. maas-api returns the subscription, tier, and rate limit info
+4. Kuadrant enforces token rate limits from the matching MaaSSubscription
+5. Request is forwarded to the model pod
 
-The platform's `gateway-auth-policy` (created by the `maas-controller`) contains the correct governance configuration (tier resolution, response filters, etc.) but is **overridden** and never enforced.
+**OCP tokens** are only accepted for `/v1/models` (model listing). All inference requests require API keys.
 
-### The Solution: PostSync Hook
+The `opendatahub.io/managed: "false"` annotation on the Gateway prevents the maas-controller from managing our custom resources (e.g., the Gateway itself). Controller-created AuthPolicies and TRLPs coexist with Helm-managed resources without conflicts.
 
-The `cleanup-authn-hook.yaml` template is an ArgoCD PostSync hook that patches `maas-default-gateway-authn` with the complete MaaS governance logic:
+## MaaSSubscription Model
 
-1. **Authentication**: Adds `maas-default-gateway-sa` audience (required for MaaS tokens)
-2. **Authorization**: SubjectAccessReview with tier-group RBAC
-3. **Metadata**: HTTP call to `maas-api` for tier resolution
-4. **Response filters**: Injects `tier` and `userid` into the request context (used by RateLimitPolicy counters)
+Rate limiting in RHOAI 3.4 GA uses MaaSSubscription CRs instead of custom RateLimitPolicy/TokenRateLimitPolicy. See [ADR-0005](../../../docs/adr/0005-maas-subscription-model.md) for the full decision record.
 
-This approach:
-- Doesn't fight the controller (patching instead of deleting/replacing)
-- Survives controller reconciliation (the hook runs on every ArgoCD sync)
-- Requires minimal RBAC (only `get` + `patch` on AuthPolicies)
+Each tier has a MaaSSubscription that defines:
+- `owner.groups`: Kubernetes groups (from TokenReview) that map users to this tier
+- `tokenRateLimits`: per-window token limits enforced by the controller's TRLP
 
-### Why Not Just Delete It?
+The maas-controller creates the corresponding TokenRateLimitPolicy automatically based on the subscription. We define the subscription in the `maas-model` chart; the controller handles enforcement.
 
-If `maas-default-gateway-authn` is deleted, `odh-model-controller` immediately recreates it (within seconds). Deletion is not a viable approach.
+**Important**: `owner.groups` must use **Kubernetes groups** (from TokenReview), NOT OpenShift Group CRs. TokenReview returns groups like `cluster-admins`, `system:authenticated:oauth` — not custom Group objects like `maas-test-users`.
 
-### Why Not Use a Different Annotation?
+## Tenant CR and Telemetry
 
-The `opendatahub.io/managed: "false"` annotation on the Gateway was expected to prevent `odh-model-controller` from managing AuthPolicies. **In RHOAI 3.3.1, this annotation is ignored.** The controller creates `maas-default-gateway-authn` regardless.
+The `Tenant` CR (`maas.opendatahub.io/v1alpha1`) is auto-created by the maas-controller as `default-tenant` in `models-as-a-service`.
 
-## RBAC Verbs (get + post)
+Setting `spec.telemetry.enabled: true` causes the controller to create:
+- A `TelemetryPolicy` on the Gateway (adds labels to Limitador metrics)
+- An Istio `Telemetry` CR for service-level telemetry
 
-The model's RBAC Role includes both `get` and `post` verbs on `llminferenceservices`:
+The TelemetryPolicy uses Kuadrant WASM expressions (`responseBodyJSON("/model")`, `auth.identity.selected_subscription`) that are NOT valid Authorino CEL. Authorino logs `failed to parse CEL expression` errors — these are **non-fatal** (metric label evaluation only, not auth decisions). The metric labels (`model`, `subscription`, etc.) will be empty until Kuadrant separates WASM and Authorino CEL expression evaluation in a future release.
 
-- `get`: Used by the basic `kubernetes-user` auth in `maas-default-gateway-authn`
-- `post`: Used by the `tier-access` SubjectAccessReview in the patched policy
+We manage the Tenant via Helm template with ArgoCD `ServerSideApply=true`, which merges our `spec.telemetry` with the controller's auto-created Tenant. For Helm-only installs, the Makefile uses `oc patch` instead.
 
-The reference repo only uses `get` because they don't implement tier-based governance (no custom authorization rules).
+## Limitador Configuration
+
+Limitador is the rate limiting engine used by Kuadrant. Our `limitador-patch` template enables `exhaustiveTelemetry`, which adds `limit_name` labels to all Limitador metrics (not just `limited_calls`). This is NOT managed by the controller — it must be set via Helm.
 
 ## Rate Limiting Architecture
 
-Rate limits are enforced at the Gateway level using Kuadrant policies:
-
 ```
-RateLimitPolicy (request-based)    TokenRateLimitPolicy (token-based)
-        │                                     │
-        ▼                                     ▼
-   Limitador                             Limitador
-   (per-tier request counters)           (per-tier token counters)
-        │                                     │
-        └─────────── Metrics ─────────────────┘
-                        │
-                   ServiceMonitor
-                        │
-                   Prometheus
-                        │
-                   PrometheusRule (alerts)
+MaaSSubscription (tier definition)
+        │
+        ▼
+maas-controller (creates TRLP per subscription)
+        │
+        ▼
+TokenRateLimitPolicy (token-based, per-tier)
+        │
+        ▼
+   Limitador (per-tier token counters)
+        │
+   Metrics (with exhaustive labels)
+        │
+   ServiceMonitor → Prometheus → PrometheusRule (alerts)
 ```
 
-The `tier` and `userid` values injected by the AuthPolicy's response filters are used as counter keys in the rate limit policies, enabling per-user-per-tier enforcement.
+## Comparison with RHOAI 3.3
 
-## Telemetry Labels
+| Feature | RHOAI 3.3 | RHOAI 3.4 GA |
+| --- | --- | --- |
+| GatewayClass | `openshift-default` (our choice) | `data-science-gateway-class` (RHOAI managed) |
+| Auth mechanism | Custom AuthPolicy (PostSync hook) | MaaSAuthPolicy (controller managed) |
+| Rate limits | Custom RLP + TRLP | MaaSSubscription → controller TRLP |
+| Auth tokens | MaaS tokens (via `/maas-api/v1/tokens`) | API keys (`sk-oai-*` via `/maas-api/v1/api-keys`) |
+| `opendatahub.io/managed: "false"` | Ignored (required PostSync hook) | Works correctly |
+| Telemetry | Manual TelemetryPolicy + Istio CR | Tenant CR → controller auto-creates |
+| Model paths | `/<model>/v1/...` | `/<namespace>/<model>/v1/...` |
+| PostSync hooks needed | `cleanup-authn-hook`, `kuadrant-readiness-hook` | `authorino-tls` only |
 
-The `TelemetryPolicy` adds a `user` label to Limitador metrics using the `auth.identity.userid` expression. Combined with `exhaustiveTelemetry` on Limitador, this produces metrics with `tier`, `user`, and `model` labels for observability.
+## Known Limitations (RHOAI 3.4 GA)
 
-## Comparison with Reference Implementation
+1. **TelemetryPolicy CEL expressions non-fatal** — Kuadrant WASM expressions in TelemetryPolicy are not valid Authorino CEL. Metric labels for `model` and `subscription` are empty. Per-model attribution in dashboards not possible until Kuadrant separates expression evaluation.
 
-The [official reference](https://github.com/opendatahub-io/models-as-a-service) (RHOAI 3.3.0) provides basic MaaS without governance:
+2. **No request-level rate limiting** — MaaSSubscription only creates TokenRateLimitPolicy. Request-level limits require a custom RateLimitPolicy.
 
-| Feature                     | Reference | This repo |
-| --------------------------- | --------- | --------- |
-| GatewayClass                | `openshift-default` | `openshift-default` |
-| Tier resolution             | No        | Yes (HTTP metadata call) |
-| Per-user rate limiting      | No        | Yes (RLP + TRLP) |
-| Token rate limiting         | No        | Yes (TRLP v1alpha1) |
-| Telemetry labels            | No        | Yes (TelemetryPolicy) |
-| PrometheusRule alerts       | No        | Yes |
-| PostSync hook for AuthPolicy| No        | Yes (required for governance) |
-| RBAC verbs                  | `get` only | `get` + `post` |
+3. **Gateway tracing not available** — The managed Istio (cluster-ingress-operator) cannot be customized with `extensionProviders` for OpenTelemetry. Gateway-level trace spans require OSSM 3 or upstream Kuadrant tracing support. WASM trace ID propagation (Limitador) also not available.
 
-The reference doesn't need the PostSync hook because they accept the basic AuthPolicy that `odh-model-controller` creates — it already has the correct audience and RBAC for simple access control without tiers.
+4. **vLLM CPU x86_64 not published by Red Hat** — Red Hat's `odh-vllm-cpu-rhel9` image only supports ppc64le/s390x. Custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` remains necessary for x86_64 CPU inference.
 
-## Known Limitations (RHOAI 3.3.1)
+5. **Gateway→Authorino listener TLS** — Upstream `setup-authorino-tls.sh` enables `listener.tls.enabled: true` on Authorino, but the Kuadrant EnvoyFilter does not include `transport_socket`. Internal Gateway→Authorino traffic stays plaintext (intra-cluster). See ROADMAP.md for details.
 
-1. **`opendatahub.io/managed: "false"` is ignored** — Cannot prevent `odh-model-controller` from creating `maas-default-gateway-authn`
-2. **`gateway-auth-policy` always overridden** — The platform's full AuthPolicy never enforces; must merge logic into the controller's policy via patch
-3. **PostSync hook required on every sync** — If the controller reconciles between syncs, the patch may be reverted until next ArgoCD sync
-4. **RHOAI 3.4 may fix this** — The `maas-controller` is expected to handle AuthPolicy management properly, eliminating the need for the hook
+See [ADR-0005](../../../docs/adr/0005-maas-subscription-model.md) for the full MaaS Subscription decision record.

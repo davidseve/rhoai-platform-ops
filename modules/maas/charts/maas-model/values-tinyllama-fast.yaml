@@ -1,8 +1,6 @@
 global:
   name: tinyllama-fast
-  namespace: maas-models
-
-mode: llminferenceservice
+  namespace: models-as-a-service
 
 namespace:
   create: false
@@ -31,22 +29,34 @@ llminferenceservice:
     name: maas-default-gateway
     namespace: openshift-ingress
 
+# MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
+modelRef:
+  enabled: true
+  displayName: "TinyLlama 1.1B Fast"
+  description: "CPU-only TinyLlama with higher rate limits for testing"
+  useCase: "chat"
+
 rbac:
   enabled: true
 
-# Generous rate limits (compared to tinyllama-test)
-tiers:
-  free:
-    requestRates:
-      - limit: 100
-        window: 1m
-    tokenRates:
-      - limit: 10000
-        window: 1m
-  premium:
-    requestRates:
-      - limit: 500
-        window: 1m
-    tokenRates:
-      - limit: 100000
-        window: 1m
+# Groups are derived automatically from subscription.tiers.
+authPolicy:
+  enabled: true
+  subjects: {}
+
+subscription:
+  enabled: true
+  tiers:
+    free:
+      groups:
+        - name: cluster-admins
+      tokenRateLimits:
+        - limit: 10000
+          window: "1m"
+    premium:
+      priority: 10
+      groups:
+        - name: cluster-admins
+      tokenRateLimits:
+        - limit: 100000
+          window: "1m"

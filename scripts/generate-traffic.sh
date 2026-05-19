@@ -190,7 +190,7 @@ send_request() {
 EOJSON
 )
 
-  local route="/maas-models/${model}/v1/chat/completions"
+  local route="/models-as-a-service/${model}/v1/chat/completions"
   local start_ns
   start_ns=$(date +%s%N)
 

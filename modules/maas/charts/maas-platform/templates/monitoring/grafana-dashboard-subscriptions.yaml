@@ -2,7 +2,7 @@
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
-  name: maas-tier-usage
+  name: maas-subscription-usage
   namespace: {{ .Values.grafana.namespace | default "observability" }}
   annotations:
     argocd.argoproj.io/compare-options: IgnoreExtraneous
@@ -14,5 +14,5 @@ spec:
     matchLabels:
       {{- toYaml .Values.grafana.instanceSelector | nindent 6 }}
   json: |
-    {{ .Files.Get "dashboards/tier-usage.json" | nindent 4 }}
+    {{ .Files.Get "dashboards/subscription-usage.json" | nindent 4 }}
 {{- end }}

@@ -32,7 +32,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(authorized_calls[5m]))", "legendFormat": "Authorized", "instant": true }
+        { "refId": "A", "expr": "sum(rate(kuadrant_allowed[5m]))", "legendFormat": "Authorized", "instant": true }
       ],
       "fieldConfig": {
         "defaults": {
@@ -49,7 +49,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(limited_calls[5m]))", "legendFormat": "Limited", "instant": true }
+        { "refId": "A", "expr": "sum(rate(kuadrant_denied[5m]))", "legendFormat": "Limited", "instant": true }
       ],
       "fieldConfig": {
         "defaults": {
@@ -66,7 +66,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(kuadrant_errors[5m])) + sum(rate(istio_requests_total{source_workload=\"maas-default-gateway-openshift-default\", response_code=~\"5..\"}[5m]))", "legendFormat": "Errors", "instant": true }
+        { "refId": "A", "expr": "sum(rate(kuadrant_errors[5m])) + sum(rate(istio_requests_total{source_workload=\"maas-default-gateway-data-science-gateway-class\", response_code=~\"5..\"}[5m]))", "legendFormat": "Errors", "instant": true }
       ],
       "fieldConfig": {
         "defaults": {
@@ -83,7 +83,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 5, "x": 15, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(limited_calls[5m])) / (sum(rate(authorized_calls[5m])) + sum(rate(limited_calls[5m])))", "legendFormat": "Rejection %", "instant": true }
+        { "refId": "A", "expr": "sum(rate(kuadrant_denied[5m])) / (sum(rate(kuadrant_allowed[5m])) + sum(rate(kuadrant_denied[5m])))", "legendFormat": "Rejection %", "instant": true }
       ],
       "fieldConfig": {
         "defaults": {
@@ -100,7 +100,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(authorized_calls[5m])) + sum(increase(limited_calls[5m])) + sum(increase(kuadrant_errors[5m]))", "legendFormat": "Total", "instant": true }
+        { "refId": "A", "expr": "sum(increase(kuadrant_allowed[5m])) + sum(increase(kuadrant_denied[5m])) + sum(increase(kuadrant_errors[5m]))", "legendFormat": "Total", "instant": true }
       ],
       "fieldConfig": {
         "defaults": {
@@ -117,10 +117,10 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(authorized_calls[5m]))", "legendFormat": "Authorized" },
-        { "refId": "B", "expr": "sum(rate(limited_calls[5m]))", "legendFormat": "Rate Limited (429)" },
+        { "refId": "A", "expr": "sum(rate(kuadrant_allowed[5m]))", "legendFormat": "Authorized" },
+        { "refId": "B", "expr": "sum(rate(kuadrant_denied[5m]))", "legendFormat": "Rate Limited (429)" },
         { "refId": "C", "expr": "sum(rate(kuadrant_errors[5m]))", "legendFormat": "Auth Timeout (500)" },
-        { "refId": "D", "expr": "sum(rate(istio_requests_total{source_workload=\"maas-default-gateway-openshift-default\", response_code=~\"5..\"}[5m]))", "legendFormat": "Backend Error (5xx)" }
+        { "refId": "D", "expr": "sum(rate(istio_requests_total{source_workload=\"maas-default-gateway-data-science-gateway-class\", response_code=~\"5..\"}[5m]))", "legendFormat": "Backend Error (5xx)" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
@@ -132,7 +132,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(limited_calls[5m])) / (sum(rate(authorized_calls[5m])) + sum(rate(limited_calls[5m])))", "legendFormat": "Rejection Ratio" }
+        { "refId": "A", "expr": "sum(rate(kuadrant_denied[5m])) / (sum(rate(kuadrant_allowed[5m])) + sum(rate(kuadrant_denied[5m])))", "legendFormat": "Rejection Ratio" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -150,7 +150,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [
-        { "refId": "A", "expr": "label_replace(sum by(limitador_namespace) (rate(authorized_calls[5m])), \"model\", \"$1\", \"limitador_namespace\", \".*/(.*)-kserve-route\")", "legendFormat": "{{model}}" }
+        { "refId": "A", "expr": "label_replace(sum by(destination_service_name) (rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"200\"}[5m])), \"model\", \"$1\", \"destination_service_name\", \"(.*)-kserve-workload-svc\")", "legendFormat": "{{model}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
@@ -158,13 +158,114 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Calls by User",
+      "title": "Calls by Response Code",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
-        { "refId": "A", "expr": "topk(10, sum by(user) (label_replace(rate(authorized_calls[5m]), \"user\", \"$1\", \"user\", \"(.*)-[0-9a-f]{8}$\")))", "legendFormat": "{{user}}" }
+        { "refId": "A", "expr": "sum by(response_code) (rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\"}[5m]))", "legendFormat": "{{response_code}}" }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth" } } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Gateway Traffic",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Error Breakdown by Response Code",
+      "description": "Rate of non-success HTTP responses from the gateway, broken down by specific status codes",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"401\"}[5m]))", "legendFormat": "401 Unauthorized" },
+        { "refId": "B", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"404\"}[5m]))", "legendFormat": "404 Not Found" },
+        { "refId": "C", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"429\"}[5m]))", "legendFormat": "429 Too Many Requests" },
+        { "refId": "D", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"500\"}[5m]))", "legendFormat": "500 Internal Server Error" },
+        { "refId": "E", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"503\"}[5m]))", "legendFormat": "503 Service Unavailable" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "401 Unauthorized" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "429 Too Many Requests" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "500 Internal Server Error" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "503 Service Unavailable" }, "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Gateway Latency (P50 / P90 / P99)",
+      "description": "Request duration percentiles at the gateway level",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m])) by (le))", "legendFormat": "P50" },
+        { "refId": "B", "expr": "histogram_quantile(0.90, sum(rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m])) by (le))", "legendFormat": "P90" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m])) by (le))", "legendFormat": "P99" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "P99" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "P90" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "P50" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Request Breakdown by URL Path",
+      "description": "Request rate grouped by URL path to identify which models/endpoints receive the most traffic",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
+      "targets": [
+        { "refId": "A", "expr": "topk(10, sum by(request_url_path) (rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\"}[5m])))", "legendFormat": "{{request_url_path}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth", "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Traffic: Current vs Previous Period",
+      "description": "Compares the current request rate with the same-length period immediately prior",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 29 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\"}[5m]))", "legendFormat": "Current" },
+        { "refId": "B", "expr": "sum(rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\"}[5m] offset $__range))", "legendFormat": "Previous period" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Previous period" }, "properties": [{ "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }, { "id": "color", "value": { "fixedColor": "light-blue", "mode": "fixed" } }] }
+        ]
+      },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
     }
   ]

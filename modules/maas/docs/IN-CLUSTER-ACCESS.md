@@ -2,6 +2,8 @@
 
 How to consume MaaS-governed models from workloads running inside the same OpenShift cluster without going through the external Route.
 
+Applies to: RHOAI 3.4 GA, GatewayClass `data-science-gateway-class`.
+
 ## Problem
 
 The default MaaS access path routes traffic externally:
@@ -24,10 +26,10 @@ Agent Pod -> Gateway Service (ClusterIP) -> AuthPolicy -> Model Pod
 
 | Resource | Name | Namespace | Port |
 | --- | --- | --- | --- |
-| Gateway Service | `maas-default-gateway-openshift-default` | `openshift-ingress` | 443 (HTTPS) |
+| Gateway Service | `maas-default-gateway-data-science-gateway-class` | `openshift-ingress` | 443 (HTTPS) |
 | Direct model Service | `<model>-kserve-workload-svc` | model namespace | 8000 (HTTPS) |
 
-The Gateway Service name follows the pattern `<gateway-name>-<gatewayclass-name>`. Since we use `maas-default-gateway` with class `openshift-default`, the Service is `maas-default-gateway-openshift-default`.
+The Gateway Service name follows the pattern `<gateway-name>-<gatewayclass-name>`. Since we use `maas-default-gateway` with class `data-science-gateway-class`, the Service is `maas-default-gateway-data-science-gateway-class`.
 
 Verify in your cluster:
 
@@ -35,44 +37,87 @@ Verify in your cluster:
 oc get svc -n openshift-ingress | grep maas
 ```
 
-### Internal DNS
+### SNI Requirement (hostname listener)
 
+When the Gateway listener has a `hostname` configured (e.g., `maas.apps.cluster.example.com`), Envoy filters incoming TLS connections by SNI (Server Name Indication). The ClusterIP service's internal DNS (`*.svc.cluster.local`) does **not** match the hostname, so a bare `curl` to the ClusterIP will fail with `SSL_ERROR_SYSCALL`.
+
+The solution is `curl --resolve`, which sends the correct SNI hostname while routing to the ClusterIP address:
+
+```bash
+GATEWAY_SVC="maas-default-gateway-data-science-gateway-class"
+GATEWAY_NS="openshift-ingress"
+GATEWAY_HOST="maas.apps.cluster.example.com"  # from: oc get route maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.host}'
+
+# Resolve the ClusterIP
+CLUSTER_IP=$(getent hosts ${GATEWAY_SVC}.${GATEWAY_NS}.svc.cluster.local | awk '{print $1}')
+
+# Use --resolve to map the external hostname to the ClusterIP
+curl -sk "https://${GATEWAY_HOST}/models-as-a-service/tinyllama-test/v1/chat/completions" \
+  --resolve "${GATEWAY_HOST}:443:${CLUSTER_IP}" \
+  -H "Authorization: Bearer sk-oai-..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"tinyllama-test","messages":[{"role":"user","content":"Hi"}],"max_tokens":50}'
 ```
-maas-default-gateway-openshift-default.openshift-ingress.svc.cluster.local:443
+
+Without `--resolve`, the hostname resolves via external DNS, traffic exits the cluster, and you lose the latency benefit.
+
+## Authentication: API Keys (not OCP tokens)
+
+RHOAI 3.4 GA uses API keys (`sk-oai-*`) for inference, not OCP/MaaS tokens. OCP tokens are only accepted for `/v1/models` (model listing). The API key flow is:
+
+### Step 1: Create an API key
+
+Use an OCP token to create an API key via maas-api:
+
+```bash
+GATEWAY_HOST="maas.apps.cluster.example.com"
+CLUSTER_IP=$(getent hosts maas-default-gateway-data-science-gateway-class.openshift-ingress.svc.cluster.local | awk '{print $1}')
+OCP_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+API_KEY=$(curl -sk -X POST "https://${GATEWAY_HOST}/maas-api/v1/api-keys" \
+  --resolve "${GATEWAY_HOST}:443:${CLUSTER_IP}" \
+  -H "Authorization: Bearer ${OCP_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-agent-key","expiration":"24h"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['key'])")
 ```
 
-## Usage from an In-Cluster Agent
+The ServiceAccount must be a member of a MaaS subscription group (e.g., `cluster-admins` for the free tier).
 
-### Step 1: Get a MaaS token
+### Step 2: Call the model with the API key
 
-The agent uses its own Kubernetes ServiceAccount token (automatically mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`) to request a MaaS token via the internal Gateway.
+```bash
+curl -sk "https://${GATEWAY_HOST}/models-as-a-service/tinyllama-test/v1/chat/completions" \
+  --resolve "${GATEWAY_HOST}:443:${CLUSTER_IP}" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"tinyllama-test","messages":[{"role":"user","content":"Hi"}],"max_tokens":50}'
+```
 
-The ServiceAccount must be a member of a MaaS tier group (e.g., `maas-default-gateway-tier-free-users`). The `maas-api` resolves the user's tier from group membership and generates a scoped token.
+### Python example
 
 ```python
+import json
+import subprocess
 import requests
+import urllib3
 
-GATEWAY = "https://maas-default-gateway-openshift-default.openshift-ingress.svc.cluster.local"
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as f:
-    sa_token = f.read()
+GATEWAY_HOST = "maas.apps.cluster.example.com"
+GATEWAY_SVC = "maas-default-gateway-data-science-gateway-class.openshift-ingress.svc.cluster.local"
 
+# Resolve ClusterIP for --resolve equivalent
+import socket
+cluster_ip = socket.getaddrinfo(GATEWAY_SVC, 443)[0][4][0]
+
+# In Python requests, there's no direct --resolve equivalent.
+# Option A: use the ClusterIP directly with Host header (works for HTTP, not TLS SNI)
+# Option B: mount /etc/hosts or use a custom resolver
+# Option C (simplest): just use the external hostname — the latency difference is small for Python apps
 response = requests.post(
-    f"{GATEWAY}/maas-api/v1/tokens",
-    headers={"Authorization": f"Bearer {sa_token}"},
-    json={"expiration": "1h"},
-    verify=False,  # Gateway uses cluster-internal TLS
-)
-maas_token = response.json()["token"]
-```
-
-### Step 2: Call the model
-
-```python
-response = requests.post(
-    f"{GATEWAY}/maas-models/tinyllama-test/v1/chat/completions",
+    f"https://{GATEWAY_HOST}/models-as-a-service/tinyllama-test/v1/chat/completions",
     headers={
-        "Authorization": f"Bearer {maas_token}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     },
     json={
@@ -85,40 +130,19 @@ response = requests.post(
 print(response.json())
 ```
 
-### Using curl from a pod
-
-```bash
-GATEWAY="https://maas-default-gateway-openshift-default.openshift-ingress.svc.cluster.local"
-SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-
-# Get MaaS token
-MAAS_TOKEN=$(curl -sk -X POST "$GATEWAY/maas-api/v1/tokens" \
-  -H "Authorization: Bearer $SA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"expiration":"1h"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-
-# Inference
-curl -sk "$GATEWAY/maas-models/tinyllama-test/v1/chat/completions" \
-  -H "Authorization: Bearer $MAAS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"tinyllama-test","messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
-```
-
 ## OpenAI SDK Compatibility
 
-MaaS exposes an OpenAI-compatible API. The internal Gateway URL works as a drop-in `base_url` for the OpenAI Python SDK:
+MaaS exposes an OpenAI-compatible API. Use the external hostname as `base_url`:
 
 ```python
 from openai import OpenAI
+import httpx
 
 client = OpenAI(
-    base_url="https://maas-default-gateway-openshift-default.openshift-ingress.svc.cluster.local/maas-models/tinyllama-test/v1",
-    api_key=maas_token,  # MaaS token obtained in Step 1
+    base_url=f"https://{GATEWAY_HOST}/models-as-a-service/tinyllama-test/v1",
+    api_key=api_key,  # sk-oai-... API key from Step 1
+    http_client=httpx.Client(verify=False),  # cluster-internal TLS
 )
-
-# Disable SSL verification for cluster-internal TLS
-import httpx
-client._client = httpx.Client(base_url=client.base_url, verify=False)
 
 response = client.chat.completions.create(
     model="tinyllama-test",
@@ -155,33 +179,21 @@ containers:
     value: /etc/pki/tls/service-ca/service-ca.crt
 ```
 
-## Latency Comparison
-
-Measured from a pod inside the cluster (`curl -sk -w "%{time_total}" ...`):
-
-| Path | Latency | Governance |
-| --- | --- | --- |
-| Internal Gateway (ClusterIP) | ~18ms | Full (auth, RBAC, rate limiting) |
-| Direct model Service (bypass) | ~13ms | None |
-| External Route | ~24ms | Full |
-
-The internal Gateway path eliminates the external load balancer round-trip while preserving all MaaS governance.
-
 ## Alternative: Direct Model Access (No Governance)
 
-KServe creates an internal Service for each model. Accessing it directly bypasses all MaaS governance:
+KServe creates an internal Service for each model. Accessing it directly bypasses all MaaS governance (auth, rate limiting, telemetry):
 
 ```
 <model>-kserve-workload-svc.<namespace>.svc.cluster.local:8000
 ```
 
 ```bash
-curl -sk "https://tinyllama-test-kserve-workload-svc.maas-models.svc.cluster.local:8000/v1/chat/completions" \
+curl -sk "https://tinyllama-test-kserve-workload-svc.models-as-a-service.svc.cluster.local:8000/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{"model":"tinyllama-test","messages":[{"role":"user","content":"Hello"}],"max_tokens":50}'
 ```
 
-**Use only for trusted internal workloads** where authentication, rate limiting, and audit are not required. Consider adding a `NetworkPolicy` to restrict which namespaces can reach the model Service.
+No authentication required. **Use only for trusted internal workloads** where authentication, rate limiting, and audit are not needed.
 
 ## Architecture Diagram
 
@@ -191,23 +203,24 @@ curl -sk "https://tinyllama-test-kserve-workload-svc.maas-models.svc.cluster.loc
                         |                                                   |
   External              |   +------------------------------------------+    |
   Client ----Route------|-->| Gateway Service (ClusterIP: 172.30.x.x)  |    |
-                        |   | maas-default-gateway-openshift-default   |    |
+    (API key)           |   | maas-default-gateway-data-science-       |    |
+                        |   | gateway-class                            |    |
   In-Cluster            |   +--------------------+---------------------+    |
-  Agent Pod ------------|-->|                    |                     |    |
-     (fast path)        |   |           +--------v---------+          |    |
-                        |   |           | Envoy + Authorino|          |    |
-                        |   |           | (AuthPolicy)     |          |    |
-                        |   |           +--------+---------+          |    |
-                        |   |                    |                    |    |
-                        |   |         +----------+----------+         |    |
-                        |   |         |                     |         |    |
-                        |   |    +----v-----+       +-------v------+  |    |
-                        |   |    | MaaS API |       | Model Pod    |  |    |
-                        |   |    | /maas-api|       | /maas-models |  |    |
-                        |   |    +----------+       +--------------+  |    |
+  Agent Pod ------------|-->|  (--resolve SNI)   |                     |    |
+    (API key)           |   |           +--------v---------+           |    |
+                        |   |           | Envoy + Authorino|           |    |
+                        |   |           | (MaaSAuthPolicy) |           |    |
+                        |   |           +--------+---------+           |    |
+                        |   |                    |                     |    |
+                        |   |         +----------+----------+          |    |
+                        |   |         |                     |          |    |
+                        |   |    +----v-----+       +-------v------+   |    |
+                        |   |    | MaaS API |       | Model Pod    |   |    |
+                        |   |    | /maas-api|       | /<ns>/<model>|   |    |
+                        |   |    +----------+       +--------------+   |    |
                         |   +------------------------------------------+    |
                         +---------------------------------------------------+
 ```
 
-The external client traverses: Route -> Load Balancer -> Gateway -> Auth -> Model.
-The in-cluster agent traverses: Gateway (ClusterIP) -> Auth -> Model, skipping the Route and load balancer entirely.
+The external client traverses: Route -> Load Balancer -> Gateway -> MaaSAuthPolicy -> Model.
+The in-cluster agent traverses: Gateway (ClusterIP via `--resolve`) -> MaaSAuthPolicy -> Model, skipping the Route and load balancer entirely.

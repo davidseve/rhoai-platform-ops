@@ -3,7 +3,7 @@ apiVersion: limitador.kuadrant.io/v1alpha1
 kind: Limitador
 metadata:
   name: limitador
-  namespace: kuadrant-system
+  namespace: {{ .Values.kuadrant.namespace }}
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:

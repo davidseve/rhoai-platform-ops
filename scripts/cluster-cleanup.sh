@@ -79,15 +79,20 @@ wait_ns_gone() {
 
 force_delete_ns() {
   local ns="$1"
+  if ! $OC get ns "$ns" &>/dev/null; then return 0; fi
   log "Force-cleaning namespace $ns (clearing blocking finalizers)..."
 
   for resource in $($OC api-resources --verbs=list --namespaced -o name 2>/dev/null); do
+    if ! $OC get ns "$ns" &>/dev/null; then break; fi
     for item in $($OC get "$resource" -n "$ns" -o name 2>/dev/null); do
-      run "$OC patch '$item' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      $OC patch "$item" -n "$ns" --type=merge \
+        -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
     done
   done
 
-  run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
+  if $OC get ns "$ns" &>/dev/null; then
+    run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
+  fi
 }
 
 # ============================================================
@@ -99,7 +104,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in maas-model-fast maas-model maas-platform maas-operators obs-tracing obs-grafana obs-operators; do
+  for release in maas-model-fast maas-model maas-platform maas-db maas-operators obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -121,7 +126,7 @@ cleanup_helm_releases() {
 cleanup_maas_residual() {
   log "=== MaaS: Cleaning up residual resources ==="
 
-  local model_ns="maas-models"
+  local model_ns="models-as-a-service"
   local gateway_ns="openshift-ingress"
   local kuadrant_ns="kuadrant-system"
 
@@ -134,10 +139,17 @@ cleanup_maas_residual() {
     run "$OC delete llminferenceservice --all -n '$model_ns' --timeout=60s --ignore-not-found"
   fi
 
-  # DataScienceCluster / DSCInitialization can block namespace deletion
+  # DataScienceCluster / DSCInitialization can block namespace deletion.
+  # Clear finalizers first — if the operator is already gone, the finalizer will never resolve.
   log "Deleting DataScienceCluster and DSCInitialization..."
-  run "$OC delete datasciencecluster --all --timeout=120s --ignore-not-found"
-  run "$OC delete dscinitialization --all --timeout=120s --ignore-not-found"
+  for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
+    run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+  run "$OC delete datasciencecluster --all --timeout=60s --ignore-not-found"
+  for dsci in $($OC get dscinitialization -o name 2>/dev/null); do
+    run "$OC patch '$dsci' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+  run "$OC delete dscinitialization --all --timeout=30s --ignore-not-found"
 
   # Kuadrant CR must be deleted before its operator namespace
   log "Deleting Kuadrant CR..."
@@ -149,7 +161,6 @@ cleanup_maas_residual() {
 
   # GatewayClass left behind (cluster-scoped, not always pruned)
   log "Deleting GatewayClasses..."
-  run "$OC delete gatewayclass openshift-default --ignore-not-found"
   run "$OC delete gatewayclass kuadrant-multi-cluster-gateway-instance-per-cluster --ignore-not-found"
 
   # Gateway tier namespaces (created dynamically by AuthPolicy, not in chart)
@@ -160,29 +171,42 @@ cleanup_maas_residual() {
 
   # Operator subscriptions / CSVs (in operator namespaces, not chart-managed)
   log "Deleting operator subscriptions and CSVs..."
-  for ns in redhat-ods-operator kuadrant-system leader-worker-set; do
+  for ns in redhat-ods-operator redhat-connectivity-link leader-worker-set; do
     run "$OC delete subscription --all -n '$ns' --ignore-not-found"
     run "$OC delete csv --all -n '$ns' --ignore-not-found"
     run "$OC delete operatorgroup --all -n '$ns' --ignore-not-found"
+  done
+  # Legacy: RHCL may have been installed in openshift-operators (pre-dedicated-namespace).
+  # Clean up any residual subscriptions/CSVs there too.
+  local rhcl_subs="rhcl-operator authorino-operator limitador-operator dns-operator"
+  for sub in $rhcl_subs; do
+    for s in $($OC get subscription -n openshift-operators -o name 2>/dev/null | grep "subscription.operators.coreos.com/${sub}" || true); do
+      run "$OC delete '$s' -n openshift-operators --ignore-not-found"
+    done
+  done
+  local rhcl_csv_patterns="rhcl authorino limitador dns-operator"
+  for pat in $rhcl_csv_patterns; do
+    for csv in $($OC get csv -n openshift-operators -o name 2>/dev/null | grep "$pat" || true); do
+      run "$OC delete '$csv' -n openshift-operators --ignore-not-found"
+    done
   done
 
   # Namespaces
   log "Deleting namespaces..."
   for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
-            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
+            redhat-ods-operator redhat-connectivity-link "$kuadrant_ns" leader-worker-set; do
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
 
-  # Wait for namespace termination
+  # Wait for namespace termination (parallel)
   for ns in "$model_ns" redhat-ods-applications redhat-ods-monitoring \
-            redhat-ods-operator "$kuadrant_ns" leader-worker-set; do
-    wait_ns_gone "$ns" 120
+            redhat-ods-operator redhat-connectivity-link "$kuadrant_ns" leader-worker-set; do
+    wait_ns_gone "$ns" 120 &
   done
-
-  # Dynamic tier namespaces
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
-    wait_ns_gone "$ns" 60
+    wait_ns_gone "$ns" 60 &
   done
+  wait
 }
 
 # ============================================================
@@ -217,8 +241,9 @@ cleanup_observability_residual() {
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
   for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
-    wait_ns_gone "$ns" 90
+    wait_ns_gone "$ns" 90 &
   done
+  wait
 }
 
 # ============================================================
@@ -262,7 +287,7 @@ cleanup_argocd() {
 
   if ! command -v "$ARGOCD" &>/dev/null; then
     warn "argocd CLI not found -- falling back to oc delete (no cascade)"
-    for app in maas-model-fast maas-model maas-platform maas-operators \
+    for app in maas-model-fast maas-model maas-platform maas-db maas-operators \
                observability-tracing observability-grafana observability-operators \
                rhoai-platform-ops; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
@@ -281,7 +306,8 @@ cleanup_argocd() {
 
   # 2. Delete child apps with cascade
   local apps=(
-    maas-model-fast maas-model maas-platform maas-operators
+    benchmarks
+    maas-model-fast maas-model maas-platform maas-db maas-operators
     observability-tracing observability-grafana observability-operators
   )
   for app in "${apps[@]}"; do
@@ -312,10 +338,11 @@ verify_cleanup() {
   local failed=0
 
   local namespaces=(
-    "maas-models"
+    "models-as-a-service"
     "redhat-ods-applications"
     "redhat-ods-monitoring"
     "redhat-ods-operator"
+    "redhat-connectivity-link"
     "kuadrant-system"
     "leader-worker-set"
     "observability"
@@ -326,6 +353,7 @@ verify_cleanup() {
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
     namespaces+=("$ns")
   done
+  namespaces+=("benchmarks")
   # -- Add new module namespaces here --
 
   for ns in "${namespaces[@]}"; do
@@ -338,7 +366,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -351,6 +379,24 @@ verify_cleanup() {
   else
     log "  All resources verified clean."
   fi
+}
+
+# ============================================================
+# Benchmarks cleanup
+# ============================================================
+cleanup_benchmarks_residual() {
+  log "=== Benchmarks: Cleaning up residual resources ==="
+  local ns="benchmarks"
+
+  # 1. Delete benchmark Jobs
+  run "$OC delete jobs --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # 2. Delete PVCs
+  run "$OC delete pvc --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # 3. Delete namespace
+  run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
+  wait_ns_gone "$ns" 120
 }
 
 # ============================================================
@@ -379,12 +425,14 @@ main() {
     case "$MODULE" in
       maas)          cleanup_maas_residual ;;
       observability) cleanup_observability_residual ;;
+      benchmarks)    cleanup_benchmarks_residual ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks" >&2
         exit 1
         ;;
     esac
   else
+    cleanup_benchmarks_residual
     cleanup_observability_residual
     cleanup_maas_residual
   fi

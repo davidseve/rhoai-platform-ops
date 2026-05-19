@@ -1,3 +1,9 @@
+# RHOAI 3.4 auto-creates DSCI when the operator starts.
+# With ArgoCD, set to true to declaratively manage DSCI (ArgoCD adopts the resource).
+# With Helm install, set to false (operator auto-creates it, Helm can't adopt).
+dsci:
+  managed: true
+
 datasciencecluster:
   name: default-dsc
   components:
@@ -5,6 +11,9 @@ datasciencecluster:
       managementState: Managed
     kserve:
       managementState: Managed
+      rawDeploymentServiceConfig: Headed
+      wva:
+        managementState: Removed
     llamastackoperator:
       managementState: Managed
     modelsAsService:
@@ -27,18 +36,25 @@ datasciencecluster:
       managementState: Removed
     trustyai:
       managementState: Removed
+    sparkoperator:
+      managementState: Removed
     workbenches:
       managementState: Removed
 
 dashboard:
+  # The auto-created OdhDashboardConfig lacks MaaS/GenAI flags; manage it via Helm/ArgoCD.
+  # Requires dashboard CRD (available after DSC with dashboard: Managed reconciles).
+  # ArgoCD handles CRD ordering via SkipDryRunOnMissingResource annotation on the template.
+  crEnabled: true
   genAiStudio: true
   modelAsService: true
+  observabilityDashboard: false  # TP: requires Cluster Observability Operator (COO)
 
 gateway:
   enabled: true
   name: maas-default-gateway
   namespace: openshift-ingress
-  className: openshift-default
+  className: data-science-gateway-class
   # Kubernetes Service type for the Envoy proxy created by the Gateway.
   # ClusterIP (default): traffic enters via the OpenShift Route.
   # LoadBalancer: for clusters with a cloud LB controller (AWS, GCP, etc.).
@@ -52,8 +68,11 @@ gateway:
   #   annotate the gateway svc with service.beta.openshift.io/serving-cert-secret-name
   #   e.g. maas-gateway-service-tls
   tlsSecretName: ingress-certs
-  modelNamespaces:
-    - maas-models
+  # Gateway listener hostname (e.g. maas.apps.cluster.example.com).
+  # Required for RHOAI dashboard API keys UI (maas-ui auto-discovers this).
+  # Must match route.host. Uses wildcard DNS/cert: *.apps.<clusterDomain>.
+  hostname: ""
+  modelNamespaces: []
 
 route:
   enabled: true
@@ -73,26 +92,26 @@ limitador:
   # Enables limit_name labels on authorized metrics (not just limited_calls)
   exhaustiveTelemetry: true
 
-# Tier definitions: mapped to tier-to-group-mapping ConfigMap + OpenShift Groups.
-# Tier names (free, premium) are the cross-chart contract with maas-model/values.yaml,
-# which defines per-tier rate limits (RateLimitPolicy / TokenRateLimitPolicy).
+# OpenShift Groups for MaaSSubscription tiers.
+# Groups listed here are created as OpenShift Group CRs (except built-in ones).
+# maas-test-users: dedicated group for E2E tests (conftest.py auto-adds the logged-in user)
 tiers:
   - name: free
-    displayName: "Free"
-    level: 0
     groups:
-      - name: system:authenticated
+      - name: maas-test-users
 
   - name: premium
-    displayName: "Premium"
-    level: 1
     groups:
       - name: tier-premium-users
         users: []
 
-# TelemetryPolicy: enriches Limitador metrics with user/group/model labels
-telemetry:
+# Tenant CR: auto-created by maas-controller, but we manage spec.telemetry via SSA.
+# ArgoCD (enabled: true): template + ServerSideApply merges with controller's Tenant.
+# Helm (enabled: false): Makefile does `oc patch` after deploy instead.
+tenant:
   enabled: true
+  telemetry:
+    enabled: true
 
 # ServiceMonitor for Limitador metrics scraping
 monitoring:
@@ -100,7 +119,11 @@ monitoring:
   scrapeInterval: 30s
   vllm:
     enabled: true
-    modelNamespace: maas-models
+    modelNamespace: models-as-a-service
+  # kube-state-metrics with CustomResourceState for Gateway API + Kuadrant CRs
+  gatewayMetrics:
+    enabled: true
+    namespace: observability
 
 # PrometheusRule alerts for rate limit health
 alerting:
@@ -112,3 +135,20 @@ grafana:
   enabled: false
   instanceSelector:
     dashboards: "grafana"
+
+# Operator CRs -- applied here (not in operators chart) so ArgoCD manages them
+# as regular resources with self-heal. The CRDs are installed by the operators chart
+# (ArgoCD sync-wave 0); this chart runs at sync-wave 1.
+kuadrant:
+  enabled: true
+  namespace: kuadrant-system
+  observability: true
+  # Authorino TLS: mount OpenShift service-ca bundle so Authorino trusts maas-api cert.
+  # Required for API key validation (Authorino → maas-api HTTPS callbacks).
+  # Runs as ArgoCD post-sync Job (setup-authorino-tls.sh equivalent).
+  authorinoTls:
+    enabled: true
+
+leaderWorkerSet:
+  enabled: true
+

@@ -9,4 +9,5 @@ spec:
   channel: {{ .Values.rhoai.channel }}
   source: {{ .Values.rhoai.source }}
   sourceNamespace: {{ .Values.rhoai.sourceNamespace }}
+  installPlanApproval: Automatic
 {{- end }}

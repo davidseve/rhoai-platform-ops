@@ -147,7 +147,7 @@ Three PrometheusRule resources define the alert rules. Gateway alerts must be in
 | MaaSBackend5xx | warning | Any `istio_requests_total{response_code=~"5.."}` for 2m | vLLM/backend returning server errors |
 | MaaSGatewayErrorsCritical | critical | Combined error ratio > 5% for 5m | Sustained error rate from auth timeouts + backend failures |
 
-### vLLM SLO alerts (`maas-vllm-slo` in `maas-models`)
+### vLLM SLO alerts (`maas-vllm-slo` in `models-as-a-service`)
 
 | Alert | Severity | Condition | Meaning |
 |-------|----------|-----------|---------|

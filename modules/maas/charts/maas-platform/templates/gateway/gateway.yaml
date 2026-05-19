@@ -5,6 +5,7 @@ metadata:
   name: {{ .Values.gateway.name }}
   namespace: {{ .Values.gateway.namespace }}
   annotations:
+    opendatahub.io/managed: "false"
     security.opendatahub.io/authorino-tls-bootstrap: "true"
     networking.istio.io/service-type: {{ .Values.gateway.serviceType | default "ClusterIP" }}
 spec:
@@ -13,6 +14,9 @@ spec:
   - name: https
     port: 443
     protocol: HTTPS
+    {{- if .Values.gateway.hostname }}
+    hostname: {{ .Values.gateway.hostname }}
+    {{- end }}
     tls:
       mode: Terminate
       certificateRefs:
@@ -29,6 +33,7 @@ spec:
             values:
             - {{ .Values.gateway.namespace }}
             - redhat-ods-applications
+            - models-as-a-service
             {{- range .Values.gateway.modelNamespaces }}
             - {{ . }}
             {{- end }}

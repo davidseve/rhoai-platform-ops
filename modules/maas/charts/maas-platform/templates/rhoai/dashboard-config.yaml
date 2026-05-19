@@ -1,3 +1,4 @@
+{{- if (ne (.Values.dashboard.crEnabled | toString) "false") }}
 apiVersion: opendatahub.io/v1alpha
 kind: OdhDashboardConfig
 metadata:
@@ -9,3 +10,5 @@ spec:
   dashboardConfig:
     genAiStudio: {{ .Values.dashboard.genAiStudio }}
     modelAsService: {{ .Values.dashboard.modelAsService }}
+    observabilityDashboard: {{ .Values.dashboard.observabilityDashboard | default false }}
+{{- end }}

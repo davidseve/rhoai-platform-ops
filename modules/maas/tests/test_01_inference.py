@@ -1,51 +1,54 @@
 """External Route: token generation, chat completions, text completions."""
 
+import pytest
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-class TestTokenGeneration:
+class TestAPIKeyGeneration:
+    """Verify the MaaS API key endpoint (RHOAI 3.4+)."""
 
-    def test_token_endpoint_returns_200(self, maas_url, oc_token):
+    def test_api_key_endpoint_returns_200(self, maas_url, oc_token):
         resp = requests.post(
-            f"{maas_url}/maas-api/v1/tokens",
+            f"{maas_url}/maas-api/v1/api-keys",
             headers={
                 "Authorization": f"Bearer {oc_token}",
                 "Content-Type": "application/json",
             },
-            json={"expiration": "10m"},
+            json={"name": "test-endpoint-check", "expiration": "10m"},
             verify=False,
             timeout=15,
         )
         assert resp.status_code in (200, 201)
 
-    def test_token_response_contains_token(self, maas_url, oc_token):
+    def test_api_key_response_contains_key(self, maas_url, oc_token):
         resp = requests.post(
-            f"{maas_url}/maas-api/v1/tokens",
+            f"{maas_url}/maas-api/v1/api-keys",
             headers={
                 "Authorization": f"Bearer {oc_token}",
                 "Content-Type": "application/json",
             },
-            json={"expiration": "10m"},
+            json={"name": "test-key-check", "expiration": "10m"},
             verify=False,
             timeout=15,
         )
         body = resp.json()
-        assert "token" in body
-        assert len(body["token"]) > 50, "Token looks too short"
+        assert "key" in body
+        assert body["key"].startswith("sk-oai-"), "API key should start with sk-oai- prefix"
 
 
 class TestChatCompletions:
+    """RHOAI 3.4 GA: inference requires API keys (sk-oai-*), not OCP tokens."""
 
     def test_inference_returns_200(
-        self, maas_url, maas_token, inference_path, chat_payload
+        self, maas_url, maas_api_key, inference_path, chat_payload
     ):
         resp = requests.post(
             f"{maas_url}{inference_path}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload,
@@ -55,12 +58,12 @@ class TestChatCompletions:
         assert resp.status_code == 200
 
     def test_response_has_choices(
-        self, maas_url, maas_token, inference_path, chat_payload
+        self, maas_url, maas_api_key, inference_path, chat_payload
     ):
         resp = requests.post(
             f"{maas_url}{inference_path}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload,
@@ -72,12 +75,12 @@ class TestChatCompletions:
         assert len(body["choices"]) > 0
 
     def test_response_content_is_nonempty(
-        self, maas_url, maas_token, inference_path, chat_payload
+        self, maas_url, maas_api_key, inference_path, chat_payload
     ):
         resp = requests.post(
             f"{maas_url}{inference_path}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload,
@@ -89,12 +92,12 @@ class TestChatCompletions:
         assert content and len(content.strip()) > 0
 
     def test_response_model_matches(
-        self, maas_url, maas_token, inference_path, chat_payload, model_name
+        self, maas_url, maas_api_key, inference_path, chat_payload, model_name
     ):
         resp = requests.post(
             f"{maas_url}{inference_path}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload,
@@ -105,12 +108,12 @@ class TestChatCompletions:
         assert body["model"] == model_name
 
     def test_response_has_usage(
-        self, maas_url, maas_token, inference_path, chat_payload
+        self, maas_url, maas_api_key, inference_path, chat_payload
     ):
         resp = requests.post(
             f"{maas_url}{inference_path}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload,
@@ -124,15 +127,15 @@ class TestChatCompletions:
 
 
 class TestTextCompletions:
-    """Verify the /v1/completions (text) endpoint works."""
+    """Verify the /v1/completions (text) endpoint works with API key auth."""
 
     def test_completions_returns_200(
-        self, maas_url, maas_token, completions_path, completions_payload
+        self, maas_url, maas_api_key, completions_path, completions_payload
     ):
         resp = requests.post(
             f"{maas_url}{completions_path}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key['key']}",
                 "Content-Type": "application/json",
             },
             json=completions_payload,
@@ -142,12 +145,12 @@ class TestTextCompletions:
         assert resp.status_code == 200
 
     def test_completions_response_has_text(
-        self, maas_url, maas_token, completions_path, completions_payload
+        self, maas_url, maas_api_key, completions_path, completions_payload
     ):
         resp = requests.post(
             f"{maas_url}{completions_path}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key['key']}",
                 "Content-Type": "application/json",
             },
             json=completions_payload,
@@ -182,16 +185,56 @@ class TestExpiredToken:
         )
 
 
+class TestAPIKeyInference:
+    """Verify inference works with API key authentication (sk-oai-* token).
+
+    Requires MaaSAuthPolicy enabled (authPolicy.enabled: true).
+    """
+
+    def test_inference_with_api_key(
+        self, maas_url, maas_api_key, inference_path, chat_payload
+    ):
+        resp = requests.post(
+            f"{maas_url}{inference_path}",
+            headers={
+                "Authorization": f"Bearer {maas_api_key['key']}",
+                "Content-Type": "application/json",
+            },
+            json=chat_payload,
+            verify=False,
+            timeout=60,
+        )
+        assert resp.status_code == 200
+
+    def test_api_key_response_has_choices(
+        self, maas_url, maas_api_key, inference_path, chat_payload
+    ):
+        resp = requests.post(
+            f"{maas_url}{inference_path}",
+            headers={
+                "Authorization": f"Bearer {maas_api_key['key']}",
+                "Content-Type": "application/json",
+            },
+            json=chat_payload,
+            verify=False,
+            timeout=60,
+        )
+        body = resp.json()
+        assert "choices" in body
+        assert len(body["choices"]) > 0
+        assert body["choices"][0]["message"]["content"]
+
+
 class TestModel2ChatCompletions:
-    """Verify inference works on the second model (tinyllama-fast)."""
+    """Verify inference works on the second model (tinyllama-fast) with API key."""
 
     def test_model2_inference_returns_200(
-        self, maas_url, maas_token, inference_path_model2, chat_payload_model2
+        self, maas_url, maas_api_key_model2, inference_path_model2, chat_payload_model2
     ):
         resp = requests.post(
             f"{maas_url}{inference_path_model2}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key_model2['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload_model2,
@@ -201,12 +244,12 @@ class TestModel2ChatCompletions:
         assert resp.status_code == 200
 
     def test_model2_response_has_choices(
-        self, maas_url, maas_token, inference_path_model2, chat_payload_model2
+        self, maas_url, maas_api_key_model2, inference_path_model2, chat_payload_model2
     ):
         resp = requests.post(
             f"{maas_url}{inference_path_model2}",
             headers={
-                "Authorization": f"Bearer {maas_token}",
+                "Authorization": f"Bearer {maas_api_key_model2['key']}",
                 "Content-Type": "application/json",
             },
             json=chat_payload_model2,
