@@ -183,8 +183,9 @@ undeploy-evaluation: ## Undeploy evaluation via Helm
 
 EVALHUB_BENCHMARK ?= arc_easy
 EVALHUB_PROVIDER ?= lm_evaluation_harness
-MODEL_URL ?=
 MODEL_NAME ?= tinyllama-fast
+# Internal KServe URL (bypasses gateway auth). Override for external endpoints.
+MODEL_URL ?= https://$(MODEL_NAME)-kserve-workload-svc.models-as-a-service.svc:8000/v1
 TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
 SECRET_REF ?= model-auth
 EVAL_LIMIT ?= 10
@@ -460,7 +461,7 @@ deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
 .PHONY: test-all
-test-all: test-observability test-maas test-evaluation ## Run all module tests
+test-all: test-observability test-maas test-evaluation evalhub-smoke ## Run all module tests (includes EvalHub smoke test)
 
 .PHONY: undeploy-all
 undeploy-all: undeploy-evaluation undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
