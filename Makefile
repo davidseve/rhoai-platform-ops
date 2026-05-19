@@ -255,7 +255,7 @@ evalhub-security: ## Quick security scan via Garak (timeout=900s, reduced probe 
 		--model-name $(MODEL_NAME) \
 		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
 		--timeout 900 \
-		--extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":10}}}' \
+		--extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":1}}}' \
 		--wait
 
 # --- Legacy evaluation targets (DEPRECATED: use evalhub-* targets instead) ---
