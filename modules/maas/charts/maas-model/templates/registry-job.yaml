@@ -1,4 +1,4 @@
-{{- if .Values.catalog.enabled }}
+{{- if .Values.registry.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
