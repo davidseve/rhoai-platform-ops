@@ -159,8 +159,25 @@ test-maas: ## Run MaaS E2E tests
 undeploy-maas: ## Undeploy MaaS via Helm
 	-$(HELM) uninstall maas-model-fast 2>/dev/null
 	-$(HELM) uninstall maas-model 2>/dev/null
+	-$(HELM) uninstall model-registry -n rhoai-model-registries 2>/dev/null
 	-$(HELM) uninstall maas-platform 2>/dev/null
 	-$(HELM) uninstall maas-operators 2>/dev/null
+
+# --- Model Registry ---
+
+.PHONY: deploy-model-registry
+deploy-model-registry: ## Deploy Model Registry (requires maas-platform with modelregistry: Managed)
+	@echo "Waiting for rhoai-model-registries namespace..."
+	@for i in $$(seq 1 60); do \
+		if $(OC) get ns rhoai-model-registries &>/dev/null; then break; fi; \
+		if [ $$i -eq 60 ]; then echo "ERROR: namespace rhoai-model-registries not created after 5m"; exit 1; fi; \
+		sleep 5; \
+	done
+	$(HELM) upgrade --install model-registry modules/maas/charts/model-registry -n rhoai-model-registries --wait --timeout 5m
+
+.PHONY: undeploy-model-registry
+undeploy-model-registry: ## Undeploy Model Registry via Helm
+	-$(HELM) uninstall model-registry -n rhoai-model-registries 2>/dev/null
 
 # --- Evaluation Module (includes GuideLLM benchmarks, see ADR-0007) ---
 
@@ -331,8 +348,9 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
 # parent + 10 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, evaluation)
-MIN_APPS ?= 10
-APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops|evaluation|database'
+# parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, maas-model-registry, obs-operators, obs-grafana, obs-tracing, evaluation)
+MIN_APPS ?= 11
+APP_FILTER = grep -E 'maas-|model-registry|observability-|rhoai-platform-ops|evaluation|database'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
@@ -483,6 +501,7 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template maas-operators modules/maas/charts/operators
 	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
+	$(HELM) template model-registry modules/maas/charts/model-registry
 	$(HELM) template evaluation modules/evaluation/charts/evaluation
 	$(HELM) template argocd-apps argocd/apps
 
@@ -495,6 +514,7 @@ lint: ## Helm lint all charts
 	$(HELM) lint modules/maas/charts/operators
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model
+	$(HELM) lint modules/maas/charts/model-registry
 	$(HELM) lint modules/evaluation/charts/evaluation
 	$(HELM) lint argocd/apps
 

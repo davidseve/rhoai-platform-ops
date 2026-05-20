@@ -1,0 +1,6 @@
+apiVersion: v2
+name: model-registry
+description: RHOAI Model Registry with PostgreSQL backend for model governance
+type: application
+version: 0.1.0
+appVersion: "3.4.0"

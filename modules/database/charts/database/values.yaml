@@ -18,6 +18,11 @@ database:
   name: maas
   user: maas
   password: maas-eval-password
+  # Admin password needed to create extra databases at startup
+  adminPassword: maas-admin-password
+  # Additional databases created on startup (same owner as main user)
+  extraDatabases:
+    - model_registry
 
 resources:
   requests:

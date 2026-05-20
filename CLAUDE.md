@@ -28,6 +28,8 @@ make evalhub-jobs         # List all evaluation jobs
 make evalhub-providers    # List available providers and benchmarks
 make evalhub-collections  # List benchmark collections
 make undeploy-evaluation  # Undeploy evaluation
+make deploy-model-registry   # Deploy Model Registry + catalog
+make undeploy-model-registry # Undeploy Model Registry
 ```
 
 ## Rules

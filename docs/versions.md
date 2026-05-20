@@ -44,6 +44,13 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 | LMEval (lm-evaluation-harness) | 0.4.8 | **GA** | Managed by TrustyAI operator (`trustyai.opendatahub.io/v1alpha1`) |
 | TrustyAI Operator | 1.37.0 | **GA** | DSC component (`trustyai: Managed`) |
 
+## Model Registry
+
+| Component | Version | Status | Reference |
+|---|---|---|---|
+| Model Registry Operator | 0.3.x | **GA** | Managed by RHOAI operator (`modelregistry: Managed`) |
+| Kubeflow Model Registry | 1.11+ | -- | [Upstream](https://github.com/opendatahub-io/model-registry-operator) |
+
 ## Platform
 
 | Component | Version | Notes |

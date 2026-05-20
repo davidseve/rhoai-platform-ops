@@ -41,6 +41,11 @@ tracing:
   otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
   serviceName: ""   # defaults to model servedName
 
+# Model Registry: registers the model in RHOAI Model Registry via REST API Job.
+# Creates RegisteredModel + ModelVersion + ModelArtifact (idempotent).
+registry:
+  enabled: true
+
 # MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
 modelRef:
   enabled: true
