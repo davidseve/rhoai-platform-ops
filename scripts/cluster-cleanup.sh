@@ -66,6 +66,17 @@ wait_ns_gone() {
   log "Waiting up to ${timeout}s for namespace $ns to terminate..."
   local elapsed=0
   while $OC get ns "$ns" &>/dev/null; do
+    # If stuck in Terminating for >30s, force-clean immediately instead of
+    # waiting for the full timeout — the namespace won't recover on its own.
+    if (( elapsed >= 30 )); then
+      local phase
+      phase=$($OC get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+      if [[ "$phase" == "Terminating" ]]; then
+        warn "Namespace $ns stuck in Terminating after ${elapsed}s -- forcing cleanup"
+        force_delete_ns "$ns"
+        return 0
+      fi
+    fi
     if (( elapsed >= timeout )); then
       warn "Namespace $ns still exists after ${timeout}s -- attempting finalizer cleanup"
       force_delete_ns "$ns"
@@ -156,6 +167,15 @@ cleanup_maas_residual() {
       run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
     run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
+
+    # MaaS controller CRs — finalizers block namespace deletion when controller is gone
+    log "Clearing MaaS controller CR finalizers..."
+    for crd in maasauthpolicy maasmodelref maassubscription; do
+      for item in $($OC get "$crd" -n "$model_ns" -o name 2>/dev/null); do
+        run "$OC patch '$item' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete '$crd' --all -n '$model_ns' --timeout=30s --ignore-not-found"
+    done
   fi
 
   # DataScienceCluster / DSCInitialization can block namespace deletion.
@@ -355,6 +375,14 @@ cleanup_argocd() {
       run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
     run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
+    # MaaS controller CRs (MaaSAuthPolicy, MaaSModelRef, MaaSSubscription) can also
+    # have finalizers that block namespace deletion when the controller is gone.
+    for crd in maasauthpolicy maasmodelref maassubscription; do
+      for item in $($OC get "$crd" -n "$model_ns" -o name 2>/dev/null); do
+        run "$OC patch '$item' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete '$crd' --all -n '$model_ns' --timeout=30s --ignore-not-found"
+    done
   fi
   for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
     run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
