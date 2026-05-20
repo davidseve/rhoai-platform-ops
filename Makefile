@@ -159,7 +159,7 @@ test-maas: ## Run MaaS E2E tests
 undeploy-maas: ## Undeploy MaaS via Helm
 	-$(HELM) uninstall maas-model-fast 2>/dev/null
 	-$(HELM) uninstall maas-model 2>/dev/null
-	-$(HELM) uninstall model-registry 2>/dev/null
+	-$(HELM) uninstall model-registry -n rhoai-model-registries 2>/dev/null
 	-$(HELM) uninstall maas-platform 2>/dev/null
 	-$(HELM) uninstall maas-operators 2>/dev/null
 
@@ -173,11 +173,11 @@ deploy-model-registry: ## Deploy Model Registry (requires maas-platform with mod
 		if [ $$i -eq 60 ]; then echo "ERROR: namespace rhoai-model-registries not created after 5m"; exit 1; fi; \
 		sleep 5; \
 	done
-	$(HELM) upgrade --install model-registry modules/maas/charts/model-registry --wait --timeout 5m
+	$(HELM) upgrade --install model-registry modules/maas/charts/model-registry -n rhoai-model-registries --wait --timeout 5m
 
 .PHONY: undeploy-model-registry
 undeploy-model-registry: ## Undeploy Model Registry via Helm
-	-$(HELM) uninstall model-registry 2>/dev/null
+	-$(HELM) uninstall model-registry -n rhoai-model-registries 2>/dev/null
 
 # --- Evaluation Module (includes GuideLLM benchmarks, see ADR-0007) ---
 

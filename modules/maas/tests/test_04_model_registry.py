@@ -108,7 +108,7 @@ class TestClusterInfra:
         assert REGISTRY_NAMESPACE in result
 
     def test_model_registry_exists(self, oc):
-        result = oc(f"get modelregistry {REGISTRY_NAME} -n {REGISTRY_NAMESPACE} -o name")
+        result = oc(f"get modelregistries.modelregistry.opendatahub.io {REGISTRY_NAME} -n {REGISTRY_NAMESPACE} -o name")
         assert REGISTRY_NAME in result
 
     def test_model_registry_pod_running(self, oc):
