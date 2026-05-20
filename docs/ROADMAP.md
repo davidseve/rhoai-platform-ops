@@ -11,6 +11,7 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 | **Observability** | `modules/observability/` | Metrics, dashboards, alerts                | MaaS (for vLLM metrics)       |
 | **Traceability**  | Part of observability    | Request tracing with OpenTelemetry + Tempo | Observability module          |
 | **Evaluation**    | `modules/evaluation/`    | Quality eval, MLflow tracking, GuideLLM benchmarks | MaaS (models must be running) |
+| **Model Registry**| `modules/maas/charts/model-registry/` + `maas-model` catalog | Model governance catalog in RHOAI Dashboard | MaaS (DSC modelregistry: Managed) |
 
 
 ## Implementation Order
@@ -250,7 +251,7 @@ Goal: unified evaluation platform for model quality, experiment tracking, and pe
 - [ ] **Smoke test on GPU**: `make evalhub-smoke` should complete in ~3-5 min on GPU. On CPU it takes ~15 min due to 9500 loglikelihood API requests even with `limit=1`.
 - [ ] **MLflow Tracing for evaluations**: MLflow server exposes `/v1/traces` OTLP endpoint (since RHOAI 3.3), but EvalHub adapter does not instrument LLM calls with `mlflow.trace()` — only final metrics are logged. Tracked: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The EvalHub ADR (`ODH-ADR-EH-0001`) plans dual tracing (parent trace from EvalHub, child spans from benchmark pods). Re-evaluate when upstream implements this.
 - [ ] **Real-time evaluation progress in MLflow**: MLflow "Duration" shows only the logging call (~40ms), not the actual evaluation time (stored as `duration_seconds` parameter). Investigate: (1) streaming intermediate metrics from adapters during evaluation so MLflow shows live progress, (2) using MLflow `system_metrics` to track pod resource usage during runs, (3) whether EvalHub's event API (`/jobs/{id}/events`) can feed a progress dashboard.
-- [ ] **Register evaluated models in Model Registry**: EvalHub logs metrics and parameters to MLflow but does not register the evaluated model. The MLflow "Models" column shows "–" for all runs. Investigate which registry to use: MLflow Model Registry (built into MLflow, tracks model lifecycle Staging → Production) vs RHOAI Model Registry (Kubeflow-based, integrates with RHOAI model serving). Key trade-off: MLflow registry is evaluation-native but siloed; RHOAI registry is the platform standard but requires extra integration. Evaluate whether registration should be done by the EvalHub adapter (upstream feature request) or as a post-evaluation step in `evalhub.sh`.
+- [x] **Register evaluated models in Model Registry**: Resolved via Phase 5 (Model Registry). Models are registered declaratively via ConfigMap catalog entries generated from `maas-model` chart. RHOAI Model Registry (Kubeflow) chosen over MLflow Model Registry — our models are serving models, not training outputs. Traceability via `customProperties.mlflow_experiment` linking to MLflow experiment names. See [ADR-0010](adr/0010-model-registry-postgresql.md).
 - [ ] **GuideLLM adapter does not log to MLflow**: The GuideLLM adapter reports metrics to EvalHub via events but does not create an MLflow run. The lm-eval adapter does (`mlflow_run_id` present). Benchmark results are only visible via `evalhub.sh status <job-id>`, not in MLflow UI. Investigate: is this an upstream limitation of the GuideLLM adapter, or does it require explicit MLflow configuration in the EvalHub CR? Same likely applies to Garak adapter.
 - [ ] **Create experiment comparison workflows in MLflow**
 - [ ] **External authenticated endpoints**: `api-key` in `model.auth.secret_ref` is exposed as `ModelCredentials.api_key` but NOT set as `OPENAI_API_KEY` env var. Adapters (GuideLLM, lm-eval) that read `OPENAI_API_KEY` natively won't work with external authenticated endpoints. Use internal KServe URLs (no auth) for now.
@@ -264,6 +265,35 @@ Workaround: `mlflow-dns-fix.yaml` adds a supplementary NetworkPolicy allowing eg
 
 **Reference**: [EVALUATION.md](../modules/evaluation/docs/EVALUATION.md)
 
+### Phase 5: Model Registry (DONE)
+
+Goal: model governance catalog visible in RHOAI Dashboard, with traceability to MLflow experiments.
+
+- [x] Enable `modelregistry: Managed` in DSC with `registriesNamespace: rhoai-model-registries`
+- [x] Create `model-registry` Helm chart with ModelRegistry CR (v1beta1) and PostgreSQL backend
+  - Reuses shared `maas-db` with `skipDBCreation: true` (MLMD tables don't collide)
+  - `sslMode: disable` (consistent with all other PostgreSQL consumers)
+- [x] Declarative model catalog via ConfigMap entries generated from `maas-model` chart
+  - `customProperties.mlflow_experiment` links to MLflow experiment names for traceability
+  - One ConfigMap per model, labeled `opendatahub.io/dashboard: "true"`
+- [x] ArgoCD Application at sync-wave 2 with retry limit 30 (exponential backoff up to 15m)
+- [x] Makefile targets: `deploy-model-registry`, `undeploy-model-registry`
+- [x] E2E tests: 8 template validation + 4 cluster validation
+- [x] Cluster cleanup script updated
+
+**Red Hat products**: RHOAI Model Registry (Kubeflow Model Registry operator).
+
+**Reference**: [ADR-0010](adr/0010-model-registry-postgresql.md)
+
+#### Future: PostgreSQL TLS
+
+Enable TLS on the shared PostgreSQL instance (`maas-db`) and update all consumers to use `sslMode: verify-ca`. Requires:
+1. Configure certificates on PostgreSQL pod via `service-ca` or `cert-manager`
+2. Update all connection strings: MLflow, EvalHub, MaaS API, Model Registry
+3. Distribute CA bundle to all consuming pods
+
+Cross-cutting change affecting modules: `database`, `evaluation`, `maas`, and `model-registry`. Low priority while communication is internal (pod-to-pod via ClusterIP Service within the cluster network).
+
 ## Decision Log
 
 Key decisions are documented as ADRs in [docs/adr/](adr/):
@@ -273,3 +303,8 @@ Key decisions are documented as ADRs in [docs/adr/](adr/):
 - [ADR-0003: Grafana Operator for dashboards](adr/0003-grafana-operator.md)
 - [ADR-0004: Tracing stack (OTel + Tempo)](adr/0004-tracing-stack.md)
 - [ADR-0005: MaaS Subscription Model (RHOAI 3.4)](adr/0005-maas-subscription-model.md)
+- [ADR-0006: MaaS Documentation Sources](adr/0006-maas-documentation-sources.md)
+- [ADR-0007: Merge Benchmarks into Evaluation](adr/0007-merge-benchmarks-into-evaluation.md)
+- [ADR-0008: EvalHub Orchestrator](adr/0008-evalhub-orchestrator.md)
+- [ADR-0009: Unified MaaS Access Groups](adr/0009-unified-maas-access-groups.md)
+- [ADR-0010: Model Registry with PostgreSQL Backend](adr/0010-model-registry-postgresql.md)
