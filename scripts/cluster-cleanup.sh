@@ -115,7 +115,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in evaluation benchmarks maas-model-fast maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
+  for release in evaluation benchmarks model-registry maas-model-fast maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -320,7 +320,7 @@ cleanup_argocd() {
 
   if ! command -v "$ARGOCD" &>/dev/null; then
     warn "argocd CLI not found -- falling back to oc delete (no cascade)"
-    for app in evaluation maas-model-fast maas-model maas-platform maas-operators database \
+    for app in evaluation maas-model-registry maas-model-fast maas-model maas-platform maas-operators database \
                observability-tracing observability-grafana observability-operators; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
     done
@@ -364,7 +364,7 @@ cleanup_argocd() {
   done
 
   # 3. Delete child apps in reverse wave order (wave 2 → 1 → 0)
-  delete_apps_and_wait "wave 2" maas-model-fast maas-model evaluation
+  delete_apps_and_wait "wave 2" maas-model-registry maas-model-fast maas-model evaluation
   delete_apps_and_wait "wave 1" maas-platform observability-tracing observability-grafana
   delete_apps_and_wait "wave 0" maas-operators observability-operators database
 
@@ -405,6 +405,7 @@ verify_cleanup() {
     namespaces+=("$ns")
   done
   namespaces+=("evaluation")
+  namespaces+=("rhoai-model-registries")
 
   for ns in "${namespaces[@]}"; do
     if $OC get ns "$ns" &>/dev/null; then
@@ -416,7 +417,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|evaluation|database' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|evaluation|database|model-registry' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -479,6 +480,36 @@ cleanup_evaluation_residual() {
 }
 
 # ============================================================
+# Module: Model Registry -- residual resources
+# ============================================================
+cleanup_model_registry_residual() {
+  log "=== Model Registry: Cleaning up residual resources ==="
+  local ns="rhoai-model-registries"
+
+  if $OC get ns "$ns" &>/dev/null; then
+    # ModelRegistry CRs can have finalizers from the operator
+    log "Deleting ModelRegistry CRs..."
+    for mr in $($OC get modelregistry -n "$ns" -o name 2>/dev/null); do
+      run "$OC patch '$mr' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete modelregistry --all -n '$ns' --timeout=60s --ignore-not-found"
+
+    # Secrets and Jobs
+    log "Deleting Secrets and Jobs..."
+    run "$OC delete secret --all -n '$ns' --timeout=30s --ignore-not-found"
+    run "$OC delete jobs --all -n '$ns' --timeout=30s --ignore-not-found"
+  fi
+
+  # Catalog ConfigMaps (created by maas-model chart in model-registries namespace)
+  log "Deleting catalog ConfigMaps..."
+  run "$OC delete configmap -l app.kubernetes.io/part-of=maas-model-catalog -n '$ns' --ignore-not-found"
+
+  # Namespace
+  run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
+  wait_ns_gone "$ns" 120
+}
+
+# ============================================================
 # Add new module cleanup functions above this line.
 # Then add the function call to main() below.
 # ============================================================
@@ -507,17 +538,19 @@ main() {
   #    - Operator Subscriptions/CSVs that sometimes linger after cascade
   if [[ -n "$MODULE" ]]; then
     case "$MODULE" in
-      maas)          cleanup_maas_residual ;;
-      observability) cleanup_observability_residual ;;
-      evaluation)    cleanup_evaluation_residual ;;
-      database)      log "Database resources are cleaned up as part of maas (redhat-ods-applications namespace)." ;;
+      maas)            cleanup_model_registry_residual; cleanup_maas_residual ;;
+      model-registry)  cleanup_model_registry_residual ;;
+      observability)   cleanup_observability_residual ;;
+      evaluation)      cleanup_evaluation_residual ;;
+      database)        log "Database resources are cleaned up as part of maas (redhat-ods-applications namespace)." ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, evaluation, database" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, model-registry, observability, evaluation, database" >&2
         exit 1
         ;;
     esac
   else
     cleanup_evaluation_residual
+    cleanup_model_registry_residual
     cleanup_observability_residual
     cleanup_maas_residual
   fi
