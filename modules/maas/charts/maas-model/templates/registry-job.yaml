@@ -1,0 +1,86 @@
+{{- if .Values.catalog.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.global.name }}-register
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/part-of: maas-model
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: register
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          MR_URL="http://maas-model-registry.rhoai-model-registries.svc:8080/api/model_registry/v1alpha3"
+
+          echo "Waiting for Model Registry API..."
+          for i in $(seq 1 30); do
+            if curl -sf "$MR_URL/registered_models" >/dev/null 2>&1; then break; fi
+            sleep 5
+          done
+
+          MODEL_NAME="{{ .Values.model.servedName }}"
+
+          # Check if model already exists
+          EXISTING=$(curl -sf "$MR_URL/registered_models" | python3 -c "
+          import json,sys
+          data = json.load(sys.stdin)
+          for m in data.get('items',[]):
+              if m['name'] == '$MODEL_NAME':
+                  print(m['id']); break
+          " 2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            echo "Model $MODEL_NAME already registered (id=$EXISTING), skipping"
+            exit 0
+          fi
+
+          echo "Registering model $MODEL_NAME..."
+          RESP=$(curl -sf "$MR_URL/registered_models" -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "'"$MODEL_NAME"'",
+              "description": {{ .Values.modelRef.description | quote }},
+              "customProperties": {
+                "model_type": {"metadataType": "MetadataStringValue", "string_value": "vllm"},
+                "use_case": {"metadataType": "MetadataStringValue", "string_value": {{ .Values.modelRef.useCase | quote }}},
+                "mlflow_experiment": {"metadataType": "MetadataStringValue", "string_value": "'"$MODEL_NAME"'"}
+              }
+            }')
+          MODEL_ID=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          echo "Registered model id=$MODEL_ID"
+
+          echo "Creating model version v1..."
+          VER_RESP=$(curl -sf "$MR_URL/model_versions" -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"name": "v1", "registeredModelId": "'"$MODEL_ID"'", "state": "LIVE"}')
+          VER_ID=$(echo "$VER_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          echo "Created version id=$VER_ID"
+
+          echo "Creating model artifact..."
+          curl -sf "$MR_URL/model_versions/$VER_ID/artifacts" -X POST \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "'"$MODEL_NAME"'-artifact",
+              "uri": {{ .Values.model.storageUri | quote }},
+              "artifactType": "model-artifact",
+              "state": "LIVE",
+              "modelFormatName": "vllm"
+            }' | python3 -m json.tool
+
+          echo "Model $MODEL_NAME registered successfully"
+{{- end }}
