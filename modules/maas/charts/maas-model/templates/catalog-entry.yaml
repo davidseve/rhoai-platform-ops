@@ -1,0 +1,34 @@
+{{- if .Values.catalog.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.global.name }}-catalog
+  namespace: rhoai-model-registries
+  labels:
+    opendatahub.io/dashboard: "true"
+    app.kubernetes.io/part-of: maas-model-catalog
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+data:
+  catalog.yaml: |
+    models:
+      - name: {{ .Values.model.servedName }}
+        description: {{ .Values.modelRef.description | quote }}
+        customProperties:
+          model_type:
+            metadataType: MetadataStringValue
+            string_value: "vllm"
+          use_case:
+            metadataType: MetadataStringValue
+            string_value: {{ .Values.modelRef.useCase | quote }}
+          namespace:
+            metadataType: MetadataStringValue
+            string_value: {{ .Values.global.namespace | quote }}
+          mlflow_experiment:
+            metadataType: MetadataStringValue
+            string_value: {{ .Values.model.servedName | quote }}
+        artifacts:
+          - name: {{ .Values.model.servedName }}-artifact
+            uri: {{ .Values.model.storageUri | quote }}
+{{- end }}

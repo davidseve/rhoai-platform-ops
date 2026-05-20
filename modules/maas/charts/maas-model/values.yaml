@@ -41,6 +41,11 @@ tracing:
   otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
   serviceName: ""   # defaults to model servedName
 
+# Model Catalog: declarative ConfigMap for RHOAI Dashboard Model Registry.
+# Uses the same model metadata as LLMInferenceService and MaaSModelRef.
+catalog:
+  enabled: true
+
 # MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
 modelRef:
   enabled: true
