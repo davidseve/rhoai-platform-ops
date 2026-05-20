@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-    targetRevision: feat/model-registry
+    targetRevision: feat/evalhub-integration
     path: argocd/apps
     helm:
       parameters:
