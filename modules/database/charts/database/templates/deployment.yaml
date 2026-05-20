@@ -25,6 +25,10 @@ spec:
           value: {{ .Values.database.password }}
         - name: POSTGRESQL_DATABASE
           value: {{ .Values.database.name }}
+        {{- if .Values.database.extraDatabases }}
+        - name: POSTGRESQL_ADMIN_PASSWORD
+          value: {{ .Values.database.adminPassword }}
+        {{- end }}
         ports:
         - containerPort: 5432
         resources:
@@ -34,3 +38,13 @@ spec:
           limits:
             cpu: {{ .Values.resources.limits.cpu | quote }}
             memory: {{ .Values.resources.limits.memory | quote }}
+        {{- if .Values.database.extraDatabases }}
+        volumeMounts:
+        - name: init-scripts
+          mountPath: /opt/app-root/src/postgresql-start
+          readOnly: true
+      volumes:
+      - name: init-scripts
+        configMap:
+          name: maas-db-init
+        {{- end }}
