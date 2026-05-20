@@ -285,6 +285,15 @@ Goal: model governance catalog visible in RHOAI Dashboard, with traceability to 
 
 **Reference**: [ADR-0010](adr/0010-model-registry-postgresql.md)
 
+#### Future: Dedicated databases per consumer
+
+Currently MLflow, MaaS API, and EvalHub share the `maas` database. Model Registry already uses a dedicated `model_registry` database after migration conflicts proved that sharing is fragile. Migrate remaining consumers to dedicated databases on the same PostgreSQL instance:
+- `mlflow` — for MLflow tracking (experiments, runs, metrics, artifacts)
+- `maas_api` — for MaaS controller state (API keys, subscriptions)
+- `evalhub` — for EvalHub job tracking
+
+Benefits: isolation of migrations, independent schema evolution, cleaner backup/restore. The init script in `modules/database/charts/database/` already supports `extraDatabases` — just add the database names to `values.yaml`.
+
 #### Future: PostgreSQL TLS
 
 Enable TLS on the shared PostgreSQL instance (`maas-db`) and update all consumers to use `sslMode: verify-ca`. Requires:
