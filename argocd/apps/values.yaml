@@ -9,6 +9,8 @@ modules:
     enabled: true
   maas:
     enabled: true
+    modelRegistry:
+      enabled: true
     models:
       tinyllama-test:
         enabled: true
