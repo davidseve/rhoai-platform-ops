@@ -32,11 +32,11 @@ Our models are pre-trained serving models (vLLM), not products of training pipel
 ### Option 3: PostgreSQL — dedicated database
 
 - Pros: isolation from other consumers
-- Cons: extra database to manage; the `maas` database has no schema collisions (MLMD uses `Type`, `Artifact`, `Context`, `Event` tables that are unique)
+- Cons: extra database to manage
 
 ## Decision
 
-Use **Option 2**: PostgreSQL reusing the shared `maas-db` instance with `skipDBCreation: true`.
+Use **Option 2 (revised)**: PostgreSQL reusing the shared `maas-db` instance, but with a **dedicated database** `model_registry` instead of sharing the `maas` database. Initial testing with the shared `maas` database failed due to `golang-migrate` dirty migration conflicts — MLMD migration versioning collides with pre-existing tables from previous operator reconciliations. A dedicated database on the same instance avoids this while keeping operational simplicity.
 
 The Model Registry is deployed as a separate Helm chart (`modules/maas/charts/model-registry/`) in the `rhoai-model-registries` namespace, with its own ArgoCD Application at sync-wave 2 (after DSC enables the modelregistry component in wave 1).
 

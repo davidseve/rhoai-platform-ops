@@ -48,7 +48,7 @@ class TestHelmTemplate:
         assert "postgres" in mr["spec"]
         assert mr["spec"]["postgres"]["host"] == "maas-db.redhat-ods-applications.svc"
         assert mr["spec"]["postgres"]["port"] == 5432
-        assert mr["spec"]["postgres"]["database"] == "maas"
+        assert mr["spec"]["postgres"]["database"] == "model_registry"
 
     def test_model_registry_skip_db_creation(self):
         docs = _get_docs()

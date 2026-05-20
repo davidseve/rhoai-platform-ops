@@ -3,12 +3,11 @@ global:
   namespace: rhoai-model-registries
 
 # PostgreSQL backend — reuses the maas-db instance in redhat-ods-applications.
-# MLMD (ML Metadata) creates its own tables (Type, Artifact, Context, etc.)
-# that do not collide with MLflow or MaaS API tables in the shared database.
+# Dedicated database to avoid migration conflicts with MLflow/MaaS tables.
 postgresql:
   host: maas-db.redhat-ods-applications.svc
   port: 5432
-  database: maas
+  database: model_registry
   username: maas
   password: maas-eval-password
 
@@ -23,7 +22,7 @@ modelRegistry:
   grpc:
     port: 9090
   postgres:
-    # Database "maas" already exists — skip creation, only create tables
+    # Database "model_registry" already created — skip creation, only run migrations
     skipDBCreation: true
     # Internal cluster communication (pod-to-pod via ClusterIP Service)
     # TLS for shared PostgreSQL is tracked as a cross-cutting future task
