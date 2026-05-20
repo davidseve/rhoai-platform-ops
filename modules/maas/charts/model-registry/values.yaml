@@ -1,0 +1,30 @@
+global:
+  name: model-registry
+  namespace: rhoai-model-registries
+
+# PostgreSQL backend — reuses the maas-db instance in redhat-ods-applications.
+# MLMD (ML Metadata) creates its own tables (Type, Artifact, Context, etc.)
+# that do not collide with MLflow or MaaS API tables in the shared database.
+postgresql:
+  host: maas-db.redhat-ods-applications.svc
+  port: 5432
+  database: maas
+  username: maas
+  password: maas-eval-password
+
+# ModelRegistry CR configuration
+# Ref: https://github.com/opendatahub-io/model-registry-operator
+modelRegistry:
+  name: maas-model-registry
+  rest:
+    port: 8080
+    # disabled: Dashboard accesses via internal proxy, no external Route
+    serviceRoute: disabled
+  grpc:
+    port: 9090
+  postgres:
+    # Database "maas" already exists — skip creation, only create tables
+    skipDBCreation: true
+    # Internal cluster communication (pod-to-pod via ClusterIP Service)
+    # TLS for shared PostgreSQL is tracked as a cross-cutting future task
+    sslMode: disable
