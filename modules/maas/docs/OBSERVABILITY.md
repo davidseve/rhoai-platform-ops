@@ -61,11 +61,11 @@ Envoy metrics are exposed automatically when Istio is present:
 | `istio_requests_total` | Counter | Requests with `response_code`, `source_workload`, `destination_workload` labels |
 | `istio_request_duration_milliseconds` | Histogram | Request latency |
 
-The `TelemetryPolicy` (Kuadrant extension) enriches these with custom labels:
-- `model`: extracted from response body (`responseBodyJSON("/model")`)
-- `user`: from auth identity (`auth.identity.userid`)
+The `TelemetryPolicy` (Kuadrant extension) is configured to enrich these with custom labels (`model`, `user`, `subscription`), but the CEL expressions are Kuadrant WASM functions (`responseBodyJSON()`, `auth.identity.selected_subscription`) that Authorino cannot parse. These errors are non-fatal in RHOAI 3.4 GA — auth works, but Istio metric labels are empty.
 
-> **Note (RHOAI 3.4):** `auth.identity.tier` is NOT populated by KubernetesTokenReview and was removed from the TelemetryPolicy. Tier breakdown uses Limitador's `limit_name` labels instead.
+> **Workaround:** Per-subscription and per-model metrics use Limitador native metrics (`authorized_calls`, `authorized_hits`, `limited_calls`) which have `subscription`, `model`, and `limit_name` labels. Per-user metrics are not available — maas-api does not expose a `/metrics` endpoint (upstream gap).
+>
+> **RHOAI 3.5+:** Re-evaluate when Kuadrant separates WASM and Authorino CEL expression evaluation.
 
 ### 3. Gateway API State Metrics (kube-state-metrics)
 
@@ -145,7 +145,7 @@ The OTel Collector's `spanmetrics` connector converts distributed traces into RE
 | Dashboard | File | Description | Data Sources |
 |-----------|------|-------------|--------------|
 | **Platform Overview** | `platform-overview.json` | Authorized/limited requests, rejection ratio, error rates, active connections | Limitador, Istio |
-| **Tier Usage** | `tier-usage.json` | Per-tier rate limit usage and saturation | Limitador (`limit_name` labels) |
+| **Subscription Usage** | `subscription-usage.json` | Per-subscription request and token breakdown, rejection rates, latency by model | Limitador native (`subscription`, `model`, `limit_name` labels), Istio, vLLM |
 | **vLLM Metrics** | `vllm-metrics.json` | Model latency, KV cache, GPU utilization, error rates | vLLM PodMonitor |
 | **Gateway Infrastructure** | `gateway-infrastructure.json` | Gateway health, routes, policies, resource usage | gateway-api-state-metrics, container metrics |
 
