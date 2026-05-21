@@ -151,7 +151,14 @@ spec:
               }
             }'
           else
-            echo "  Listener TLS already enabled, skipping"
+            echo "  Listener TLS already enabled"
+            READY_STATUS=$(oc get authorino authorino -n "$NAMESPACE" \
+              -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+            if [ "$READY_STATUS" != "True" ]; then
+              echo "  Authorino not ready — forcing operator re-reconciliation..."
+              oc annotate authorino authorino -n "$NAMESPACE" \
+                tls-setup/reconcile-trigger="$(date +%s)" --overwrite
+            fi
           fi
 
           echo "Step 4: Ensure service-ca ConfigMap exists..."
