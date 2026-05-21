@@ -1,0 +1,19 @@
+{{- if .Values.benchmarks.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: benchmarks-results
+  namespace: {{ include "evaluation.namespace" . }}
+  labels:
+    {{- include "evaluation.labels" . | nindent 4 }}
+    app.kubernetes.io/component: benchmarks
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.benchmarks.pvc.storageSize }}
+  {{- if .Values.benchmarks.pvc.storageClassName }}
+  storageClassName: {{ .Values.benchmarks.pvc.storageClassName }}
+  {{- end }}
+{{- end }}

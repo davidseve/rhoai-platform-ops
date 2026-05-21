@@ -35,12 +35,28 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 | vLLM CUDA (RHOAI) | v0.18.0 | `quay.io/modh/vllm:rhoai-2.25-cuda` (for GPU deployments) |
 | TinyLlama 1.1B | 1.0 | `oci://quay.io/rh-aiservices-bu/tinyllama:1.0` |
 
+## Evaluation
+
+| Component | Version | Status | Reference |
+|---|---|---|---|
+| EvalHub | ~0.4.0 | **Tech Preview** | Managed by TrustyAI operator ([ADR-0008](adr/0008-evalhub-orchestrator.md)) |
+| MLflow | 3.10.1 | **GA** | Managed by RHOAI operator (`mlflow.opendatahub.io/v1`) |
+| LMEval (lm-evaluation-harness) | 0.4.8 | **GA** | Managed by TrustyAI operator (`trustyai.opendatahub.io/v1alpha1`) |
+| TrustyAI Operator | 1.37.0 | **GA** | DSC component (`trustyai: Managed`) |
+
+## Model Registry
+
+| Component | Version | Status | Reference |
+|---|---|---|---|
+| Model Registry Operator | 0.3.x | **GA** | Managed by RHOAI operator (`modelregistry: Managed`) |
+| Kubeflow Model Registry | 1.11+ | -- | [Upstream](https://github.com/opendatahub-io/model-registry-operator) |
+
 ## Platform
 
 | Component | Version | Notes |
 |---|---|---|
 | OpenShift Container Platform | 4.19.9+ / 4.20 / 4.21 | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
-| PostgreSQL | 16 | `registry.redhat.io/rhel9/postgresql-16` (maas-api DB) |
+| PostgreSQL | 16 | `registry.redhat.io/rhel9/postgresql-16` (shared DB for maas-api and EvalHub) |
 
 ## Version Bump Summary (3.3 -> 3.4 GA)
 
@@ -50,6 +66,9 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 | vLLM CUDA/ROCm | v0.13.0 | **v0.18.0** |
 | MaaS | 0.0.2 (TP) | **0.1.1 (GA)** |
 | MLflow | 3.6.0 (TP) | **3.10.1 (GA)** |
+| LMEval | -- | **0.4.8 (GA)** |
+| TrustyAI | -- | **1.37.0 (GA)** |
+| EvalHub | -- | **~0.4.0 (TP)** |
 | Data Science Pipelines | 2.5.0 | **2.16.0** |
 | llm-d | -- | **0.7.1 (GA)** |
 | AI Inference Server | -- | **3.4.0 (GA)** |

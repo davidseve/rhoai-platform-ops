@@ -1,0 +1,21 @@
+# Baseline scenario: direct to model service (no gateway overhead)
+# Usage: make run-benchmark BENCHMARK_SCENARIO=baseline
+
+benchmarks:
+  job:
+    enabled: true
+
+  benchmark:
+    # appProtocol=https on the kserve workload service (mTLS), verify disabled via backendKwargs
+    target: "https://tinyllama-test-kserve-workload-svc.models-as-a-service.svc:8000/v1"
+    authSecret: ""
+    authToken: ""
+    profile: "concurrent"
+    rates:
+      - "1"
+      - "2"
+      - "4"
+      - "8"
+    maxSeconds: 60
+    promptTokens: 32
+    outputTokens: 64

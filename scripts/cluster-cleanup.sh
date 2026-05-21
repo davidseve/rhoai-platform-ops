@@ -66,6 +66,17 @@ wait_ns_gone() {
   log "Waiting up to ${timeout}s for namespace $ns to terminate..."
   local elapsed=0
   while $OC get ns "$ns" &>/dev/null; do
+    # If stuck in Terminating for >30s, force-clean immediately instead of
+    # waiting for the full timeout — the namespace won't recover on its own.
+    if (( elapsed >= 30 )); then
+      local phase
+      phase=$($OC get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+      if [[ "$phase" == "Terminating" ]]; then
+        warn "Namespace $ns stuck in Terminating after ${elapsed}s -- forcing cleanup"
+        force_delete_ns "$ns"
+        return 0
+      fi
+    fi
     if (( elapsed >= timeout )); then
       warn "Namespace $ns still exists after ${timeout}s -- attempting finalizer cleanup"
       force_delete_ns "$ns"
@@ -82,17 +93,28 @@ force_delete_ns() {
   if ! $OC get ns "$ns" &>/dev/null; then return 0; fi
   log "Force-cleaning namespace $ns (clearing blocking finalizers)..."
 
-  for resource in $($OC api-resources --verbs=list --namespaced -o name 2>/dev/null); do
-    if ! $OC get ns "$ns" &>/dev/null; then break; fi
-    for item in $($OC get "$resource" -n "$ns" -o name 2>/dev/null); do
-      $OC patch "$item" -n "$ns" --type=merge \
-        -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+  # Only target CRDs from our operators — core resources (pods, services, etc.)
+  # are cleaned by the namespace controller. Iterating all api-resources causes
+  # MethodNotAllowed errors on read-only resources like events and bindings.
+  local crds
+  crds=$($OC get crd -o name 2>/dev/null \
+    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset)' \
+    | sed 's|customresourcedefinition.apiextensions.k8s.io/||' || true)
+
+  for crd in $crds; do
+    for item in $($OC get "$crd" -n "$ns" -o name 2>/dev/null); do
+      run "$OC patch '$item' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
   done
 
-  if $OC get ns "$ns" &>/dev/null; then
-    run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
+  # Clear namespace finalizers via the finalize subresource API
+  if [[ "$DRY_RUN" != "true" ]]; then
+    $OC get ns "$ns" -o json 2>/dev/null \
+      | jq '.spec.finalizers = []' \
+      | $OC replace --raw "/api/v1/namespaces/$ns/finalize" -f - 2>/dev/null || true
   fi
+
+  run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
 }
 
 # ============================================================
@@ -104,7 +126,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in maas-model-fast maas-model maas-platform maas-db maas-operators obs-tracing obs-grafana obs-operators; do
+  for release in evaluation benchmarks model-registry maas-model-fast maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -145,6 +167,15 @@ cleanup_maas_residual() {
       run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
     run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
+
+    # MaaS controller CRs — finalizers block namespace deletion when controller is gone
+    log "Clearing MaaS controller CR finalizers..."
+    for crd in maasauthpolicy maasmodelref maassubscription; do
+      for item in $($OC get "$crd" -n "$model_ns" -o name 2>/dev/null); do
+        run "$OC patch '$item' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete '$crd' --all -n '$model_ns' --timeout=30s --ignore-not-found"
+    done
   fi
 
   # DataScienceCluster / DSCInitialization can block namespace deletion.
@@ -309,9 +340,8 @@ cleanup_argocd() {
 
   if ! command -v "$ARGOCD" &>/dev/null; then
     warn "argocd CLI not found -- falling back to oc delete (no cascade)"
-    for app in maas-model-fast maas-model maas-platform maas-db maas-operators \
-               observability-tracing observability-grafana observability-operators \
-               rhoai-platform-ops; do
+    for app in evaluation maas-model-registry maas-model-fast maas-model maas-platform maas-operators database \
+               observability-tracing observability-grafana observability-operators; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
     done
     sleep 10
@@ -345,6 +375,14 @@ cleanup_argocd() {
       run "$OC patch '$tenant' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
     run "$OC delete tenant --all -n '$model_ns' --timeout=30s --ignore-not-found"
+    # MaaS controller CRs (MaaSAuthPolicy, MaaSModelRef, MaaSSubscription) can also
+    # have finalizers that block namespace deletion when the controller is gone.
+    for crd in maasauthpolicy maasmodelref maassubscription; do
+      for item in $($OC get "$crd" -n "$model_ns" -o name 2>/dev/null); do
+        run "$OC patch '$item' -n '$model_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete '$crd' --all -n '$model_ns' --timeout=30s --ignore-not-found"
+    done
   fi
   for dsc in $($OC get datasciencecluster -o name 2>/dev/null); do
     run "$OC patch '$dsc' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
@@ -354,9 +392,9 @@ cleanup_argocd() {
   done
 
   # 3. Delete child apps in reverse wave order (wave 2 → 1 → 0)
-  delete_apps_and_wait "wave 2" maas-model-fast maas-model benchmarks
-  delete_apps_and_wait "wave 1" maas-platform maas-db observability-tracing observability-grafana
-  delete_apps_and_wait "wave 0" maas-operators observability-operators
+  delete_apps_and_wait "wave 2" maas-model-registry maas-model-fast maas-model evaluation
+  delete_apps_and_wait "wave 1" maas-platform observability-tracing observability-grafana
+  delete_apps_and_wait "wave 0" maas-operators observability-operators database
 
   # 4. Delete app-of-apps last
   log "Deleting app-of-apps..."
@@ -394,8 +432,8 @@ verify_cleanup() {
   for ns in $($OC get ns -o name 2>/dev/null | grep 'maas-default-gateway-tier-' | sed 's|namespace/||'); do
     namespaces+=("$ns")
   done
-  namespaces+=("benchmarks")
-  # -- Add new module namespaces here --
+  namespaces+=("evaluation")
+  namespaces+=("rhoai-model-registries")
 
   for ns in "${namespaces[@]}"; do
     if $OC get ns "$ns" &>/dev/null; then
@@ -407,7 +445,7 @@ verify_cleanup() {
   done
 
   local apps
-  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|benchmarks' || true)
+  apps=$($OC get applications.argoproj.io -n openshift-gitops -o name 2>/dev/null | grep -E 'maas-|rhoai-platform-ops|observability-|evaluation|database|model-registry' || true)
   if [[ -n "$apps" ]]; then
     warn "ArgoCD applications still present: $apps"
     failed=1
@@ -423,19 +461,78 @@ verify_cleanup() {
 }
 
 # ============================================================
-# Benchmarks cleanup
+# Module: Evaluation -- residual resources (includes benchmarks, see ADR-0007)
 # ============================================================
-cleanup_benchmarks_residual() {
-  log "=== Benchmarks: Cleaning up residual resources ==="
-  local ns="benchmarks"
+cleanup_evaluation_residual() {
+  log "=== Evaluation: Cleaning up residual resources ==="
+  local ns="evaluation"
 
-  # 1. Delete benchmark Jobs
+  # EvalHub-created evaluation Jobs (UUID-named pods)
+  log "Deleting EvalHub evaluation Jobs..."
   run "$OC delete jobs --all -n '$ns' --timeout=60s --ignore-not-found"
 
-  # 2. Delete PVCs
-  run "$OC delete pvc --all -n '$ns' --timeout=60s --ignore-not-found"
+  # GuideLLM benchmark PVCs
+  log "Deleting benchmark PVCs..."
+  run "$OC delete pvc benchmarks-results -n '$ns' --timeout=60s --ignore-not-found"
 
-  # 3. Delete namespace
+  # EvalHub CR
+  log "Deleting EvalHub CRs..."
+  run "$OC delete evalhub --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # MLflow CR (cluster-scoped)
+  log "Deleting MLflow CRs..."
+  run "$OC delete mlflow --all --timeout=60s --ignore-not-found"
+
+  # LMEvalJob CRs (may exist in evaluation namespace)
+  log "Deleting LMEvalJob CRs..."
+  run "$OC delete lmevaljob --all -n '$ns' --timeout=60s --ignore-not-found"
+
+  # Secrets in redhat-ods-applications (created by evaluation chart)
+  run "$OC delete secret mlflow-db-config -n redhat-ods-applications --ignore-not-found"
+
+  # Route in redhat-ods-applications (created by evaluation chart)
+  run "$OC delete route mlflow -n redhat-ods-applications --ignore-not-found"
+
+  # Namespace
+  run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
+  wait_ns_gone "$ns" 120
+
+  # Legacy: clean up old benchmarks namespace if it still exists
+  if [[ "$DRY_RUN" != "true" ]] && $OC get ns benchmarks &>/dev/null; then
+    log "Cleaning up legacy benchmarks namespace..."
+    run "$OC delete jobs --all -n benchmarks --timeout=60s --ignore-not-found"
+    run "$OC delete pvc --all -n benchmarks --timeout=60s --ignore-not-found"
+    run "$OC delete ns benchmarks --timeout=60s --ignore-not-found"
+    wait_ns_gone "benchmarks" 120
+  fi
+}
+
+# ============================================================
+# Module: Model Registry -- residual resources
+# ============================================================
+cleanup_model_registry_residual() {
+  log "=== Model Registry: Cleaning up residual resources ==="
+  local ns="rhoai-model-registries"
+
+  if $OC get ns "$ns" &>/dev/null; then
+    # ModelRegistry CRs can have finalizers from the operator
+    log "Deleting ModelRegistry CRs..."
+    for mr in $($OC get modelregistry -n "$ns" -o name 2>/dev/null); do
+      run "$OC patch '$mr' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+    done
+    run "$OC delete modelregistry --all -n '$ns' --timeout=60s --ignore-not-found"
+
+    # Secrets and Jobs
+    log "Deleting Secrets and Jobs..."
+    run "$OC delete secret --all -n '$ns' --timeout=30s --ignore-not-found"
+    run "$OC delete jobs --all -n '$ns' --timeout=30s --ignore-not-found"
+  fi
+
+  # Catalog ConfigMaps (created by maas-model chart in model-registries namespace)
+  log "Deleting catalog ConfigMaps..."
+  run "$OC delete configmap -l app.kubernetes.io/part-of=maas-model-catalog -n '$ns' --ignore-not-found"
+
+  # Namespace
   run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   wait_ns_gone "$ns" 120
 }
@@ -461,19 +558,27 @@ main() {
   # 2. Delete ArgoCD applications (cascade removes chart-managed resources)
   cleanup_argocd
 
-  # 3. Clean residual resources not managed by ArgoCD charts
+  # 3. Safety net: clean resources that may survive ArgoCD cascade delete.
+  #    ArgoCD cascade handles most chart-managed resources, but these edge cases remain:
+  #    - Stuck finalizers (operator deleted before its CRs could finalize)
+  #    - Cluster-scoped resources (GatewayClass, ClusterRoles, DSC/DSCI)
+  #    - Dynamic resources not in charts (tier namespaces from AuthPolicy)
+  #    - Operator Subscriptions/CSVs that sometimes linger after cascade
   if [[ -n "$MODULE" ]]; then
     case "$MODULE" in
-      maas)          cleanup_maas_residual ;;
-      observability) cleanup_observability_residual ;;
-      benchmarks)    cleanup_benchmarks_residual ;;
+      maas)            cleanup_model_registry_residual; cleanup_maas_residual ;;
+      model-registry)  cleanup_model_registry_residual ;;
+      observability)   cleanup_observability_residual ;;
+      evaluation)      cleanup_evaluation_residual ;;
+      database)        log "Database resources are cleaned up as part of maas (redhat-ods-applications namespace)." ;;
       *)
-        echo "ERROR: Unknown module '$MODULE'. Available: maas, observability, benchmarks" >&2
+        echo "ERROR: Unknown module '$MODULE'. Available: maas, model-registry, observability, evaluation, database" >&2
         exit 1
         ;;
     esac
   else
-    cleanup_benchmarks_residual
+    cleanup_evaluation_residual
+    cleanup_model_registry_residual
     cleanup_observability_residual
     cleanup_maas_residual
   fi

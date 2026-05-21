@@ -1,0 +1,36 @@
+{{- if .Values.evalhub.enabled }}
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: EvalHub
+metadata:
+  name: {{ .Values.evalhub.name }}
+  namespace: {{ include "evaluation.namespace" . }}
+  labels:
+    {{- include "evaluation.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  replicas: {{ .Values.evalhub.replicas }}
+  providers:
+    {{- range .Values.evalhub.providers }}
+    - {{ . }}
+    {{- end }}
+  collections:
+    {{- range .Values.evalhub.collections }}
+    - {{ . }}
+    {{- end }}
+  database:
+    type: {{ .Values.evalhub.database.type }}
+    secret: {{ .Values.evalhub.database.secret }}
+  env:
+    - name: MLFLOW_TRACKING_URI
+      value: "https://{{ .Values.mlflow.name }}.redhat-ods-applications.svc:8443"
+  {{- if .Values.evalhub.otel.enabled }}
+  otel:
+    enableMetrics: true
+    enableTracing: true
+    enableLogs: false
+    exporterType: otlp
+    exporterEndpoint: "otel-collector.observability.svc:4317"
+    exporterInsecure: true
+  {{- end }}
+{{- end }}

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository uses a modular structure where each operational concern (MaaS, observability, benchmarks, evaluation) is an independent module. Modules can be deployed individually or together.
+This repository uses a modular structure where each operational concern (MaaS, observability, evaluation) is an independent module. Modules can be deployed individually or together.
 
 ## Directory Layout
 
@@ -48,7 +48,7 @@ rhoai-platform-ops/
 
 ### Independence
 
-Each module is self-contained. You can deploy MaaS without observability, or observability without benchmarks. The ArgoCD app-of-apps uses `enabled` flags:
+Each module is self-contained. You can deploy MaaS without observability, or evaluation without MaaS. The ArgoCD app-of-apps uses `enabled` flags:
 
 ```yaml
 # argocd/apps/values.yaml
@@ -102,16 +102,15 @@ Grafana dashboards, vLLM metrics collection, tracing, alerting rules.
 | `grafana` | Grafana CR, SA, RBAC, Thanos + Tempo datasources, dashboards |
 | `tracing` | TempoMonolithic CR, OpenTelemetryCollector CR, ServiceMonitor |
 
-### benchmarks (Ready)
+### evaluation (Ready)
 
-Load testing using GuideLLM v0.6.0+. ArgoCD deploys infrastructure (namespace, PVC, SA, CA bundle); benchmark Jobs run on-demand via `make run-benchmark`. TLS verification uses the cluster CA bundle (injected by OpenShift), not `verify: false`.
+Unified LLM evaluation: EvalHub (quality), MLflow (tracking), GuideLLM benchmarks (performance). See [ADR-0007](adr/0007-merge-benchmarks-into-evaluation.md) for the merge decision.
 
-| Chart | Description |
-|-------|-------------|
-| `benchmarks` | Namespace, PVC for results, ServiceAccount, CA bundle ConfigMap, GuideLLM K8s Job (conditional) |
+| Component | Description |
+|-----------|-------------|
+| EvalHub | Evaluation control plane (TrustyAI, RHOAI 3.4 TP) |
+| MLflow | Experiment tracking and artifact storage |
+| GuideLLM | Load testing with PVC results, SA, CA bundle, K8s Job (conditional) |
+| LMEvalJob | On-demand model quality evaluations |
 
-Scenarios: `gateway` (concurrent c=1,2,4,8), `baseline` (direct to model, same rates), `stress` (sweep 5 points, 4Gi), `slo` (constant 4 RPS). See [BENCHMARKS.md](../modules/benchmarks/docs/BENCHMARKS.md) for details.
-
-### evaluation (Planned)
-
-MLflow Tracking Server for experiment logging and model evaluation.
+Benchmark scenarios: `gateway`, `baseline`, `stress`, `slo`. See [BENCHMARKS.md](../modules/evaluation/docs/BENCHMARKS.md) and [EVALUATION.md](../modules/evaluation/docs/EVALUATION.md) for details.

@@ -25,9 +25,10 @@ datasciencecluster:
     kueue:
       managementState: Removed
     mlflowoperator:
-      managementState: Removed
+      managementState: Managed
     modelregistry:
-      managementState: Removed
+      managementState: Managed
+      registriesNamespace: rhoai-model-registries
     ray:
       managementState: Removed
     trainer:
@@ -35,7 +36,15 @@ datasciencecluster:
     trainingoperator:
       managementState: Removed
     trustyai:
-      managementState: Removed
+      managementState: Managed
+      eval:
+        lmeval:
+          # allow: benchmarks can execute LLM-generated code (needed for HumanEval-type evals)
+          # deny: blocks code execution (safer, sufficient for MMLU/HellaSwag/etc.)
+          permitCodeExecution: deny
+          # allow: evaluations can download datasets from HuggingFace during execution
+          # deny: air-gapped evaluations (requires datasets pre-loaded in the cluster)
+          permitOnline: allow
     sparkoperator:
       managementState: Removed
     workbenches:

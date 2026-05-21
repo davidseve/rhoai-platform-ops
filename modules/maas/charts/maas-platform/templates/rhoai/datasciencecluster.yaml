@@ -25,6 +25,9 @@ spec:
       managementState: {{ .Values.datasciencecluster.components.mlflowoperator.managementState }}
     modelregistry:
       managementState: {{ .Values.datasciencecluster.components.modelregistry.managementState }}
+      {{- if eq .Values.datasciencecluster.components.modelregistry.managementState "Managed" }}
+      registriesNamespace: {{ .Values.datasciencecluster.components.modelregistry.registriesNamespace }}
+      {{- end }}
     ray:
       managementState: {{ .Values.datasciencecluster.components.ray.managementState }}
     trainer:
@@ -33,6 +36,10 @@ spec:
       managementState: {{ .Values.datasciencecluster.components.trainingoperator.managementState }}
     trustyai:
       managementState: {{ .Values.datasciencecluster.components.trustyai.managementState }}
+      eval:
+        lmeval:
+          permitCodeExecution: {{ .Values.datasciencecluster.components.trustyai.eval.lmeval.permitCodeExecution }}
+          permitOnline: {{ .Values.datasciencecluster.components.trustyai.eval.lmeval.permitOnline }}
     sparkoperator:
       managementState: {{ .Values.datasciencecluster.components.sparkoperator.managementState }}
     workbenches:

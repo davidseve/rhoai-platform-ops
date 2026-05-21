@@ -1,0 +1,6 @@
+apiVersion: v2
+name: evaluation
+description: Unified LLM evaluation -- EvalHub (quality), MLflow (tracking), GuideLLM benchmarks (performance)
+type: application
+version: 0.2.0
+appVersion: "3.4.0"

@@ -1,0 +1,141 @@
+global:
+  name: evaluation
+  namespace: evaluation
+
+# Namespace for evaluation resources
+namespace:
+  enabled: true
+
+# PostgreSQL backend — reuses the maas-db instance in redhat-ods-applications.
+# MLflow and EvalHub create their own tables in the shared database.
+# DNS fix: mlflow-dns-fix.yaml adds a NetworkPolicy allowing port 5353 egress
+# to work around opendatahub-io/mlflow-operator#112 (fix merged, not released).
+postgresql:
+  host: maas-db.redhat-ods-applications.svc
+  port: 5432
+  user: maas
+  password: maas-eval-password
+  database: maas
+
+# MLflow Tracking Server (cluster-scoped CR; operator deploys to redhat-ods-applications)
+mlflow:
+  enabled: true
+  name: mlflow
+  replicas: 1
+  # Serve artifacts via MLflow REST API
+  serveArtifacts: true
+  artifactsDestination: "file:///mlflow/artifacts"
+  storage:
+    size: 10Gi
+  # Route for MLflow UI (created in redhat-ods-applications)
+  route:
+    enabled: true
+
+# EvalHub evaluation control plane
+evalhub:
+  enabled: true
+  name: evalhub
+  replicas: 1
+  # Database backend for EvalHub (postgresql requires evalhub-db Secret)
+  database:
+    type: postgresql
+    secret: evalhub-db
+  # Model auth Secret (created by post-install hook with service-serving CA)
+  modelAuth:
+    secretName: model-auth
+  # Providers to mount from OOTB ConfigMaps
+  providers:
+    - lm-evaluation-harness
+    - guidellm
+    - garak
+    - lighteval
+  # Collections to mount from OOTB ConfigMaps
+  collections:
+    - leaderboard-v2
+  # OpenTelemetry (integrates with existing observability stack)
+  otel:
+    enabled: false
+
+# DEPRECATED: LMEvalJob on-demand evaluation. Use EvalHub API instead (make evalhub-eval).
+# Kept as fallback when EvalHub is not available.
+lmeval:
+  enabled: false
+  # Model endpoint (vLLM/KServe internal URL)
+  model: tinyllama-test
+  modelUrl: "https://tinyllama-test-kserve-workload-svc.models-as-a-service.svc:8000/v1/completions"
+  # Evaluation task (lm-evaluation-harness task name)
+  task: arc_easy
+  # Number of samples (set low for testing)
+  limit: "10"
+  numConcurrent: "1"
+  # Model type: local-completions (loglikelihood) or local-chat-completions (generation)
+  modelType: local-completions
+  # Allow online access for HuggingFace downloads
+  allowOnline: true
+
+# Combined CA bundle (system root CAs + OpenShift service-serving CA)
+# WORKAROUND for RHOAI 3.4 EA2: LMEvalJob pods need both system root CAs
+# (for HuggingFace downloads) and OpenShift service-serving CA (for vLLM/KServe
+# internal TLS). Neither ConfigMap alone is sufficient.
+# Review at GA: the operator may handle this automatically.
+caBundle:
+  enabled: true
+  name: combined-ca-bundle
+  # Image with oc/kubectl CLI for the init Job
+  image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+
+# DEPRECATED: GuideLLM direct Job. Use EvalHub API instead (make evalhub-benchmark).
+# Infrastructure (PVC, SA) still deployed for fallback. Jobs via EvalHub are preferred.
+benchmarks:
+  enabled: true
+
+  # Results storage
+  pvc:
+    storageSize: 5Gi
+    # Leave empty to use cluster default StorageClass
+    storageClassName: ""
+
+  # Job configuration -- disabled by default (ArgoCD deploys infra only)
+  job:
+    enabled: false
+    image: ghcr.io/vllm-project/guidellm:v0.6.0
+    backoffLimit: 0
+    # Auto-delete completed Job after 24h
+    ttlSecondsAfterFinished: 86400
+    resources:
+      requests:
+        cpu: "1"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "2Gi"
+
+  # Benchmark parameters
+  benchmark:
+    # Target endpoint (gateway route by default)
+    target: "https://maas.apps.CHANGE_ME/v1"
+    model: "tinyllama-test"
+    # HuggingFace model ID for tokenizer (needed for synthetic data generation)
+    processor: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    requestType: "chat_completions"
+    # Load profile: concurrent | constant | poisson | sweep | synchronous
+    profile: "concurrent"
+    rates:
+      - "1"
+      - "2"
+      - "4"
+      - "8"
+    maxSeconds: 60
+    # Payload size (prompt/output tokens)
+    promptTokens: 32
+    outputTokens: 64
+    # Output formats: json, csv, html, yaml
+    outputs: "json,csv"
+    warmup: "0.1"
+    cooldown: "0.1"
+    # TLS verification uses the cluster CA bundle (injected via ConfigMap)
+    verifySSL: true
+    # Auth: use authSecret (Secret name with key "token") or authToken (inline, dev only)
+    authSecret: ""
+    authToken: ""
+    extraArgs: []

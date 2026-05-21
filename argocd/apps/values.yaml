@@ -1,12 +1,16 @@
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-targetRevision: main
+targetRevision: feat/evalhub-integration
 # Cluster domain (e.g. apps.ocp.sandbox1476.opentlc.com).
 # Auto-detected by Makefile; sets gateway.hostname and route.host to maas.<clusterDomain>.
 clusterDomain: ""
 
 modules:
+  database:
+    enabled: true
   maas:
     enabled: true
+    modelRegistry:
+      enabled: true
     models:
       tinyllama-test:
         enabled: true
@@ -14,7 +18,5 @@ modules:
         enabled: true
   observability:
     enabled: true
-  benchmarks:
-    enabled: true
   evaluation:
-    enabled: false
+    enabled: true

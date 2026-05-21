@@ -10,8 +10,8 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 | **MaaS**          | `modules/maas/`          | Model serving with API governance          | None (base module)            |
 | **Observability** | `modules/observability/` | Metrics, dashboards, alerts                | MaaS (for vLLM metrics)       |
 | **Traceability**  | Part of observability    | Request tracing with OpenTelemetry + Tempo | Observability module          |
-| **Benchmarks**    | `modules/benchmarks/`    | Load testing and performance baselines     | MaaS (models must be running) |
-| **Evaluation**    | `modules/evaluation/`    | MLflow tracking, experiment comparison     | None (independent)            |
+| **Evaluation**    | `modules/evaluation/`    | Quality eval, MLflow tracking, GuideLLM benchmarks | MaaS (models must be running) |
+| **Model Registry**| `modules/maas/charts/model-registry/` + `maas-model` catalog | Model governance catalog in RHOAI Dashboard | MaaS (DSC modelregistry: Managed) |
 
 
 ## Implementation Order
@@ -165,7 +165,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > **Deprecations:** TGIS, ModelMesh, Serverless KServe, Kubeflow v1 Training Operator — none used in this project.
 >
 > **Installation flow:** Database → Gateway → DSC → Models. Current sync-waves: 0(operators+DB) → 1(platform+gateway+DSC) → 2(models). Close enough — ArgoCD retries handle ordering within a wave.
-### Phase 3: Benchmarks
+### Phase 3: Benchmarks (merged into evaluation module -- see [ADR-0007](adr/0007-merge-benchmarks-into-evaluation.md))
 
 Goal: identify system limits with repeatable load tests.
 
@@ -195,6 +195,10 @@ Goal: identify system limits with repeatable load tests.
   - Correlate infrastructure metrics with GuideLLM results
   - Monitor `kserve_vllm:gpu_cache_usage_perc` during tests (GPU deployments)
 - [ ] Integrate with MLflow for result tracking
+- [ ] Offline benchmark execution (air-gapped clusters)
+  - GuideLLM requires internet to download HuggingFace tokenizers and datasets at runtime
+  - Evaluate options: pre-baked datasets in PVC, init container with HF cache, custom `--data` flag with local file
+  - Affects reproducibility in restricted environments
 - [x] E2E tests: 16 tests (13 template validation + 3 cluster infra)
 - [x] `make run-benchmark` waits for Job completion and shows logs
 
@@ -204,17 +208,100 @@ Goal: identify system limits with repeatable load tests.
 
 **Why GuideLLM over Mooncake trace replay (2026-05-13)**: GuideLLM (vLLM project, v0.6.0) is significantly more mature -- collects TTFT/ITL/throughput natively, supports sweep profiles to auto-discover operating ranges, outputs JSON/CSV/HTML, and installs with `pip`. Mooncake trace replay scripts required substantial adaptation and lacked automated sweep. Trade-off: GuideLLM doesn't support controlled prefix sharing (relevant for KV cache benchmarks); revisit if prefix-cache-aware routing becomes a priority.
 
-### Phase 4: Evaluation
+### Phase 4: Evaluation (DONE -- now includes benchmarks, see [ADR-0007](0007-merge-benchmarks-into-evaluation.md))
 
-Goal: track experiments and compare model/configuration changes.
+Goal: unified evaluation platform for model quality, experiment tracking, and performance benchmarks.
 
-- Deploy MLflow Tracking Server on OpenShift
-- Configure persistent storage (S3/MinIO or PVC)
-- Integrate benchmark results logging
-- Create experiment comparison workflows
-- E2E tests: MLflow up, can log and retrieve experiments
+- [x] Deploy EvalHub (TrustyAI) as evaluation control plane
+  - Providers: lm-evaluation-harness, guidellm, garak, lighteval
+  - Collections: leaderboard-v2
+- [x] Deploy MLflow Tracking Server via RHOAI MLflow Operator
+  - Cluster-scoped CR, operator deploys to `redhat-ods-applications`
+  - Artifact storage: PVC (10Gi), `--serve-artifacts` enabled
+  - Route for MLflow UI
+- [x] Extract shared PostgreSQL to independent `database` module
+  - `modules/database/charts/database/` with own ArgoCD Application (sync-wave 0)
+  - Used by MaaS API, MLflow, and EvalHub
+- [x] LMEvalJob template for on-demand evaluations (DEPRECATED — use EvalHub API)
+  - Combined CA bundle (system root CAs + OpenShift service-serving CA) for internal TLS + HuggingFace
+- [x] EvalHub as evaluation orchestrator (see [ADR-0008](0008-evalhub-orchestrator.md))
+  - REST API: `POST /api/v1/evaluations/jobs` creates K8s Jobs, auto-logs to MLflow
+  - `scripts/evalhub.sh` wrapper + `make evalhub-eval` / `make evalhub-benchmark` / `make evalhub-smoke` / `make evalhub-security`
+  - 4 providers (lm-eval 174 benchmarks, guidellm 7 profiles, garak 8, lighteval 23)
+  - Collection: `leaderboard-v2` (IFEval, BBH, GPQA, MMLU-Pro, MuSR, MATH-Hard)
+  - TLS resolved via `model.auth.secret_ref` — Secret with `ca_cert` key (service-serving CA), auto-created by Helm post-install hook
+  - MLflow logging functional with `experiment` field in job payload (auto-generated by `evalhub.sh`)
+- [x] E2E tests: 47 tests (12 template evaluation + 10 cluster infra + 15 template benchmarks + 2 cluster benchmarks + 8 API/infra)
+- [x] Speed optimization: `--max-seconds`, `--timeout`, `--extra-params` flags in `evalhub.sh`, benchmark default `throughput` instead of `sweep`
 
-**Tools**: MLflow (community; evaluate RHOAI MLflow Operator when available).
+#### Provider validation status (2026-05-14, CPU models)
+
+| Provider | Status | Details |
+|----------|--------|---------|
+| **lm-eval** | **Working** | `arc_easy` with `limit=10` completes in ~15 min. MLflow metrics logged correctly. `limit=1` also works but still takes ~15 min (9500 API requests for loglikelihood across all answer choices). |
+| **GuideLLM** | **Not validated** | `throughput` profile with `max_seconds=30`: setup completes (tokenizer download, config) but no benchmark output after 10+ min. `sweep` (10 strategies): 2h+ without completing. Root cause: vLLM on CPU is too slow for the default payload (256/128 tokens). Needs GPU or much smaller payloads. |
+| **Garak** | **Not validated** | `quick` scan with `timeout=900` + `soft_probe_prompt_cap=10`: loads probe `dan.Dan_11_0` but gets stuck at "Preparing prompts 0%" — waiting for model response. CPU inference too slow for garak's prompt patterns. Default 600s timeout insufficient. |
+| **Lighteval** | **Not validated** | `hellaswag`: OOMKilled repeatedly (full dataset ~10k items, ignores `--limit` parameter). Needs small datasets like `glue:cola` (~250 items) or GPU with more memory. |
+
+#### Pending
+
+- [ ] **Validate GuideLLM on GPU**: `throughput` profile should complete in minutes on GPU. Test with `make evalhub-benchmark MODEL_URL=<gpu-model-url>`.
+- [ ] **Validate Garak on GPU**: `quick` scan with `soft_probe_prompt_cap=1` times out at 1200s on CPU even without contention. Garak is excluded from `test-evalhub` (CPU-only E2E). Test on GPU with `make evalhub-security MODEL_URL=<gpu-model-url>` — should complete in <5 min.
+- [ ] **Validate Lighteval**: Use `glue:cola` (small dataset) or test on GPU with more memory. Lighteval ignores `--limit` — this is an adapter limitation, not configurable.
+- [ ] **Smoke test on GPU**: `make evalhub-smoke` should complete in ~3-5 min on GPU. On CPU it takes ~15 min due to 9500 loglikelihood API requests even with `limit=1`.
+- [ ] **MLflow Tracing for evaluations**: MLflow server exposes `/v1/traces` OTLP endpoint (since RHOAI 3.3), but EvalHub adapter does not instrument LLM calls with `mlflow.trace()` — only final metrics are logged. Tracked: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The EvalHub ADR (`ODH-ADR-EH-0001`) plans dual tracing (parent trace from EvalHub, child spans from benchmark pods). Re-evaluate when upstream implements this.
+- [ ] **Real-time evaluation progress in MLflow**: MLflow "Duration" shows only the logging call (~40ms), not the actual evaluation time (stored as `duration_seconds` parameter). Investigate: (1) streaming intermediate metrics from adapters during evaluation so MLflow shows live progress, (2) using MLflow `system_metrics` to track pod resource usage during runs, (3) whether EvalHub's event API (`/jobs/{id}/events`) can feed a progress dashboard.
+- [x] **Register evaluated models in Model Registry**: Resolved via Phase 5 (Model Registry). Models are registered declaratively via ConfigMap catalog entries generated from `maas-model` chart. RHOAI Model Registry (Kubeflow) chosen over MLflow Model Registry — our models are serving models, not training outputs. Traceability via `customProperties.mlflow_experiment` linking to MLflow experiment names. See [ADR-0010](adr/0010-model-registry-postgresql.md).
+- [ ] **GuideLLM adapter does not log to MLflow**: The GuideLLM adapter reports metrics to EvalHub via events but does not create an MLflow run. The lm-eval adapter does (`mlflow_run_id` present). Benchmark results are only visible via `evalhub.sh status <job-id>`, not in MLflow UI. Investigate: is this an upstream limitation of the GuideLLM adapter, or does it require explicit MLflow configuration in the EvalHub CR? Same likely applies to Garak adapter.
+- [ ] **Create experiment comparison workflows in MLflow**
+- [ ] **External authenticated endpoints**: `api-key` in `model.auth.secret_ref` is exposed as `ModelCredentials.api_key` but NOT set as `OPENAI_API_KEY` env var. Adapters (GuideLLM, lm-eval) that read `OPENAI_API_KEY` natively won't work with external authenticated endpoints. Use internal KServe URLs (no auth) for now.
+
+**Known issue -- MLflow DNS resolution (RHOAI 3.4 EA2):**
+The MLflow operator creates a NetworkPolicy allowing egress on port 53 (DNS), but OpenShift CoreDNS pods listen on target port 5353. OVN-Kubernetes evaluates egress rules after DNAT, so traffic to CoreDNS arrives on port 5353, which is blocked.
+Fix: [opendatahub-io/mlflow-operator#112](https://github.com/opendatahub-io/mlflow-operator/pull/112) (merged 2026-04-17, not yet in any release; latest is v1.1.0).
+Workaround: `mlflow-dns-fix.yaml` adds a supplementary NetworkPolicy allowing egress on port 5353. Remove when RHOAI ships mlflow-operator > v1.1.0.
+
+**Tools**: EvalHub (TrustyAI, RHOAI 3.4 Tech Preview), MLflow (RHOAI MLflow Operator), lm-evaluation-harness.
+
+**Reference**: [EVALUATION.md](../modules/evaluation/docs/EVALUATION.md)
+
+### Phase 5: Model Registry (DONE)
+
+Goal: model governance catalog visible in RHOAI Dashboard, with traceability to MLflow experiments.
+
+- [x] Enable `modelregistry: Managed` in DSC with `registriesNamespace: rhoai-model-registries`
+- [x] Create `model-registry` Helm chart with ModelRegistry CR (v1beta1) and PostgreSQL backend
+  - Reuses shared `maas-db` with `skipDBCreation: true` (MLMD tables don't collide)
+  - `sslMode: disable` (consistent with all other PostgreSQL consumers)
+- [x] Declarative model catalog via ConfigMap entries generated from `maas-model` chart
+  - `customProperties.mlflow_experiment` links to MLflow experiment names for traceability
+  - One ConfigMap per model, labeled `opendatahub.io/dashboard: "true"`
+- [x] ArgoCD Application at sync-wave 2 with retry limit 30 (exponential backoff up to 15m)
+- [x] Makefile targets: `deploy-model-registry`, `undeploy-model-registry`
+- [x] E2E tests: 8 template validation + 4 cluster validation
+- [x] Cluster cleanup script updated
+
+**Red Hat products**: RHOAI Model Registry (Kubeflow Model Registry operator).
+
+**Reference**: [ADR-0010](adr/0010-model-registry-postgresql.md)
+
+#### Future: Dedicated databases per consumer
+
+Currently MLflow, MaaS API, and EvalHub share the `maas` database. Model Registry already uses a dedicated `model_registry` database after migration conflicts proved that sharing is fragile. Migrate remaining consumers to dedicated databases on the same PostgreSQL instance:
+- `mlflow` — for MLflow tracking (experiments, runs, metrics, artifacts)
+- `maas_api` — for MaaS controller state (API keys, subscriptions)
+- `evalhub` — for EvalHub job tracking
+
+Benefits: isolation of migrations, independent schema evolution, cleaner backup/restore. The init script in `modules/database/charts/database/` already supports `extraDatabases` — just add the database names to `values.yaml`.
+
+#### Future: PostgreSQL TLS
+
+Enable TLS on the shared PostgreSQL instance (`maas-db`) and update all consumers to use `sslMode: verify-ca`. Requires:
+1. Configure certificates on PostgreSQL pod via `service-ca` or `cert-manager`
+2. Update all connection strings: MLflow, EvalHub, MaaS API, Model Registry
+3. Distribute CA bundle to all consuming pods
+
+Cross-cutting change affecting modules: `database`, `evaluation`, `maas`, and `model-registry`. Low priority while communication is internal (pod-to-pod via ClusterIP Service within the cluster network).
 
 ## Decision Log
 
@@ -225,3 +312,8 @@ Key decisions are documented as ADRs in [docs/adr/](adr/):
 - [ADR-0003: Grafana Operator for dashboards](adr/0003-grafana-operator.md)
 - [ADR-0004: Tracing stack (OTel + Tempo)](adr/0004-tracing-stack.md)
 - [ADR-0005: MaaS Subscription Model (RHOAI 3.4)](adr/0005-maas-subscription-model.md)
+- [ADR-0006: MaaS Documentation Sources](adr/0006-maas-documentation-sources.md)
+- [ADR-0007: Merge Benchmarks into Evaluation](adr/0007-merge-benchmarks-into-evaluation.md)
+- [ADR-0008: EvalHub Orchestrator](adr/0008-evalhub-orchestrator.md)
+- [ADR-0009: Unified MaaS Access Groups](adr/0009-unified-maas-access-groups.md)
+- [ADR-0010: Model Registry with PostgreSQL Backend](adr/0010-model-registry-postgresql.md)

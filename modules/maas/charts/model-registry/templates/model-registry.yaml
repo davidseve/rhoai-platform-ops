@@ -1,0 +1,25 @@
+apiVersion: modelregistry.opendatahub.io/v1beta1
+kind: ModelRegistry
+metadata:
+  name: {{ .Values.modelRegistry.name }}
+  namespace: {{ include "model-registry.namespace" . }}
+  labels:
+    {{- include "model-registry.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  rest:
+    port: {{ .Values.modelRegistry.rest.port }}
+    serviceRoute: {{ .Values.modelRegistry.rest.serviceRoute }}
+  grpc:
+    port: {{ .Values.modelRegistry.grpc.port }}
+  postgres:
+    host: {{ .Values.postgresql.host }}
+    port: {{ .Values.postgresql.port }}
+    database: {{ .Values.postgresql.database }}
+    username: {{ .Values.postgresql.username }}
+    skipDBCreation: {{ .Values.modelRegistry.postgres.skipDBCreation }}
+    sslMode: {{ .Values.modelRegistry.postgres.sslMode }}
+    passwordSecret:
+      name: model-registry-db
+      key: database-password

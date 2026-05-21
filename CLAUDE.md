@@ -16,8 +16,20 @@ make wait-healthy         # Wait for ArgoCD sync + pods Ready
 make bootstrap-argocd     # deploy + wait + test-all (full pipeline)
 make lint                 # Helm lint all charts
 make template             # Helm template dry-run
-make deploy-benchmarks    # Deploy benchmarks infra (namespace, PVC, SA)
-make run-benchmark        # Run GuideLLM benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo)
+make deploy-database      # Deploy shared PostgreSQL database
+make undeploy-database    # Undeploy database
+make deploy-evaluation    # Deploy EvalHub + MLflow + benchmarks infra
+make evalhub-eval         # Quality eval via EvalHub API (EVALHUB_BENCHMARK=arc_easy, MODEL_URL=url)
+make evalhub-benchmark    # Performance benchmark (GuideLLM throughput, max-seconds=30)
+make evalhub-smoke        # Smoke test: lm-eval limit=1, validates full pipeline
+make evalhub-security     # Security scan via Garak (GPU only — too slow on CPU)
+make evalhub-status       # Check job status (JOB_ID=uuid)
+make evalhub-jobs         # List all evaluation jobs
+make evalhub-providers    # List available providers and benchmarks
+make evalhub-collections  # List benchmark collections
+make undeploy-evaluation  # Undeploy evaluation
+make deploy-model-registry   # Deploy Model Registry + catalog
+make undeploy-model-registry # Undeploy Model Registry
 ```
 
 ## Rules

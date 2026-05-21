@@ -35,6 +35,19 @@ undeploy-observability: ## Undeploy observability via Helm
 	-$(HELM) uninstall obs-grafana 2>/dev/null
 	-$(HELM) uninstall obs-operators 2>/dev/null
 
+# --- Database Module ---
+
+.PHONY: deploy-database
+deploy-database: ## Deploy shared PostgreSQL database via Helm
+	@$(OC) get ns redhat-ods-applications &>/dev/null || $(OC) create ns redhat-ods-applications
+	$(HELM) upgrade --install database modules/database/charts/database --wait --timeout 5m
+	@echo "Waiting for PostgreSQL pod..."
+	@$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s
+
+.PHONY: undeploy-database
+undeploy-database: ## Undeploy shared PostgreSQL database via Helm
+	-$(HELM) uninstall database 2>/dev/null
+
 # --- MaaS Module ---
 
 .PHONY: deploy-maas
@@ -52,11 +65,6 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 			sleep 5; \
 		done; \
 	done
-	@echo "=== Phase 1b: PostgreSQL for maas-api ==="
-	@$(OC) get ns redhat-ods-applications &>/dev/null || $(OC) create ns redhat-ods-applications
-	$(HELM) upgrade --install maas-db modules/maas/charts/maas-db --wait --timeout 5m
-	@echo "Waiting for PostgreSQL pod..."
-	@$(OC) wait --for=condition=Ready pod -l app=maas-db -n redhat-ods-applications --timeout=120s
 	@echo "=== Phase 2: Platform (operator CRs, DSC, Gateway, monitoring) ==="
 	@$(OC) get ns observability &>/dev/null || $(OC) create ns observability
 	@$(OC) get ns models-as-a-service &>/dev/null || $(OC) create ns models-as-a-service
@@ -151,46 +159,159 @@ test-maas: ## Run MaaS E2E tests
 undeploy-maas: ## Undeploy MaaS via Helm
 	-$(HELM) uninstall maas-model-fast 2>/dev/null
 	-$(HELM) uninstall maas-model 2>/dev/null
+	-$(HELM) uninstall model-registry -n rhoai-model-registries 2>/dev/null
 	-$(HELM) uninstall maas-platform 2>/dev/null
-	-$(HELM) uninstall maas-db 2>/dev/null
 	-$(HELM) uninstall maas-operators 2>/dev/null
 
-# --- Benchmarks Module ---
+# --- Model Registry ---
+
+.PHONY: deploy-model-registry
+deploy-model-registry: ## Deploy Model Registry (requires maas-platform with modelregistry: Managed)
+	@echo "Waiting for rhoai-model-registries namespace..."
+	@for i in $$(seq 1 60); do \
+		if $(OC) get ns rhoai-model-registries &>/dev/null; then break; fi; \
+		if [ $$i -eq 60 ]; then echo "ERROR: namespace rhoai-model-registries not created after 5m"; exit 1; fi; \
+		sleep 5; \
+	done
+	$(HELM) upgrade --install model-registry modules/maas/charts/model-registry -n rhoai-model-registries --wait --timeout 5m
+
+.PHONY: undeploy-model-registry
+undeploy-model-registry: ## Undeploy Model Registry via Helm
+	-$(HELM) uninstall model-registry -n rhoai-model-registries 2>/dev/null
+
+# --- Evaluation Module (includes GuideLLM benchmarks, see ADR-0007) ---
+
+.PHONY: deploy-evaluation
+deploy-evaluation: ## Deploy evaluation (EvalHub + MLflow) via Helm
+	$(HELM) upgrade --install evaluation modules/evaluation/charts/evaluation --timeout 5m
+
+.PHONY: test-evaluation
+test-evaluation: ## Run Evaluation E2E tests
+	$(PYTHON) -m venv modules/evaluation/tests/.venv
+	modules/evaluation/tests/.venv/bin/pip install -q -r modules/evaluation/tests/requirements.txt
+	modules/evaluation/tests/.venv/bin/pytest modules/evaluation/tests/ -v; \
+	  rc=$$?; rm -rf modules/evaluation/tests/.venv; exit $$rc
+
+.PHONY: undeploy-evaluation
+undeploy-evaluation: ## Undeploy evaluation via Helm
+	-$(HELM) uninstall evaluation 2>/dev/null
+
+# --- EvalHub API (primary evaluation interface, see ADR-0008) ---
+
+EVALHUB_BENCHMARK ?= arc_easy
+EVALHUB_PROVIDER ?= lm_evaluation_harness
+MODEL_NAME ?= tinyllama-fast
+# Internal KServe URL (bypasses gateway auth). Override for external endpoints.
+MODEL_URL ?= https://$(MODEL_NAME)-kserve-workload-svc.models-as-a-service.svc:8000/v1
+TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
+SECRET_REF ?= model-auth
+EVAL_LIMIT ?= 10
+MAX_SECONDS ?=
+JOB_ID ?=
+
+.PHONY: evalhub-eval
+evalhub-eval: ## Run quality evaluation via EvalHub API (EVALHUB_BENCHMARK=arc_easy, MODEL_URL=url, EVAL_LIMIT=10)
+	./scripts/evalhub.sh submit \
+		--provider lm_evaluation_harness \
+		--benchmark $(EVALHUB_BENCHMARK) \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		$(if $(TOKENIZER),--tokenizer $(TOKENIZER)) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
+		$(if $(EVAL_LIMIT),--limit $(EVAL_LIMIT)) \
+		--wait
+
+BENCH_PROFILE ?= throughput
+
+.PHONY: evalhub-benchmark
+evalhub-benchmark: ## Run performance benchmark via EvalHub API (BENCH_PROFILE=throughput, MODEL_URL=url)
+	POLL_TIMEOUT=600 ./scripts/evalhub.sh submit \
+		--provider guidellm \
+		--benchmark $(BENCH_PROFILE) \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
+		--max-seconds 30 \
+		--wait
+
+.PHONY: evalhub-status
+evalhub-status: ## Check EvalHub job status (JOB_ID=uuid)
+	./scripts/evalhub.sh status $(JOB_ID)
+
+.PHONY: evalhub-jobs
+evalhub-jobs: ## List all EvalHub evaluation jobs
+	./scripts/evalhub.sh jobs
+
+.PHONY: evalhub-providers
+evalhub-providers: ## List available EvalHub providers and benchmarks
+	./scripts/evalhub.sh providers
+
+.PHONY: evalhub-collections
+evalhub-collections: ## List available EvalHub benchmark collections
+	./scripts/evalhub.sh collections
+
+.PHONY: evalhub-smoke
+evalhub-smoke: ## Smoke test: lm-eval limit=1, validates full pipeline (EvalHub → Job → MLflow)
+	POLL_TIMEOUT=1200 ./scripts/evalhub.sh submit \
+		--provider lm_evaluation_harness \
+		--benchmark arc_easy \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		$(if $(TOKENIZER),--tokenizer $(TOKENIZER)) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
+		--limit 1 \
+		--experiment evalhub-smoke \
+		--wait
+
+.PHONY: evalhub-security
+evalhub-security: ## Quick security scan via Garak (timeout=900s, reduced probe cap)
+	POLL_TIMEOUT=1200 ./scripts/evalhub.sh submit \
+		--provider garak \
+		--benchmark quick \
+		--model-url $(MODEL_URL) \
+		--model-name $(MODEL_NAME) \
+		$(if $(SECRET_REF),--secret-ref $(SECRET_REF)) \
+		--timeout 1200 \
+		--extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":1}}}' \
+		--wait
+
+# --- Legacy evaluation targets (DEPRECATED: use evalhub-* targets instead) ---
+
+EVAL_TASK ?= arc_easy
+EVAL_MODEL_URL ?=
+
+.PHONY: run-evaluation
+run-evaluation: ## [DEPRECATED] Run LMEvalJob directly — use 'make evalhub-eval' instead
+	@echo "WARNING: run-evaluation is deprecated. Use 'make evalhub-eval' instead." >&2
+	@echo "=== Running LMEvalJob: $(EVAL_TASK) (limit=$(EVAL_LIMIT)) ==="
+	@EVAL_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
+		--set lmeval.enabled=true \
+		--set lmeval.task=$(EVAL_TASK) \
+		--set lmeval.limit=$(EVAL_LIMIT) \
+		$(if $(EVAL_MODEL_URL),--set lmeval.modelUrl=$(EVAL_MODEL_URL)) \
+		--show-only templates/lmevaljob.yaml); \
+	echo "$$EVAL_YAML" | $(OC) create -f -
 
 BENCHMARK_SCENARIO ?= gateway
 BENCHMARK_TARGET ?=
 BENCHMARK_TOKEN ?=
 
-.PHONY: deploy-benchmarks
-deploy-benchmarks: ## Deploy benchmarks infra (namespace, PVC, SA) via Helm
-	$(HELM) upgrade --install benchmarks modules/benchmarks/charts/benchmarks --timeout 2m
-
 .PHONY: run-benchmark
-run-benchmark: ## Run a benchmark Job (BENCHMARK_SCENARIO=gateway|baseline|stress|slo, BENCHMARK_TARGET=url)
+run-benchmark: ## [DEPRECATED] Run GuideLLM Job directly — use 'make evalhub-benchmark' instead
+	@echo "WARNING: run-benchmark is deprecated. Use 'make evalhub-benchmark' instead." >&2
 	@echo "=== Running benchmark scenario: $(BENCHMARK_SCENARIO) ==="
-	@JOB_YAML=$$($(HELM) template benchmarks modules/benchmarks/charts/benchmarks \
-		--set job.enabled=true \
-		$(if $(filter baseline stress slo,$(BENCHMARK_SCENARIO)),-f modules/benchmarks/charts/benchmarks/values-$(BENCHMARK_SCENARIO).yaml) \
-		$(if $(BENCHMARK_TARGET),--set benchmark.target=$(BENCHMARK_TARGET)) \
-		$(if $(BENCHMARK_TOKEN),--set benchmark.authToken=$(BENCHMARK_TOKEN)) \
-		--show-only templates/job.yaml); \
+	@JOB_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
+		--set benchmarks.job.enabled=true \
+		$(if $(filter baseline stress slo,$(BENCHMARK_SCENARIO)),-f modules/evaluation/charts/evaluation/values-$(BENCHMARK_SCENARIO).yaml) \
+		$(if $(BENCHMARK_TARGET),--set benchmarks.benchmark.target=$(BENCHMARK_TARGET)) \
+		$(if $(BENCHMARK_TOKEN),--set benchmarks.benchmark.authToken=$(BENCHMARK_TOKEN)) \
+		--show-only templates/benchmarks-job.yaml); \
 	JOB_NAME=$$(echo "$$JOB_YAML" | grep "^  name:" | head -1 | awk '{print $$2}'); \
 	echo "$$JOB_YAML" | $(OC) create -f - && \
 	echo "Waiting for job/$$JOB_NAME to complete..." && \
-	$(OC) wait --for=condition=complete job/$$JOB_NAME -n benchmarks --timeout=1800s && \
+	$(OC) wait --for=condition=complete job/$$JOB_NAME -n evaluation --timeout=1800s && \
 	echo "=== Job completed ===" && \
-	$(OC) logs job/$$JOB_NAME -n benchmarks
-
-.PHONY: test-benchmarks
-test-benchmarks: ## Run Benchmarks E2E tests
-	$(PYTHON) -m venv modules/benchmarks/tests/.venv
-	modules/benchmarks/tests/.venv/bin/pip install -q -r modules/benchmarks/tests/requirements.txt
-	modules/benchmarks/tests/.venv/bin/pytest modules/benchmarks/tests/ -v; \
-	  rc=$$?; rm -rf modules/benchmarks/tests/.venv; exit $$rc
-
-.PHONY: undeploy-benchmarks
-undeploy-benchmarks: ## Undeploy benchmarks via Helm
-	-$(HELM) uninstall benchmarks 2>/dev/null
+	$(OC) logs job/$$JOB_NAME -n evaluation
 
 # --- ArgoCD (Stable Deployment) ---
 
@@ -226,9 +347,10 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 
 WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
-# parent + 8 child apps (maas-db, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing)
-MIN_APPS ?= 9
-APP_FILTER = grep -E 'maas-|observability-|rhoai-platform-ops'
+# parent + 10 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, evaluation)
+# parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, maas-model-registry, obs-operators, obs-grafana, obs-tracing, evaluation)
+MIN_APPS ?= 11
+APP_FILTER = grep -E 'maas-|model-registry|observability-|rhoai-platform-ops|evaluation|database'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
@@ -244,6 +366,10 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		fi; \
 		not_healthy=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | $(APP_FILTER) | grep -v "Synced.*Healthy" | awk '{print $$1"("$$2"/"$$3")"}' | tr '\n' ' '); \
 		echo "  [$$((elapsed / 60))m] $$healthy/$$total apps Synced+Healthy  pending: $$not_healthy"; \
+		for ip in $$($(OC) get installplan -n openshift-operators -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do \
+			echo "  Auto-approving InstallPlan $$ip (OLM Manual dependency)..."; \
+			$(OC) patch installplan "$$ip" -n openshift-operators --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true; \
+		done; \
 		sleep $(WAIT_INTERVAL); \
 		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
 	done; \
@@ -331,25 +457,38 @@ cluster-cleanup-maas: ## Remove only MaaS resources from the cluster
 cluster-cleanup-observability: ## Remove only observability resources from the cluster
 	./scripts/cluster-cleanup.sh --yes observability
 
-.PHONY: cluster-cleanup-benchmarks
-cluster-cleanup-benchmarks: ## Remove only benchmarks resources from the cluster
-	./scripts/cluster-cleanup.sh --yes benchmarks
+.PHONY: cluster-cleanup-evaluation
+cluster-cleanup-evaluation: ## Remove only evaluation resources (includes benchmarks) from the cluster
+	./scripts/cluster-cleanup.sh --yes evaluation
+
+.PHONY: cluster-cleanup-database
+cluster-cleanup-database: ## Remove only database resources from the cluster
+	./scripts/cluster-cleanup.sh --yes database
 
 .PHONY: cluster-cleanup-dry
 cluster-cleanup-dry: ## Dry-run: show what cluster-cleanup would delete
 	DRY_RUN=true ./scripts/cluster-cleanup.sh
 
+.PHONY: full-redeploy
+full-redeploy: cluster-cleanup bootstrap-argocd ## Cleanup everything + redeploy via ArgoCD + run tests
+
 # --- All Modules ---
 
 .PHONY: deploy-all
-deploy-all: deploy-observability ## Deploy all enabled modules
+deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 	$(MAKE) deploy-maas GRAFANA_ENABLED=true
 
+.PHONY: test-evalhub
+test-evalhub: ## Run EvalHub E2E tests: smoke (lm-eval) + benchmark (GuideLLM). Security (Garak) excluded — too slow on CPU, run manually on GPU.
+	@echo "=== EvalHub E2E: smoke + benchmark against tinyllama-fast ==="
+	$(MAKE) evalhub-smoke MODEL_NAME=tinyllama-fast
+	$(MAKE) evalhub-benchmark MODEL_NAME=tinyllama-fast
+
 .PHONY: test-all
-test-all: test-observability test-maas test-benchmarks ## Run all module tests
+test-all: test-observability test-maas test-evaluation test-evalhub ## Run all module tests (includes EvalHub E2E)
 
 .PHONY: undeploy-all
-undeploy-all: undeploy-benchmarks undeploy-maas undeploy-observability ## Undeploy all modules
+undeploy-all: undeploy-evaluation undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
 
 # --- Validation ---
 
@@ -358,11 +497,12 @@ template: ## Helm template dry-run for all charts
 	$(HELM) template obs-operators modules/observability/charts/operators
 	$(HELM) template obs-grafana modules/observability/charts/grafana
 	$(HELM) template obs-tracing modules/observability/charts/tracing
+	$(HELM) template database modules/database/charts/database
 	$(HELM) template maas-operators modules/maas/charts/operators
-	$(HELM) template maas-db modules/maas/charts/maas-db
 	$(HELM) template maas-platform modules/maas/charts/maas-platform
 	$(HELM) template maas-model modules/maas/charts/maas-model
-	$(HELM) template benchmarks modules/benchmarks/charts/benchmarks
+	$(HELM) template model-registry modules/maas/charts/model-registry
+	$(HELM) template evaluation modules/evaluation/charts/evaluation
 	$(HELM) template argocd-apps argocd/apps
 
 .PHONY: lint
@@ -370,11 +510,12 @@ lint: ## Helm lint all charts
 	$(HELM) lint modules/observability/charts/operators
 	$(HELM) lint modules/observability/charts/grafana
 	$(HELM) lint modules/observability/charts/tracing
+	$(HELM) lint modules/database/charts/database
 	$(HELM) lint modules/maas/charts/operators
-	$(HELM) lint modules/maas/charts/maas-db
 	$(HELM) lint modules/maas/charts/maas-platform
 	$(HELM) lint modules/maas/charts/maas-model
-	$(HELM) lint modules/benchmarks/charts/benchmarks
+	$(HELM) lint modules/maas/charts/model-registry
+	$(HELM) lint modules/evaluation/charts/evaluation
 	$(HELM) lint argocd/apps
 
 # --- Help ---

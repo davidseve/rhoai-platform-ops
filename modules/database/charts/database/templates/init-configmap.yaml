@@ -1,0 +1,16 @@
+{{- if .Values.database.extraDatabases }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maas-db-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: maas-db
+data:
+  create-extra-dbs.sh: |
+    #!/bin/bash
+    {{- range .Values.database.extraDatabases }}
+    psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '{{ . }}'" | grep -q 1 || \
+      psql -U postgres -c "CREATE DATABASE {{ . }} OWNER ${POSTGRESQL_USER};"
+    {{- end }}
+{{- end }}

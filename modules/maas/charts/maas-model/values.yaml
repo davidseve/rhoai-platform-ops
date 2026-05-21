@@ -24,10 +24,10 @@ images:
 resources:
   requests:
     cpu: "2"
-    memory: "4Gi"
+    memory: "6Gi"
   limits:
     cpu: "8"
-    memory: "8Gi"
+    memory: "12Gi"
 
 llminferenceservice:
   replicas: 1
@@ -40,6 +40,11 @@ tracing:
   detailed: false   # token-level spans (higher overhead, requires enabled: true)
   otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
   serviceName: ""   # defaults to model servedName
+
+# Model Registry: registers the model in RHOAI Model Registry via REST API Job.
+# Creates RegisteredModel + ModelVersion + ModelArtifact (idempotent).
+registry:
+  enabled: true
 
 # MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
 modelRef:
