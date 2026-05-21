@@ -57,6 +57,8 @@ dashboard:
   crEnabled: true
   genAiStudio: true
   modelAsService: true
+  maasAuthPolicies: true
+  vLLMDeploymentOnMaaS: true
   observabilityDashboard: false  # TP: requires Cluster Observability Operator (COO)
 
 gateway:
