@@ -1,9 +1,7 @@
 ---
 description: "Helm chart conventions for modules and ArgoCD applications."
-globs:
-  - "modules/**/charts/**/*.yaml"
-  - "modules/**/charts/**/*.tpl"
-  - "argocd/**/*.yaml"
+globs: modules/**/charts/**/*.yaml,modules/**/charts/**/*.tpl,argocd/**/*.yaml
+alwaysApply: false
 ---
 
 # Helm Chart Conventions

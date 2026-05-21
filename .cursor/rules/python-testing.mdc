@@ -1,7 +1,7 @@
 ---
 description: "Python test conventions for module test suites."
-globs:
-  - "modules/**/tests/**/*.py"
+globs: modules/**/tests/**/*.py
+alwaysApply: false
 ---
 
 # Python Test Conventions

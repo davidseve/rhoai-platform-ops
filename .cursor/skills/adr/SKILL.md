@@ -1,6 +1,6 @@
 ---
+name: adr
 description: "Create a new Architecture Decision Record (ADR). Documents context, options considered, and rationale."
-user_invocable: true
 ---
 
 # Create ADR
@@ -67,4 +67,4 @@ Decision: <one-line summary>
 Status: Accepted
 ```
 
-Remind the user to update `AGENTS.md` and `CLAUDE.md` if the decision affects project conventions.
+Remind the user to update `AGENTS.md` if the decision affects project conventions.

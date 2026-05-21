@@ -168,7 +168,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Experiment Tracking:** MLflow tracking server (RHOAI MLflow Operator)
 - **GitOps:** ArgoCD with app-of-apps pattern
 
-## Claude Code Skills
+## Agent Skills
 
 - `/add-module` -- Add a new module/pillar to the project
 - `/deploy-module` -- Deploy a module via Helm or ArgoCD

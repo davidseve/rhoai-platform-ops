@@ -1,10 +1,7 @@
 ---
 description: "Documentation conventions: short READMEs, detailed docs, ADRs."
-globs:
-  - "docs/**/*.md"
-  - "**/README.md"
-  - "AGENTS.md"
-  - "CLAUDE.md"
+globs: docs/**/*.md,**/README.md,AGENTS.md
+alwaysApply: false
 ---
 
 # Documentation Conventions

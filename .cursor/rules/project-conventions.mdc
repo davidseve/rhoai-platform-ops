@@ -53,9 +53,9 @@ Non-obvious decisions get an ADR in `docs/adr/NNNN-<title>.md`. Use the `/adr` s
 - Helm templates use `{{ .Values. }}` (not `{{ $.Values. }}` unless inside a range)
 - Include comments for non-obvious values in `values.yaml`
 
-## CLAUDE.md and AGENTS.md Are Sources of Truth
+## AGENTS.md Is Source of Truth
 
-`AGENTS.md` and `CLAUDE.md` provide project context for AI agents. They MUST be updated whenever:
+`AGENTS.md` provides project context for AI agents. It MUST be updated whenever:
 - A new skill is created or removed
 - A new module is added
 - A new Makefile target is added

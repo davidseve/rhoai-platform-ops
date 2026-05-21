@@ -1,6 +1,6 @@
 ---
+name: switch-argocd-branch
 description: "Switch ArgoCD target revisions between main and a feature branch. Use when pointing ArgoCD to the current branch for testing or switching back to main."
-user_invocable: true
 ---
 
 # Switch ArgoCD Branch

@@ -1,6 +1,6 @@
 ---
+name: status
 description: "Run a project health check across all modules. Validates Helm charts, runs tests, and reports a pass/fail dashboard."
-user_invocable: true
 ---
 
 # Project Status Check

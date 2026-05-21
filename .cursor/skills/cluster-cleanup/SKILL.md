@@ -1,6 +1,6 @@
 ---
+name: cluster-cleanup
 description: "Remove all resources deployed by this project from the cluster. Works for both ArgoCD and Helm deployments. Handles stuck finalizers and namespaces."
-user_invocable: true
 ---
 
 # Cluster Cleanup
@@ -15,7 +15,7 @@ Remove all resources deployed by rhoai-platform-ops from the cluster.
 
 ## How It Works
 
-Deletes resources in **reverse deployment order** (wave 2 → 1 → 0):
+Deletes resources in **reverse deployment order** (wave 2 -> 1 -> 0):
 
 1. **Helm releases** -- `helm uninstall` all known releases
 2. **ArgoCD apps** -- Remove app-of-apps + child Applications

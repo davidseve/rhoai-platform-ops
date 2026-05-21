@@ -1,6 +1,6 @@
 ---
+name: deploy-module
 description: "Deploy a module via Helm (for testing) or ArgoCD (for stable deployment). Includes verification steps."
-user_invocable: true
 ---
 
 # Deploy Module

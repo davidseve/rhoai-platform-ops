@@ -1,6 +1,6 @@
 ---
+name: python-venv-tests
 description: "Add or update Makefile test targets to use ephemeral Python virtual environments. Ensures tests never pollute system Python."
-user_invocable: true
 ---
 
 # Python Venv Test Targets

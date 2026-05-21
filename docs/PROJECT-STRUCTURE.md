@@ -34,9 +34,11 @@ rhoai-platform-ops/
     PROJECT-STRUCTURE.md      # This file
     adr/                      # Architecture Decision Records
 
-  .claude/                    # AI agent configuration
-    rules/                    # Convention rules (scoped by file type)
+  .cursor/                    # AI agent configuration (Cursor)
+    rules/                    # Convention rules (.mdc, scoped by file type)
     skills/                   # Guided workflows (invocable with /skill-name)
+
+  .claude/                    # AI agent configuration (Claude Code)
     settings.json             # Permission configuration
 
   AGENTS.md                   # Project context for AI agents

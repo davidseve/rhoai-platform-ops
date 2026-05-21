@@ -1,6 +1,6 @@
 ---
+name: cluster-bootstrap
 description: "Bootstrap a fresh OpenShift cluster with all modules. Deploys via ArgoCD by default, or via Helm on request. Runs tests and reports summary."
-user_invocable: true
 ---
 
 # Cluster Bootstrap

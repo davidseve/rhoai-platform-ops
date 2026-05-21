@@ -1,6 +1,6 @@
 ---
+name: add-module
 description: "Add a new module/pillar to the project. Creates directory structure, ArgoCD app template, Makefile targets, cleanup function, and documentation."
-user_invocable: true
 ---
 
 # Add Module
@@ -88,7 +88,7 @@ cleanup_<name>() {
 ### 7. Update Documentation
 
 - Add module to `docs/PROJECT-STRUCTURE.md`
-- Add module to `AGENTS.md` and `CLAUDE.md`
+- Add module to `AGENTS.md`
 
 ### 8. Create Initial ADR
 
