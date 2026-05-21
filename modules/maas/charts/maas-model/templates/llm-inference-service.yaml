@@ -3,6 +3,8 @@ kind: LLMInferenceService
 metadata:
   name: {{ .Values.global.name }}
   namespace: {{ .Values.global.namespace }}
+  labels:
+    opendatahub.io/dashboard: "true"
   annotations:
     security.opendatahub.io/enable-auth: "true"
 spec:

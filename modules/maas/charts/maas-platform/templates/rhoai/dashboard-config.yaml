@@ -10,5 +10,7 @@ spec:
   dashboardConfig:
     genAiStudio: {{ .Values.dashboard.genAiStudio }}
     modelAsService: {{ .Values.dashboard.modelAsService }}
+    maasAuthPolicies: {{ .Values.dashboard.maasAuthPolicies | default false }}
+    vLLMDeploymentOnMaaS: {{ .Values.dashboard.vLLMDeploymentOnMaaS | default false }}
     observabilityDashboard: {{ .Values.dashboard.observabilityDashboard | default false }}
 {{- end }}
