@@ -1,0 +1,66 @@
+global:
+  name: granite-2b
+  namespace: models-as-a-service
+
+namespace:
+  create: false
+
+model:
+  storageUri: "oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.0-2b-instruct"
+  servedName: "granite-2b"
+  maxModelLen: 4096
+
+images:
+  vllm:
+    repository: "quay.io/dseveria/vllm-cpu-openai-ubi9"
+    tag: "0.3-otel"
+
+resources:
+  requests:
+    cpu: "2"
+    memory: "6Gi"
+  limits:
+    cpu: "8"
+    memory: "12Gi"
+
+llminferenceservice:
+  replicas: 1
+  gateway:
+    name: maas-default-gateway
+    namespace: openshift-ingress
+
+tracing:
+  enabled: true
+  detailed: false
+  otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
+  serviceName: ""
+
+registry:
+  enabled: true
+
+modelRef:
+  enabled: true
+  displayName: "Granite 3.0 2B Instruct"
+  description: "CPU-friendly IBM Granite 2B model for chat and tool calling"
+  useCase: "chat"
+
+authPolicy:
+  enabled: true
+  subjects: {}
+
+subscription:
+  enabled: true
+  tiers:
+    free:
+      groups:
+        - name: cluster-admins
+      tokenRateLimits:
+        - limit: 2000
+          window: "1m"
+    premium:
+      priority: 10
+      groups:
+        - name: cluster-admins
+      tokenRateLimits:
+        - limit: 50000
+          window: "1m"
