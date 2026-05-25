@@ -89,6 +89,39 @@ subjects:
   name: authorino-tls-setup
   namespace: {{ .Values.kuadrant.namespace }}
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: authorino-tls-setup-health
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: ["kuadrant.io"]
+  resources: ["authpolicies"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: authorino-tls-setup-health
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: authorino-tls-setup-health
+subjects:
+- kind: ServiceAccount
+  name: authorino-tls-setup
+  namespace: {{ .Values.kuadrant.namespace }}
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -116,6 +149,41 @@ spec:
           NAMESPACE="{{ .Values.kuadrant.namespace }}"
           GATEWAY_NS="{{ .Values.gateway.namespace }}"
           GATEWAY_NAME="{{ .Values.gateway.name }}"
+          OPERATOR_NS="{{ .Values.kuadrant.operatorNamespace }}"
+          MODEL_NS="models-as-a-service"
+
+          echo "Step 0: Verify Kuadrant AuthPolicy acceptance (Istio race condition workaround)..."
+          NOT_ACCEPTED=$(oc get authpolicy -n "$MODEL_NS" \
+            -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Accepted")].status}{"\n"}{end}' \
+            2>/dev/null | grep -c "False" || true)
+
+          if [ "$NOT_ACCEPTED" -gt 0 ]; then
+            REASON=$(oc get authpolicy -n "$MODEL_NS" \
+              -o jsonpath='{.items[0].status.conditions[?(@.type=="Accepted")].reason}' 2>/dev/null || echo "")
+            if [ "$REASON" = "MissingDependency" ]; then
+              echo "  AuthPolicies not accepted (Istio race condition) — restarting Kuadrant operator..."
+              oc delete pod -n "$OPERATOR_NS" -l app=kuadrant,control-plane=controller-manager
+              echo "  Waiting for AuthPolicies to be Accepted (up to 3min)..."
+              for i in $(seq 1 18); do
+                sleep 10
+                NOT_ACCEPTED=$(oc get authpolicy -n "$MODEL_NS" \
+                  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Accepted")].status}{"\n"}{end}' \
+                  2>/dev/null | grep -c "False" || true)
+                if [ "$NOT_ACCEPTED" -eq 0 ]; then
+                  echo "  All AuthPolicies Accepted."
+                  break
+                fi
+                echo "  waiting ($i/18)..."
+              done
+              if [ "$NOT_ACCEPTED" -gt 0 ]; then
+                echo "  WARNING: AuthPolicies still not accepted after 3min — continuing with TLS setup"
+              fi
+            else
+              echo "  WARNING: AuthPolicies not accepted (reason: $REASON) — not the Istio race condition"
+            fi
+          else
+            echo "  All AuthPolicies already Accepted."
+          fi
 
           echo "Step 1: Annotate Authorino service for serving cert..."
           oc annotate service authorino-authorino-authorization \

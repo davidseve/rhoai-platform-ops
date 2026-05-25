@@ -153,6 +153,8 @@ grafana:
 kuadrant:
   enabled: true
   namespace: kuadrant-system
+  # Namespace where RHCL operator pod runs (for restart on Istio race condition)
+  operatorNamespace: redhat-connectivity-link
   observability: true
   # Authorino TLS: mount OpenShift service-ca bundle so Authorino trusts maas-api cert.
   # Required for API key validation (Authorino → maas-api HTTPS callbacks).

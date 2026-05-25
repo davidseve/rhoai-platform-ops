@@ -225,7 +225,7 @@ BENCH_PROFILE ?= throughput
 
 .PHONY: evalhub-benchmark
 evalhub-benchmark: ## Run performance benchmark via EvalHub API (BENCH_PROFILE=throughput, MODEL_URL=url)
-	POLL_TIMEOUT=600 ./scripts/evalhub.sh submit \
+	POLL_TIMEOUT=1200 ./scripts/evalhub.sh submit \
 		--provider guidellm \
 		--benchmark $(BENCH_PROFILE) \
 		--model-url $(MODEL_URL) \
