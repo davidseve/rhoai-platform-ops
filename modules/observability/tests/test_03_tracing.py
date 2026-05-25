@@ -55,6 +55,16 @@ def test_collector_pod_running(oc):
     assert phase == "Running", f"OTel Collector pod phase: {phase}"
 
 
+def test_tempo_pvc_bound(oc):
+    """Tempo PVC exists and is Bound (persistent trace storage)."""
+    phase = oc(
+        f"get pvc -n {OBSERVABILITY_NS} "
+        "-l app.kubernetes.io/managed-by=tempo-operator "
+        "-o jsonpath='{.items[0].status.phase}'"
+    ).strip("'")
+    assert phase == "Bound", f"Tempo PVC phase: {phase} (expected Bound)"
+
+
 def test_tempo_datasource_exists(oc_json):
     """GrafanaDatasource 'tempo' CR exists in the observability namespace."""
     ds = oc_json(f"get grafanadatasource tempo -n {OBSERVABILITY_NS}")
@@ -167,3 +177,22 @@ def test_trace_spans_cover_full_stack(
         )
     except json.JSONDecodeError:
         pytest.skip(f"Could not parse Tempo response as JSON: {result[:200]}")
+
+
+def test_tracing_prometheusrule_exists(oc_json):
+    """PrometheusRule for trace-based SLO alerts exists with expected alerts."""
+    pr = oc_json(f"get prometheusrule tracing-slo -n {OBSERVABILITY_NS}")
+    rule_names = [
+        rule["alert"]
+        for group in pr["spec"]["groups"]
+        for rule in group["rules"]
+    ]
+    expected = [
+        "TracingHighP99Latency",
+        "TracingHighErrorRate",
+        "TracingPipelineDown",
+    ]
+    for name in expected:
+        assert name in rule_names, (
+            f"Alert '{name}' not found in tracing-slo. Found: {rule_names}"
+        )

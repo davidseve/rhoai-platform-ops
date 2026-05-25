@@ -67,6 +67,14 @@ class TestHelmTemplate:
         assert secret is not None
         assert secret["metadata"]["namespace"] == "redhat-ods-applications"
 
+    def test_mlflow_db_secret_uses_dedicated_database(self):
+        docs = _get_docs()
+        secret = next(
+            d for d in docs if d["kind"] == "Secret" and d["metadata"]["name"] == "mlflow-db-config"
+        )
+        db_url = secret["stringData"]["db-url"]
+        assert "/mlflow?" in db_url, f"Expected dedicated 'mlflow' database in URI, got: {db_url}"
+
     def test_renders_evalhub_db_secret(self):
         docs = _get_docs()
         secret = next(
@@ -75,6 +83,14 @@ class TestHelmTemplate:
         )
         assert secret is not None
         assert secret["metadata"]["namespace"] == "evaluation"
+
+    def test_evalhub_db_secret_uses_dedicated_database(self):
+        docs = _get_docs()
+        secret = next(
+            d for d in docs if d["kind"] == "Secret" and d["metadata"]["name"] == "evalhub-db"
+        )
+        db_url = secret["stringData"]["db-url"]
+        assert "/evalhub?" in db_url, f"Expected dedicated 'evalhub' database in URI, got: {db_url}"
 
     def test_renders_mlflow_route(self):
         docs = _get_docs()
@@ -189,3 +205,12 @@ class TestClusterInfra:
     def test_evalhub_db_secret_exists(self, infra_deployed, oc):
         result = oc("get secret evalhub-db -n evaluation -o name")
         assert "evalhub-db" in result
+
+    @pytest.mark.parametrize("db_name", ["mlflow", "evalhub", "model_registry"])
+    def test_dedicated_database_exists(self, infra_deployed, oc, db_name):
+        """Verify dedicated databases exist in the shared PostgreSQL instance."""
+        result = oc(
+            "exec deploy/maas-db -n redhat-ods-applications -- "
+            f"psql -U postgres -tAc \"SELECT 1 FROM pg_database WHERE datname = '{db_name}'\""
+        )
+        assert "1" in result, f"Database '{db_name}' not found in PostgreSQL"

@@ -1,0 +1,50 @@
+{{- if .Values.alerting.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tracing-slo
+  namespace: {{ .Values.collector.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  groups:
+    - name: tracing-slo
+      rules:
+        - alert: TracingHighP99Latency
+          expr: |
+            histogram_quantile(0.99,
+              sum by(le, service_name) (
+                rate(duration_milliseconds_bucket[5m])
+              )
+            ) / 1000 > {{ .Values.alerting.p99LatencyThreshold }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Trace-derived P99 latency exceeds {{ .Values.alerting.p99LatencyThreshold }}s"
+            description: "Service {{`{{ $labels.service_name }}`}} P99 span duration is {{`{{ $value | humanizeDuration }}`}} (from spanmetrics)."
+
+        - alert: TracingHighErrorRate
+          expr: |
+            (
+              sum by(service_name) (rate(calls_total{status_code="STATUS_CODE_ERROR"}[5m]))
+              /
+              sum by(service_name) (rate(calls_total[5m]))
+            ) > {{ .Values.alerting.errorRateThreshold }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Trace-derived error rate exceeds threshold"
+            description: "Service {{`{{ $labels.service_name }}`}} error ratio is {{`{{ $value | humanizePercentage }}`}} (from spanmetrics)."
+
+        - alert: TracingPipelineDown
+          expr: |
+            absent(rate(calls_total[5m]) > 0)
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No trace spans flowing through the pipeline"
+            description: "The spanmetrics connector has not received any spans for 10 minutes. Check OTel Collector and trace sources."
+{{- end }}
