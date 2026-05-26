@@ -315,6 +315,29 @@ run-benchmark: ## [DEPRECATED] Run GuideLLM Job directly — use 'make evalhub-b
 
 # --- ArgoCD (Stable Deployment) ---
 
+.PHONY: preflight-namespaces
+preflight-namespaces: ## Clear any namespaces stuck in Terminating from a previous run
+	@stuck=""; \
+	for ns in models-as-a-service redhat-ods-applications redhat-ods-monitoring redhat-ods-operator \
+	          redhat-connectivity-link kuadrant-system leader-worker-set observability evaluation \
+	          rhoai-model-registries openshift-grafana-operator openshift-opentelemetry-operator \
+	          openshift-tempo-operator; do \
+		phase=$$($(OC) get ns "$$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true); \
+		if [ "$$phase" = "Terminating" ]; then stuck="$$stuck $$ns"; fi; \
+	done; \
+	if [ -n "$$stuck" ]; then \
+		echo "[preflight] Stuck Terminating namespaces:$$stuck"; \
+		for ns in $$stuck; do \
+			echo "[preflight] Force-cleaning $$ns..."; \
+			$(OC) get ns "$$ns" -o json 2>/dev/null \
+			  | jq '.spec.finalizers = []' \
+			  | $(OC) replace --raw "/api/v1/namespaces/$$ns/finalize" -f - 2>/dev/null || true; \
+		done; \
+		echo "[preflight] Done."; \
+	else \
+		echo "[preflight] No stuck namespaces found."; \
+	fi
+
 .PHONY: deploy-argocd
 deploy-argocd: ## Deploy app-of-apps via ArgoCD (auto-detects CLUSTER_DOMAIN)
 	@if [ -z "$(CLUSTER_DOMAIN)" ]; then \
@@ -418,7 +441,7 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 	fi
 
 .PHONY: bootstrap-argocd
-bootstrap-argocd: deploy-argocd wait-healthy test-all ## Deploy ArgoCD app-of-apps, wait for sync, run tests
+bootstrap-argocd: preflight-namespaces deploy-argocd wait-healthy test-all ## Deploy ArgoCD app-of-apps, wait for sync, run tests
 
 .PHONY: undeploy-argocd
 undeploy-argocd: ## Remove app-of-apps

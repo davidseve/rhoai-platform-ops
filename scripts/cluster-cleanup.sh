@@ -93,12 +93,10 @@ force_delete_ns() {
   if ! $OC get ns "$ns" &>/dev/null; then return 0; fi
   log "Force-cleaning namespace $ns (clearing blocking finalizers)..."
 
-  # Only target CRDs from our operators — core resources (pods, services, etc.)
-  # are cleaned by the namespace controller. Iterating all api-resources causes
-  # MethodNotAllowed errors on read-only resources like events and bindings.
+  # Target CRDs from our operators first (fast path).
   local crds
   crds=$($OC get crd -o name 2>/dev/null \
-    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset)' \
+    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset|maas)' \
     | sed 's|customresourcedefinition.apiextensions.k8s.io/||' || true)
 
   for crd in $crds; do
@@ -106,6 +104,23 @@ force_delete_ns() {
       run "$OC patch '$item' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
   done
+
+  # Catch-all: find ANY resource in the namespace that still has a finalizer.
+  # Uses api-resources to discover all namespaced types, skipping read-only
+  # sub-resources (events, bindings) that reject PATCH.
+  if [[ "$DRY_RUN" != "true" ]]; then
+    local api_resources
+    api_resources=$($OC api-resources --verbs=list,patch --namespaced=true -o name 2>/dev/null \
+      | grep -vE '^(events|bindings)$' || true)
+    for resource in $api_resources; do
+      for item in $($OC get "$resource" -n "$ns" -o jsonpath='{range .items[?(@.metadata.finalizers)]}{.kind}/{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+        local kind="${item%%/*}"
+        local name="${item##*/}"
+        log "  Clearing finalizer on $kind/$name in $ns"
+        $OC patch "$resource/$name" -n "$ns" --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+      done
+    done
+  fi
 
   # Clear namespace finalizers via the finalize subresource API
   if [[ "$DRY_RUN" != "true" ]]; then
@@ -115,6 +130,52 @@ force_delete_ns() {
   fi
 
   run "$OC delete ns '$ns' --timeout=30s --ignore-not-found"
+}
+
+# ============================================================
+# Pre-flight: clear any stuck Terminating namespaces from our
+# known set. Prevents bootstrap failures when a previous cleanup
+# was interrupted or a namespace got stuck externally.
+# ============================================================
+preflight_clear_stuck_namespaces() {
+  local known_namespaces=(
+    "models-as-a-service"
+    "redhat-ods-applications"
+    "redhat-ods-monitoring"
+    "redhat-ods-operator"
+    "redhat-connectivity-link"
+    "kuadrant-system"
+    "leader-worker-set"
+    "observability"
+    "openshift-grafana-operator"
+    "openshift-opentelemetry-operator"
+    "openshift-tempo-operator"
+    "evaluation"
+    "rhoai-model-registries"
+  )
+
+  local stuck=()
+  for ns in "${known_namespaces[@]}"; do
+    local phase
+    phase=$($OC get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+    if [[ "$phase" == "Terminating" ]]; then
+      stuck+=("$ns")
+    fi
+  done
+  # Also check dynamic tier namespaces
+  for ns in $($OC get ns -o jsonpath='{range .items[?(@.status.phase=="Terminating")]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+    | grep 'maas-default-gateway-tier-' || true); do
+    stuck+=("$ns")
+  done
+
+  if [[ ${#stuck[@]} -eq 0 ]]; then return 0; fi
+
+  log "=== Pre-flight: ${#stuck[@]} namespace(s) stuck in Terminating ==="
+  for ns in "${stuck[@]}"; do
+    warn "  $ns -- forcing cleanup"
+    force_delete_ns "$ns"
+  done
+  log "Pre-flight cleanup complete"
 }
 
 # ============================================================
@@ -339,8 +400,12 @@ cleanup_argocd() {
   prev_ns=$($OC project -q 2>/dev/null || echo "default")
 
   if ! command -v "$ARGOCD" &>/dev/null; then
-    warn "argocd CLI not found -- falling back to oc delete (no cascade)"
-    for app in evaluation maas-model-registry maas-model-fast maas-model maas-platform maas-operators database \
+    warn "argocd CLI not found -- falling back to oc patch/delete (no cascade)"
+    log "Disabling auto-sync on all ArgoCD apps via patch..."
+    for app in $($OC get applications.argoproj.io -n "$ARGOCD_NS" -o name 2>/dev/null | sed 's|application.argoproj.io/||'); do
+      run "$OC patch application '$app' -n '$ARGOCD_NS' --type=merge -p '{\"spec\":{\"syncPolicy\":null}}'"
+    done
+    for app in evaluation maas-model-registry maas-model-granite-2b maas-model-fast maas-model maas-platform maas-operators database \
                observability-tracing observability-grafana observability-operators; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
     done
@@ -357,9 +422,15 @@ cleanup_argocd() {
   # finalizers. Workaround: disable auto-sync, then delete in reverse wave order.
   # TODO: Replace with PreDelete hooks when OpenShift GitOps ships ArgoCD 3.3+.
 
-  # 1. Disable auto-sync on app-of-apps to prevent child recreation
-  log "Disabling auto-sync on app-of-apps..."
+  # 1. Disable auto-sync on app-of-apps AND all child apps.
+  #    Without this, child apps with selfHeal will re-create resources we delete
+  #    in the pre-clean phase before we get to delete the apps themselves.
+  log "Disabling auto-sync on app-of-apps and all child apps..."
   run "argocd_core app set rhoai-platform-ops --sync-policy none"
+  for app in $($OC get applications.argoproj.io -n "$ARGOCD_NS" -o name 2>/dev/null \
+    | grep -vF 'rhoai-platform-ops' | sed 's|application.argoproj.io/||'); do
+    run "argocd_core app set '$app' --sync-policy none"
+  done
 
   # 2. Pre-clean CRs with finalizers BEFORE deleting any apps.
   #    The operators must still be running when we clear these.
@@ -392,7 +463,7 @@ cleanup_argocd() {
   done
 
   # 3. Delete child apps in reverse wave order (wave 2 → 1 → 0)
-  delete_apps_and_wait "wave 2" maas-model-registry maas-model-fast maas-model evaluation
+  delete_apps_and_wait "wave 2" maas-model-registry maas-model-granite-2b maas-model-fast maas-model evaluation
   delete_apps_and_wait "wave 1" maas-platform observability-tracing observability-grafana
   delete_apps_and_wait "wave 0" maas-operators observability-operators database
 
@@ -552,11 +623,17 @@ main() {
 
   confirm_or_exit
 
-  # 1. Remove Helm releases (if any from helm-first workflow)
-  cleanup_helm_releases
+  # 0. Clear any namespaces stuck in Terminating from a previous run.
+  preflight_clear_stuck_namespaces
 
-  # 2. Delete ArgoCD applications (cascade removes chart-managed resources)
+  # 1. Disable auto-sync on all ArgoCD apps, then delete them in reverse
+  #    wave order. Must happen BEFORE Helm uninstall so selfHeal doesn't
+  #    re-create resources that Helm removes.
   cleanup_argocd
+
+  # 2. Remove Helm releases (if any from helm-first workflow).
+  #    Safe to run after ArgoCD auto-sync is disabled / apps are deleted.
+  cleanup_helm_releases
 
   # 3. Safety net: clean resources that may survive ArgoCD cascade delete.
   #    ArgoCD cascade handles most chart-managed resources, but these edge cases remain:

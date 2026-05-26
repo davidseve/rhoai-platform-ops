@@ -58,7 +58,8 @@ make undeploy-evaluation  # Helm uninstall evaluation
 make deploy-model-registry   # Helm install Model Registry + catalog
 make undeploy-model-registry # Helm uninstall Model Registry
 
-# Cluster cleanup
+# Pre-flight & Cluster cleanup
+make preflight-namespaces # Clear namespaces stuck in Terminating (auto-runs before bootstrap)
 make cluster-cleanup      # Remove ALL resources (skip confirmation)
 make cluster-cleanup-maas # Remove only MaaS resources
 make cluster-cleanup-observability # Remove only observability resources
