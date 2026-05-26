@@ -1,4 +1,4 @@
-{{- if not .Values.gpu.enabled }}
+{{- if .Values.gpu.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
@@ -22,14 +22,12 @@ spec:
   template:
     containers:
     - name: main
-      image: {{ .Values.images.vllm.repository }}:{{ .Values.images.vllm.tag }}
+      image: {{ .Values.gpu.image.repository }}:{{ .Values.gpu.image.tag }}
       command:
-      - python
-      - -m
-      - vllm.entrypoints.openai.api_server
+      {{- range .Values.gpu.command }}
+      - {{ . }}
+      {{- end }}
       args:
-      - --model
-      - /mnt/models
       - --port
       - "8000"
       - --max-model-len
@@ -40,10 +38,8 @@ spec:
       - /var/run/kserve/tls/tls.crt
       - --ssl-keyfile
       - /var/run/kserve/tls/tls.key
-      {{- if .Values.model.toolCallParser }}
-      - --enable-auto-tool-choice
-      - --tool-call-parser
-      - {{ .Values.model.toolCallParser }}
+      {{- range .Values.gpu.extraArgs }}
+      - {{ . | quote }}
       {{- end }}
       {{- if .Values.tracing.enabled }}
       - --otlp-traces-endpoint
@@ -52,15 +48,45 @@ spec:
       - --collect-detailed-traces
       - request
       {{- end }}
+      {{- end }}
+      {{- if or .Values.gpu.env .Values.tracing.enabled }}
       env:
+      {{- range .Values.gpu.env }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+      {{- end }}
+      {{- if .Values.tracing.enabled }}
         - name: OTEL_SERVICE_NAME
           value: {{ .Values.tracing.serviceName | default .Values.model.servedName | quote }}
       {{- end }}
+      {{- end }}
+      {{- if .Values.gpu.shm }}
+      volumeMounts:
+      - name: shm
+        mountPath: /dev/shm
+      {{- end }}
       resources:
         limits:
-          cpu: {{ .Values.resources.limits.cpu | quote }}
-          memory: {{ .Values.resources.limits.memory | quote }}
+          cpu: {{ .Values.gpu.resources.limits.cpu | quote }}
+          memory: {{ .Values.gpu.resources.limits.memory | quote }}
+          nvidia.com/gpu: {{ .Values.gpu.resources.limits.gpu | quote }}
         requests:
-          cpu: {{ .Values.resources.requests.cpu | quote }}
-          memory: {{ .Values.resources.requests.memory | quote }}
+          cpu: {{ .Values.gpu.resources.requests.cpu | quote }}
+          memory: {{ .Values.gpu.resources.requests.memory | quote }}
+          nvidia.com/gpu: {{ .Values.gpu.resources.requests.gpu | quote }}
+    {{- if .Values.gpu.shm }}
+    volumes:
+    - name: shm
+      emptyDir:
+        medium: Memory
+        sizeLimit: {{ .Values.gpu.shm.size | default "16Gi" }}
+    {{- end }}
+    {{- with .Values.gpu.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.gpu.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
 {{- end }}
