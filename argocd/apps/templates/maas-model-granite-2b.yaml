@@ -5,7 +5,7 @@ metadata:
   name: maas-model-granite-2b
   namespace: openshift-gitops
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   project: default
   source:

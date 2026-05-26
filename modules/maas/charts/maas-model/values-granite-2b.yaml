@@ -8,7 +8,7 @@ namespace:
 model:
   storageUri: "oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.0-2b-instruct"
   servedName: "granite-2b"
-  maxModelLen: 4096
+  maxModelLen: 8192
 
 images:
   vllm:
