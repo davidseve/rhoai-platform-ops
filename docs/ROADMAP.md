@@ -77,8 +77,8 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 
 #### Pending
 
-- Persistent Tempo storage (switch from memory to PV/S3 backend)
-- Trace-based SLO alerts (PrometheusRule from spanmetrics)
+- [x] **Persistent Tempo storage** -- TempoMonolithic CR configured with `backend: pv` and `size: 10Gi`. PVC created and Bound. Test coverage added (`test_tempo_pvc_bound`).
+- [x] **Trace-based SLO alerts** -- PrometheusRule `tracing-slo` with 3 alerts from spanmetrics: `TracingHighP99Latency` (P99 > 10s), `TracingHighErrorRate` (errors > 5%), `TracingPipelineDown` (no spans for 10m). Test coverage added (`test_tracing_prometheusrule_exists`).
 - **Kuadrant WASM CEL errors (resolved in GA)**: EA2 had ~333 errors/hour caused by `groups_str` bug in maas-controller TRLP predicates (PR #543). Fixed in RHOAI 3.4 GA — MaaSAuthPolicy uses API key subscription scoping instead of `groups_str`. Verify `kuadrant_errors` drops to ~0 after GA deployment.
 - **TelemetryPolicy CEL incompatibility (non-fatal in GA)**: `responseBodyJSON("/model")` and `auth.identity.selected_subscription` are Kuadrant WASM expressions, NOT valid Authorino CEL. Tenant CR with `telemetry.enabled: true` auto-creates a TelemetryPolicy with these expressions. Authorino logs `failed to parse CEL expression` errors — **non-fatal** (metric label evaluation only, not auth decisions). **GA finding (2026-05-18)**: Unlike EA2 where this caused 403 errors (conflated with TLS issue), in GA these CEL errors are strictly cosmetic. The 403 was caused by Authorino→maas-api TLS trust, not CEL. Tenant `telemetry.enabled: true` is safe to use. **Impact**: Limitador metrics lack `model`, `subscription`, `organization_id`, and `cost_center` labels — only aggregate gateway-level metrics. Per-model attribution requires Kuadrant to separate WASM and Authorino CEL expression evaluation. **Current approach**: Tenant `telemetry.enabled: true` enabled via Helm template (ArgoCD SSA). **Re-evaluate in RHOAI 3.5+** for per-model metric labels.
 - **MaaSAuthPolicy 403 on API key inference (RESOLVED 2026-05-18)**: Root cause was Authorino→maas-api TLS trust. Fix: mount `openshift-service-ca.crt` ConfigMap + `SSL_CERT_FILE` env var. Automated as ArgoCD PostSync Job (`authorino-tls-job.yaml`). See commit `552276c`.
@@ -286,14 +286,15 @@ Goal: model governance catalog visible in RHOAI Dashboard, with traceability to 
 
 **Reference**: [ADR-0010](adr/0010-model-registry-postgresql.md)
 
-#### Future: Dedicated databases per consumer
+#### Dedicated databases per consumer (DONE)
 
-Currently MLflow, MaaS API, and EvalHub share the `maas` database. Model Registry already uses a dedicated `model_registry` database after migration conflicts proved that sharing is fragile. Migrate remaining consumers to dedicated databases on the same PostgreSQL instance:
-- `mlflow` — for MLflow tracking (experiments, runs, metrics, artifacts)
-- `maas_api` — for MaaS controller state (API keys, subscriptions)
-- `evalhub` — for EvalHub job tracking
+MLflow and EvalHub now use dedicated databases (`mlflow`, `evalhub`) on the shared PostgreSQL instance, alongside `model_registry` (already separate). The `maas` database remains as the primary for MaaS API. All databases are created at startup via the `extraDatabases` mechanism in `modules/database/charts/database/values.yaml`.
 
-Benefits: isolation of migrations, independent schema evolution, cleaner backup/restore. The init script in `modules/database/charts/database/` already supports `extraDatabases` — just add the database names to `values.yaml`.
+Changes:
+- `extraDatabases: [model_registry, mlflow, evalhub]` in database chart
+- `postgresql.mlflowDatabase` / `postgresql.evalhubDatabase` in evaluation chart
+- Template and cluster tests verify dedicated database names and existence
+- `maas_api` will be split when MaaS API database is actively used
 
 #### Future: PostgreSQL TLS
 

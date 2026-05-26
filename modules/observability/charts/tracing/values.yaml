@@ -25,3 +25,11 @@ collector:
 
 serviceMonitor:
   enabled: true
+
+# Trace-based SLO alerts (PrometheusRule from spanmetrics-derived metrics)
+alerting:
+  enabled: true
+  # P99 span duration threshold in seconds
+  p99LatencyThreshold: 10
+  # Error ratio threshold (0.05 = 5%)
+  errorRateThreshold: 0.05

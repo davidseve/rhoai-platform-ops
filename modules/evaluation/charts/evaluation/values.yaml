@@ -7,7 +7,8 @@ namespace:
   enabled: true
 
 # PostgreSQL backend — reuses the maas-db instance in redhat-ods-applications.
-# MLflow and EvalHub create their own tables in the shared database.
+# Each consumer gets its own database for schema isolation (see extraDatabases
+# in modules/database/charts/database/values.yaml).
 # DNS fix: mlflow-dns-fix.yaml adds a NetworkPolicy allowing port 5353 egress
 # to work around opendatahub-io/mlflow-operator#112 (fix merged, not released).
 postgresql:
@@ -15,7 +16,9 @@ postgresql:
   port: 5432
   user: maas
   password: maas-eval-password
-  database: maas
+  # Dedicated databases per consumer (created by database chart extraDatabases)
+  mlflowDatabase: mlflow
+  evalhubDatabase: evalhub
 
 # MLflow Tracking Server (cluster-scoped CR; operator deploys to redhat-ods-applications)
 mlflow:
