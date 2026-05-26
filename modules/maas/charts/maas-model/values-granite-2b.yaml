@@ -6,9 +6,9 @@ namespace:
   create: false
 
 model:
-  storageUri: "oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.0-2b-instruct"
+  storageUri: "oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.1-2b-instruct"
   servedName: "granite-2b"
-  maxModelLen: 4096
+  maxModelLen: 8192
 
 images:
   vllm:
@@ -40,8 +40,8 @@ registry:
 
 modelRef:
   enabled: true
-  displayName: "Granite 3.0 2B Instruct"
-  description: "CPU-friendly IBM Granite 2B model for chat and tool calling"
+  displayName: "Granite 3.1 2B Instruct"
+  description: "CPU-friendly IBM Granite 3.1 2B model with 128K context for chat and tool calling"
   useCase: "chat"
 
 authPolicy:
