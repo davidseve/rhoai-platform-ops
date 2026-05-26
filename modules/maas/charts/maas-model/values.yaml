@@ -1,3 +1,31 @@
+# GPU model serving (mutually exclusive with CPU).
+# When gpu.enabled: true, uses llm-inference-service-gpu.yaml instead of CPU template.
+# See values-gpu-example.yaml for a complete GPU deployment example.
+gpu:
+  enabled: false
+  image:
+    repository: "quay.io/modh/vllm"
+    tag: "rhoai-2.25-cuda"
+  command:
+    - vllm
+    - serve
+    - /mnt/models
+  extraArgs: []
+  env: []
+  shm:
+    size: "16Gi"
+  resources:
+    requests:
+      cpu: "4"
+      memory: "24Gi"
+      gpu: "1"
+    limits:
+      cpu: "8"
+      memory: "32Gi"
+      gpu: "1"
+  nodeSelector: {}
+  tolerations: []
+
 global:
   name: tinyllama-test
   namespace: models-as-a-service

@@ -73,6 +73,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 - [x] **vLLM tracing funcional** -- `--otlp-traces-endpoint` CLI arg (vLLM v0.7.3 ignora env vars OTEL), spans visibles en Tempo
 - [x] **Token-level tracing** -- `--collect-detailed-traces request` opt-in via `tracing.detailed: true`
 - [x] **Dashboards de tracing** -- Trace Exploration (service map, latency, request rate) + Trace Search (tabla con filtro por servicio y Trace ID clickable)
+- [x] **GPU model serving** -- `llm-inference-service-gpu.yaml` template con imagen vLLM CUDA, `gpu.extraArgs`, `gpu.env`, shared memory (`/dev/shm`), `nvidia.com/gpu` resources, `nodeSelector`/`tolerations`. Mutuamente excluyente con CPU via `gpu.enabled` (default: `false`). Portado desde proyecto cliente.
 - [x] **Datasource UIDs determinísticos** -- `uid: prometheus` y `uid: tempo` para evitar roturas por UIDs aleatorios del operador Grafana
 
 #### Pending

@@ -1,0 +1,99 @@
+# Example GPU model deployment.
+# Usage: helm upgrade --install <name> modules/maas/charts/maas-model \
+#          -f modules/maas/charts/maas-model/values-gpu-example.yaml \
+#          --set namespace.create=false --wait --timeout 15m
+#
+# Prerequisites:
+# - GPU nodes with nvidia.com/gpu resource available
+# - NVIDIA GPU Operator installed
+# - Node labeling and tainting configured (adjust nodeSelector/tolerations below)
+
+gpu:
+  enabled: true
+  image:
+    repository: "quay.io/modh/vllm"
+    tag: "rhoai-2.25-cuda"
+  command:
+    - vllm
+    - serve
+    - /mnt/models
+  extraArgs:
+    - "--gpu-memory-utilization=0.90"
+    - "--enable-prefix-caching"
+  env:
+    - name: HOME
+      value: /tmp/vllm
+    - name: HF_HOME
+      value: /tmp/vllm/.cache/huggingface
+    - name: HUGGINGFACE_HUB_CACHE
+      value: /tmp/vllm/.cache/huggingface/hub
+  shm:
+    size: "16Gi"
+  resources:
+    requests:
+      cpu: "4"
+      memory: "24Gi"
+      gpu: "1"
+    limits:
+      cpu: "8"
+      memory: "32Gi"
+      gpu: "1"
+  nodeSelector: {}
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+global:
+  name: granite-8b-gpu
+  namespace: models-as-a-service
+
+namespace:
+  create: false
+
+model:
+  storageUri: "oci://quay.io/redhat-ai-services/modelcar-catalog:granite-3.1-8b-instruct"
+  servedName: "granite-8b-gpu"
+  maxModelLen: 8192
+
+llminferenceservice:
+  replicas: 1
+  gateway:
+    name: maas-default-gateway
+    namespace: openshift-ingress
+
+tracing:
+  enabled: true
+  detailed: false
+  otlpEndpoint: "http://maas-collector-collector.observability.svc:4317"
+  serviceName: ""
+
+registry:
+  enabled: true
+
+modelRef:
+  enabled: true
+  displayName: "Granite 3.1 8B Instruct (GPU)"
+  description: "GPU-accelerated Granite 3.1 8B for production inference"
+  useCase: "chat"
+
+authPolicy:
+  enabled: true
+  subjects: {}
+
+subscription:
+  enabled: true
+  tiers:
+    free:
+      groups:
+        - name: cluster-admins
+      tokenRateLimits:
+        - limit: 5000
+          window: "1m"
+    premium:
+      priority: 10
+      groups:
+        - name: cluster-admins
+      tokenRateLimits:
+        - limit: 100000
+          window: "1m"
