@@ -39,6 +39,11 @@ spec:
       - /var/run/kserve/tls/tls.crt
       - --ssl-keyfile
       - /var/run/kserve/tls/tls.key
+      {{- if .Values.model.toolCallParser }}
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - {{ .Values.model.toolCallParser }}
+      {{- end }}
       {{- if .Values.tracing.enabled }}
       - --otlp-traces-endpoint
       - {{ .Values.tracing.otlpEndpoint | quote }}
