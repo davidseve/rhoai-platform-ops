@@ -23,6 +23,8 @@ database:
   # Additional databases created on startup (same owner as main user)
   extraDatabases:
     - model_registry
+    - mlflow
+    - evalhub
 
 resources:
   requests:
