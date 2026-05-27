@@ -291,6 +291,13 @@ preflight-namespaces: ## Clear any namespaces stuck in Terminating from a previo
 		echo "[preflight] Stuck Terminating namespaces:$$stuck"; \
 		for ns in $$stuck; do \
 			echo "[preflight] Force-cleaning $$ns..."; \
+			for crd in $$($(OC) get crd -o name 2>/dev/null \
+			  | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset|maas)' \
+			  | sed 's|customresourcedefinition.apiextensions.k8s.io/||' || true); do \
+				for item in $$($(OC) get "$$crd" -n "$$ns" -o name 2>/dev/null); do \
+					$(OC) patch "$$item" -n "$$ns" --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true; \
+				done; \
+			done; \
 			$(OC) get ns "$$ns" -o json 2>/dev/null \
 			  | jq '.spec.finalizers = []' \
 			  | $(OC) replace --raw "/api/v1/namespaces/$$ns/finalize" -f - 2>/dev/null || true; \
