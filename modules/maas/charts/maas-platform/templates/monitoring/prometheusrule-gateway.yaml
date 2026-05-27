@@ -46,4 +46,35 @@ spec:
           annotations:
             summary: "MaaS total error rate exceeds 5%"
             description: "More than 5% of all gateway requests are failing (auth timeouts + backend errors combined)."
+
+    - name: maas-gateway-hardening
+      rules:
+        - alert: MaaSAuthTimeoutRateHigh
+          expr: |
+            sum(rate(kuadrant_errors[5m]))
+            / (
+              sum(rate(kuadrant_allowed[5m]))
+              + sum(rate(kuadrant_denied[5m]))
+              + sum(rate(kuadrant_errors[5m]))
+            ) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "MaaS auth timeout rate exceeds 1%"
+            description: "Auth pipeline errors (WASM 200ms timeout) exceed 1% of total requests. Authorino may need more CPU or replicas."
+
+        - alert: MaaSAuthorinoCPUSaturation
+          expr: |
+            max(
+              rate(container_cpu_usage_seconds_total{namespace="{{ .Values.kuadrant.namespace }}", pod=~"authorino-.*", container="authorino"}[5m])
+              / on(pod) group_left()
+              kube_pod_container_resource_limits{namespace="{{ .Values.kuadrant.namespace }}", pod=~"authorino-.*", container="authorino", resource="cpu"}
+            ) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Authorino CPU usage exceeds 80% of limit"
+            description: "Authorino pod CPU is above 80% of its limit. Auth evaluations risk exceeding the 200ms WASM timeout under load."
 {{- end }}

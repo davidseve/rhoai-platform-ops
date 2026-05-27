@@ -1,0 +1,27 @@
+{{- if .Values.kuadrant.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: authorino
+  namespace: {{ .Values.kuadrant.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      authorino-resource: authorino
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: limitador
+  namespace: {{ .Values.kuadrant.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: limitador
+{{- end }}

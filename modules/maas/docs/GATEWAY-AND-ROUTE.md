@@ -71,3 +71,64 @@ oc annotate svc maas-default-gateway-data-science-gateway-class \
 | AWS with known wildcard cert | **passthrough** | `ingress-certs` | Simple, no extra steps |
 | Bare-metal with `router-certs-default` | **passthrough** | `router-certs-default` | Simple |
 | Unknown platform / multi-cluster | **reencrypt** | `maas-gateway-service-tls` | Platform-independent |
+
+## Production Hardening
+
+### The 200ms constraint
+
+Kuadrant's WASM filter has a **hardcoded 200ms timeout** with `failureMode: deny`. If Authorino takes longer than 200ms to evaluate authentication, the WASM filter returns HTTP 500 and the request never reaches vLLM. This timeout is not configurable.
+
+```
+Client → Route → Gateway (Envoy) → WASM filter ─┬─ Authorino (auth)     ← 200ms budget
+                                                  └─ Limitador (rate limit)
+                                   Gateway → vLLM (inference)
+```
+
+### Authorino sizing (pending)
+
+The Authorino CRD (`operator.authorino.kuadrant.io/v1beta2`) supports `spec.replicas` but does **not** expose container resource limits (`requests`/`limits`). Patching the Deployment directly from a PostSync Job is fragile because the operator may revert changes on reconciliation.
+
+**Recommended values** (apply when the CRD adds `spec.resources`):
+
+| Setting | Value | Rationale |
+| --- | --- | --- |
+| Replicas | 2 | HA during node drains; distribute auth load |
+| CPU request | 250m | Baseline for auth evaluation + TLS handshakes |
+| CPU limit | 1 | Headroom for cold-start auth (no cache hit) |
+| Memory request | 512Mi | Authorino caches auth responses in memory |
+| Memory limit | 1Gi | Safety margin for cache growth under load |
+
+**Track**: watch the [Authorino operator](https://github.com/Kuadrant/authorino-operator) for `spec.resources` or `spec.containers[].resources` support. When available, add values to `kuadrant.authorino` in `values.yaml` and manage via Helm template with SSA.
+
+### Limitador sizing
+
+| Setting | Value | Rationale |
+| --- | --- | --- |
+| Replicas | 2 | HA; rate limit state is local per replica |
+| CPU request | 100m | Rate limit evaluation is lightweight |
+| CPU limit | 500m | Burst capacity for high-concurrency spikes |
+| Memory request | 128Mi | Counter storage is small |
+| Memory limit | 256Mi | Limitador is memory-efficient |
+
+Replicas and resources are set directly on the Limitador CR (`limitador-patch.yaml`), which the operator reconciles into the Deployment.
+
+### PodDisruptionBudgets
+
+Both Authorino and Limitador have PDBs with `minAvailable: 1`. This guarantees at least one pod survives voluntary disruptions (node drains, rolling updates). Without PDBs, a rolling update could briefly leave zero auth/rate-limit pods, causing 500 errors from the WASM filter.
+
+### Monitoring
+
+Two alerts detect auth pipeline degradation before it impacts users:
+
+- **MaaSAuthTimeoutRateHigh**: auth errors exceed 1% of total requests for 5 minutes. Indicates Authorino is timing out under the 200ms WASM deadline.
+- **MaaSAuthorinoCPUSaturation**: Authorino pod CPU usage exceeds 80% of its limit for 5 minutes. Early warning that auth evaluations will start exceeding 200ms.
+
+### Client retry guidance
+
+Clients should implement exponential backoff for 5xx errors from the gateway:
+
+- **500 from WASM filter**: auth pipeline timed out. Retry after 1-2 seconds.
+- **503 Service Unavailable**: Authorino/Limitador pod restarting. Retry after 2-5 seconds.
+- **429 Too Many Requests**: rate limit exceeded. Respect the `Retry-After` header.
+
+Recommended: max 3 retries with jitter, initial delay 1 second, backoff factor 2.

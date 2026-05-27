@@ -6,6 +6,8 @@ per model. Token budget depends on the subscription tier (free=500,
 premium=50000 tok/1m). The API key is tied to the user's subscription.
 """
 
+import os
+
 import pytest
 import requests
 import urllib3
@@ -300,3 +302,31 @@ class TestGatewayHostname:
         assert host.startswith("maas."), (
             f"Route host should start with 'maas.' but got: {host}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Gateway production hardening
+# ---------------------------------------------------------------------------
+
+KUADRANT_NS = os.getenv("KUADRANT_NAMESPACE", "kuadrant-system")
+
+
+class TestGatewayHardening:
+    """Verify gateway auth pipeline is hardened for production."""
+
+    def test_limitador_replicas(self, oc):
+        replicas = oc(
+            f"get deploy limitador-limitador -n {KUADRANT_NS} "
+            "-o jsonpath='{.spec.replicas}'"
+        ).strip("'")
+        assert int(replicas) >= 2, (
+            f"Limitador should have >= 2 replicas, got {replicas}"
+        )
+
+    def test_pdb_exists_authorino(self, oc):
+        out = oc(f"get pdb authorino -n {KUADRANT_NS} --no-headers")
+        assert "authorino" in out, "PDB for Authorino not found"
+
+    def test_pdb_exists_limitador(self, oc):
+        out = oc(f"get pdb limitador -n {KUADRANT_NS} --no-headers")
+        assert "limitador" in out, "PDB for Limitador not found"

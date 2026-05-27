@@ -102,6 +102,14 @@ route:
 limitador:
   # Enables limit_name labels on authorized metrics (not just limited_calls)
   exhaustiveTelemetry: true
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
 # OpenShift Groups for MaaSSubscription tiers.
 # Groups listed here are created as OpenShift Group CRs (except built-in ones).
@@ -161,6 +169,12 @@ kuadrant:
   # Runs as ArgoCD post-sync Job (setup-authorino-tls.sh equivalent).
   authorinoTls:
     enabled: true
+  # Authorino replicas and resource limits: the Authorino CRD (v1beta2) supports
+  # spec.replicas but NOT spec.resources. Patching the Deployment directly from
+  # a PostSync Job is fragile (operator can revert on reconciliation).
+  # Re-evaluate when the Authorino operator adds resource configuration to the CR.
+  # Tracked: https://github.com/Kuadrant/authorino-operator/issues — watch for
+  # spec.resources or spec.containers[].resources support.
 
 leaderWorkerSet:
   enabled: true
