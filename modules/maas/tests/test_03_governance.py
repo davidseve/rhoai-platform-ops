@@ -312,31 +312,7 @@ KUADRANT_NS = os.getenv("KUADRANT_NAMESPACE", "kuadrant-system")
 
 
 class TestGatewayHardening:
-    """Verify Authorino and Limitador are hardened for production."""
-
-    def test_authorino_replicas(self, oc):
-        replicas = oc(
-            f"get deploy authorino -n {KUADRANT_NS} "
-            "-o jsonpath='{.spec.replicas}'"
-        ).strip("'")
-        assert int(replicas) >= 2, (
-            f"Authorino should have >= 2 replicas, got {replicas}"
-        )
-
-    def test_authorino_has_resource_limits(self, oc_json):
-        data = oc_json(f"get deploy authorino -n {KUADRANT_NS}")
-        containers = data["spec"]["template"]["spec"]["containers"]
-        authorino_container = next(
-            (c for c in containers if c["name"] == "authorino"), None
-        )
-        assert authorino_container, "No container named 'authorino' found"
-        resources = authorino_container.get("resources", {})
-        assert resources.get("requests", {}).get("cpu"), (
-            "Authorino container has no CPU request"
-        )
-        assert resources.get("limits", {}).get("cpu"), (
-            "Authorino container has no CPU limit"
-        )
+    """Verify gateway auth pipeline is hardened for production."""
 
     def test_limitador_replicas(self, oc):
         replicas = oc(

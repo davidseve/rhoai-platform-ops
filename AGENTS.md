@@ -158,7 +158,7 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 
 - **LLM Serving:** RHOAI LLMInferenceService (KServe + vLLM)
 - **API Gateway:** Kubernetes Gateway API via Kuadrant
-- **Auth:** Kuadrant AuthPolicy with KubernetesTokenReview (RHOAI 3.4+) — PostSync self-healing for Istio race condition (see [ADR-0011](docs/adr/0011-kuadrant-istio-race-condition.md)). Production hardened: Authorino 2 replicas with resource limits, Limitador 2 replicas, PDBs, auth timeout alerts (see [Gateway docs](modules/maas/docs/GATEWAY-AND-ROUTE.md#production-hardening))
+- **Auth:** Kuadrant AuthPolicy with KubernetesTokenReview (RHOAI 3.4+) — PostSync self-healing for Istio race condition (see [ADR-0011](docs/adr/0011-kuadrant-istio-race-condition.md)). Production hardened: Limitador 2 replicas with resource limits, PDBs for Authorino and Limitador, auth timeout alerts (see [Gateway docs](modules/maas/docs/GATEWAY-AND-ROUTE.md#production-hardening)). Authorino sizing pending CRD support.
 - **Rate Limiting:** MaaSSubscription + controller-managed TokenRateLimitPolicy (see [ADR-0005](docs/adr/0005-maas-subscription-model.md))
 - **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
 - **Tracing:** Red Hat build of OpenTelemetry + Tempo with persistent PV storage + trace-based SLO alerts (see [ADR-0004](docs/adr/0004-tracing-stack.md))

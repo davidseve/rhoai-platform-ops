@@ -84,7 +84,11 @@ Client → Route → Gateway (Envoy) → WASM filter ─┬─ Authorino (auth) 
                                    Gateway → vLLM (inference)
 ```
 
-### Authorino sizing
+### Authorino sizing (pending)
+
+The Authorino CRD (`operator.authorino.kuadrant.io/v1beta2`) supports `spec.replicas` but does **not** expose container resource limits (`requests`/`limits`). Patching the Deployment directly from a PostSync Job is fragile because the operator may revert changes on reconciliation.
+
+**Recommended values** (apply when the CRD adds `spec.resources`):
 
 | Setting | Value | Rationale |
 | --- | --- | --- |
@@ -94,7 +98,7 @@ Client → Route → Gateway (Envoy) → WASM filter ─┬─ Authorino (auth) 
 | Memory request | 512Mi | Authorino caches auth responses in memory |
 | Memory limit | 1Gi | Safety margin for cache growth under load |
 
-The PostSync Job (`authorino-tls-job.yaml`) patches both the Authorino CR (replicas) and the Deployment (resource limits). The operator manages replicas from the CR but does not reconcile resource limits on the Deployment, so the patch is stable.
+**Track**: watch the [Authorino operator](https://github.com/Kuadrant/authorino-operator) for `spec.resources` or `spec.containers[].resources` support. When available, add values to `kuadrant.authorino` in `values.yaml` and manage via Helm template with SSA.
 
 ### Limitador sizing
 

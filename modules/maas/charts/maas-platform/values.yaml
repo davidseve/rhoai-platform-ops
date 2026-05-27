@@ -169,17 +169,12 @@ kuadrant:
   # Runs as ArgoCD post-sync Job (setup-authorino-tls.sh equivalent).
   authorinoTls:
     enabled: true
-  # Production hardening: replicas and resource limits for Authorino.
-  # Must complete auth within 200ms (Kuadrant WASM timeout, failureMode: deny).
-  authorino:
-    replicas: 2
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: "1"
-        memory: 1Gi
+  # Authorino replicas and resource limits: the Authorino CRD (v1beta2) supports
+  # spec.replicas but NOT spec.resources. Patching the Deployment directly from
+  # a PostSync Job is fragile (operator can revert on reconciliation).
+  # Re-evaluate when the Authorino operator adds resource configuration to the CR.
+  # Tracked: https://github.com/Kuadrant/authorino-operator/issues — watch for
+  # spec.resources or spec.containers[].resources support.
 
 leaderWorkerSet:
   enabled: true
