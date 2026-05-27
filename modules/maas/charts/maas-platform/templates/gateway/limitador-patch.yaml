@@ -8,4 +8,12 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   telemetry: exhaustive
+  replicas: {{ .Values.limitador.replicas }}
+  resourceRequirements:
+    requests:
+      cpu: {{ .Values.limitador.resources.requests.cpu }}
+      memory: {{ .Values.limitador.resources.requests.memory }}
+    limits:
+      cpu: {{ .Values.limitador.resources.limits.cpu }}
+      memory: {{ .Values.limitador.resources.limits.memory }}
 {{- end }}
