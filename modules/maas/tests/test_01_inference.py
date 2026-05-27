@@ -226,7 +226,7 @@ class TestAPIKeyInference:
 
 
 class TestModel2ChatCompletions:
-    """Verify inference works on the second model (tinyllama-fast) with API key."""
+    """Verify inference works on the second model (granite-2b) with API key."""
 
     def test_model2_inference_returns_200(
         self, maas_url, maas_api_key_model2, inference_path_model2, chat_payload_model2
@@ -259,4 +259,4 @@ class TestModel2ChatCompletions:
         body = resp.json()
         assert "choices" in body
         assert len(body["choices"]) > 0
-        assert body["model"] == "tinyllama-fast"
+        assert body["model"] == "granite-2b"

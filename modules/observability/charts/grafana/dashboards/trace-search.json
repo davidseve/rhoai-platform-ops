@@ -92,11 +92,11 @@
         "name": "service",
         "label": "Service",
         "type": "custom",
-        "query": "tinyllama-test,tinyllama-fast",
+        "query": "tinyllama-test,granite-2b",
         "current": { "text": "tinyllama-test", "value": "tinyllama-test" },
         "options": [
           { "text": "tinyllama-test", "value": "tinyllama-test", "selected": true },
-          { "text": "tinyllama-fast", "value": "tinyllama-fast", "selected": false }
+          { "text": "granite-2b", "value": "granite-2b", "selected": false }
         ],
         "hide": 0,
         "includeAll": false,

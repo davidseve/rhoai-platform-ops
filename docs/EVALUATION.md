@@ -22,32 +22,32 @@ See [ADR-0007](../../../docs/adr/0007-merge-benchmarks-into-evaluation.md) for t
 ## Quick Start
 
 ```bash
-# Deploy infrastructure (EvalHub + MLflow + benchmarks infra)
+# Deploy infrastructure (EvalHub + MLflow)
 # The model-auth Secret (service-serving CA) is created automatically by a post-install hook
 make deploy-evaluation
 
 # Run quality evaluation via EvalHub API (internal KServe URL)
 make evalhub-eval EVALHUB_BENCHMARK=arc_easy \
-    MODEL_URL=https://tinyllama-fast-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
-    MODEL_NAME=tinyllama-fast \
-    TOKENIZER=TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+    MODEL_URL=https://granite-2b-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+    MODEL_NAME=granite-2b \
+    TOKENIZER=ibm-granite/granite-3.1-2b-instruct \
     SECRET_REF=model-auth \
     EVAL_LIMIT=10
 
 # Smoke test — validates full pipeline in <5 min (EvalHub → Job → MLflow)
 make evalhub-smoke \
-    MODEL_URL=https://tinyllama-fast-kserve-workload-svc.models-as-a-service.svc:8000/v1
+    MODEL_URL=https://granite-2b-kserve-workload-svc.models-as-a-service.svc:8000/v1
 
 # Run performance benchmark via EvalHub API (default: throughput, 1 strategy)
 make evalhub-benchmark \
-    MODEL_URL=https://tinyllama-fast-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
-    MODEL_NAME=tinyllama-fast \
+    MODEL_URL=https://granite-2b-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+    MODEL_NAME=granite-2b \
     SECRET_REF=model-auth
 
 # Run security scan via Garak (reduced probe cap for speed)
 make evalhub-security \
-    MODEL_URL=https://tinyllama-fast-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
-    MODEL_NAME=tinyllama-fast
+    MODEL_URL=https://granite-2b-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+    MODEL_NAME=granite-2b
 
 # List providers and benchmarks
 make evalhub-providers

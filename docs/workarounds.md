@@ -13,7 +13,7 @@ Active workarounds applied in this project. Each entry documents a known issue a
 
 GuideLLM benchmark pods created by EvalHub crash with `Worker process received error signal` when running the `throughput` benchmark (which internally uses `--profile sweep`). The sweep profile spawns multiple concurrent workers that exceed the default 2Gi memory limit set in the OOTB provider ConfigMap (`evalhub-provider-guidellm`).
 
-The [BENCHMARKS.md](../modules/evaluation/docs/BENCHMARKS.md) documentation already notes that the sweep profile requires 4Gi.
+The [BENCHMARKS.md](BENCHMARKS.md) documentation notes that the sweep profile requires 4Gi.
 
 ### Workaround
 
@@ -56,6 +56,6 @@ oc scale deployment -n redhat-ods-applications \
    ```
 2. Run a GuideLLM benchmark and verify it completes:
    ```bash
-   make evalhub-benchmark MODEL_NAME=tinyllama-fast
+   make evalhub-benchmark MODEL_NAME=granite-2b
    ```
 3. When EvalHub GA adds a `resources` or `runtimes` field to the CRD, configure it in `modules/evaluation/charts/evaluation/templates/evalhub.yaml` and remove this workaround.

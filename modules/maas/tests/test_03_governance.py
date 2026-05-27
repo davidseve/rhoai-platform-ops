@@ -171,7 +171,7 @@ class TestTokenRateLimitIsolation:
             "Content-Type": "application/json",
         }
         payload = {
-            "model": "tinyllama-fast",
+            "model": "granite-2b",
             "messages": [{"role": "user", "content": "Hi"}],
             "max_tokens": 20,
         }

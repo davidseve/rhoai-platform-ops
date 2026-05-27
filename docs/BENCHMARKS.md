@@ -1,99 +1,41 @@
-# GuideLLM Benchmarks
+# GuideLLM Performance Benchmarks
 
-Load testing for LLM inference using [GuideLLM](https://github.com/vllm-project/guidellm) v0.6.0+.
+Load testing for LLM inference using [GuideLLM](https://github.com/vllm-project/guidellm) via the EvalHub API.
 
-Part of the evaluation module (see [ADR-0007](../../../docs/adr/0007-merge-benchmarks-into-evaluation.md)).
+Part of the evaluation module (see [ADR-0008](adr/0008-evalhub-orchestrator.md)).
 
 ## Prerequisites
 
-- MaaS module deployed with at least one model running
+- Evaluation module deployed (`make deploy-evaluation`)
+- At least one model running (e.g., `granite-2b`)
 - `oc` CLI logged into the cluster
-- `helm` CLI available
 
 ## Quick Start
 
 ```bash
-# 1. Deploy evaluation module (includes benchmarks infra: PVC, SA, CA bundle)
-make deploy-evaluation
+# Run a performance benchmark (throughput profile, 30s max)
+make evalhub-benchmark MODEL_NAME=granite-2b
 
-# 2. Run a benchmark against the gateway (default scenario)
-make run-benchmark BENCHMARK_TARGET=https://rh-ai.apps.<cluster-domain>/v1
+# Run a full sweep (multiple rate points, production profiling)
+./scripts/evalhub.sh submit --provider guidellm --benchmark sweep \
+    --model-url https://granite-2b-kserve-workload-svc.models-as-a-service.svc:8000/v1 \
+    --model-name granite-2b --secret-ref model-auth --wait
 
-# 3. Retrieve results from the PVC
-POD=$(oc get pods -n evaluation -l app.kubernetes.io/component=benchmarks --sort-by=.metadata.creationTimestamp -o name | tail -1)
-oc cp -n evaluation ${POD#pod/}:/results ./results
+# Check job status
+make evalhub-status JOB_ID=<uuid>
 ```
 
-## Scenarios
+## Available Profiles
 
-| Scenario | Profile | Rates | Target | Purpose |
-|----------|---------|-------|--------|---------|
-| `gateway` (default) | concurrent | c=1,2,4,8 | Gateway route (external) | Measure real-world latency including auth + rate limiting |
-| `baseline` | concurrent | c=1,2,4,8 | ClusterIP service (internal) | Measure raw inference latency without gateway overhead |
-| `stress` | sweep | 5 auto-discovered points | Gateway route | Find max throughput and breaking point |
-| `slo` | constant | 4 RPS | Gateway route | Validate PrometheusRules don't fire under target load |
+| Profile | `--benchmark` value | Behavior |
+|---------|---------------------|----------|
+| `throughput` | `throughput` | Single concurrent strategy, measures max tokens/sec |
+| `sweep` | `sweep` | Auto-discovers rate range, tests multiple points |
+| `concurrent` | `concurrent` | Fixed number of parallel streams |
+| `constant` | `constant` | Sends at a constant rate (RPS) |
+| `poisson` | `poisson` | Requests drawn from Poisson distribution |
 
-Run a specific scenario:
-
-```bash
-# Gateway (default) -- needs BENCHMARK_TARGET for your cluster
-make run-benchmark BENCHMARK_SCENARIO=gateway BENCHMARK_TARGET=https://rh-ai.apps.<cluster>/v1
-
-# Baseline -- direct to model, no gateway (target hardcoded in values-baseline.yaml)
-make run-benchmark BENCHMARK_SCENARIO=baseline
-
-# Stress -- sweep auto-discovery
-make run-benchmark BENCHMARK_SCENARIO=stress BENCHMARK_TARGET=https://rh-ai.apps.<cluster>/v1
-
-# SLO -- constant 4 RPS
-make run-benchmark BENCHMARK_SCENARIO=slo BENCHMARK_TARGET=https://rh-ai.apps.<cluster>/v1
-
-# With authentication
-make run-benchmark BENCHMARK_SCENARIO=gateway BENCHMARK_TARGET=https://... BENCHMARK_TOKEN=$(oc whoami -t)
-```
-
-### Scenario Details
-
-**Gateway vs Baseline**: Running both with identical rates (c=1,2,4,8) allows direct A/B comparison of gateway overhead. The baseline target uses the kserve internal service (`https://<model>-kserve-workload-svc.<ns>.svc:8000/v1`).
-
-**Stress (sweep)**: For the sweep profile, `--rate` means the **number of rate points to discover** (`sweep_size`), NOT the actual request rate. GuideLLM auto-discovers the rate range. `sweep_size` must be >= 2. The stress scenario needs more memory (4Gi limits) because sweep maintains state for all rate points concurrently.
-
-**SLO (constant)**: Sends requests at a fixed rate (4 req/s). Useful for validating that PrometheusRules and SLO alerts don't fire under steady-state load.
-
-## Processor (Tokenizer)
-
-GuideLLM generates **synthetic data** for benchmark requests. To create prompts with an exact number of tokens, it needs the model's HuggingFace tokenizer. The `--processor` flag specifies the HuggingFace model ID (e.g., `TinyLlama/TinyLlama-1.1B-Chat-v1.0`). It downloads only the tokenizer (~KB), not the model weights.
-
-This is needed because the OpenShift model name (e.g., `tinyllama-test`) doesn't match a HuggingFace model ID. Configure via `benchmarks.benchmark.processor` in `values.yaml`.
-
-## TLS Verification
-
-TLS verification uses the OpenShift cluster CA bundle, **not** `verify: false`:
-
-1. A ConfigMap (`benchmarks-ca-bundle`) with annotation and label `config.openshift.io/inject-trusted-cabundle: "true"` is auto-populated by OpenShift with the cluster's trusted CA certificates
-2. The Job mounts this CA bundle at `/etc/pki/tls/certs/ca-bundle.crt`
-3. The `SSL_CERT_FILE` environment variable tells Python's `httpx` to use this file
-
-This approach validates the OpenShift router's certificate properly. Both the annotation and label are required for OpenShift to inject the CA bundle.
-
-## Payload Matrix
-
-Configured via `benchmarks.benchmark.promptTokens` and `benchmarks.benchmark.outputTokens` in values:
-
-| Scenario | Prompt Tokens | Output Tokens |
-|----------|---------------|---------------|
-| gateway / baseline / stress / slo | 32 | 64 |
-
-## Resource Requirements
-
-| Scenario | CPU request/limit | Memory request/limit |
-|----------|-------------------|----------------------|
-| gateway / baseline / slo | 1 / 2 | 1Gi / 2Gi |
-| stress (sweep) | 2 / 4 | 2Gi / 4Gi |
-
-The sweep profile needs more memory because it maintains state for all auto-discovered rate points concurrently. With `sweep_size=10` and 2Gi limit, it OOMs.
-
-## Key Metrics Collected
+## Key Metrics
 
 GuideLLM reports per-request:
 
@@ -104,43 +46,19 @@ GuideLLM reports per-request:
 
 ## Results
 
-Results are stored in a PVC (`benchmarks-results`) at `/results/`:
-
-- `benchmarks.json` -- full request-level data
-- `benchmarks.csv` -- summary metrics
-
-Copy results locally:
+Results are stored in the EvalHub database and queryable via:
 
 ```bash
-POD=$(oc get pods -n evaluation -l app.kubernetes.io/component=benchmarks --sort-by=.metadata.creationTimestamp -o name | tail -1)
-oc cp -n evaluation ${POD#pod/}:/results ./results
+# Check job results
+make evalhub-status JOB_ID=<uuid>
+
+# List all completed jobs
+make evalhub-jobs
 ```
 
 ## Authentication
 
-For gateway endpoints that require auth:
-
-```bash
-# Using inline token (dev/test only)
-make run-benchmark BENCHMARK_TARGET=https://... BENCHMARK_TOKEN=$(oc whoami -t)
-
-# Using a Secret (recommended)
-oc create secret generic benchmark-auth -n evaluation --from-literal=token=$(oc whoami -t)
-helm template evaluation modules/evaluation/charts/evaluation \
-  --set benchmarks.job.enabled=true \
-  --set benchmarks.benchmark.authSecret=benchmark-auth \
-  --show-only templates/benchmarks-job.yaml | oc create -f -
-```
-
-## GuideLLM Load Profiles
-
-| Profile | `--rate` means | Behavior |
-|---------|----------------|----------|
-| `concurrent` | Parallel streams | Fixed number of parallel requests; replaces completed immediately |
-| `constant` | Requests/second | Sends at a constant rate (RPS) |
-| `poisson` | Avg requests/second | Requests drawn from Poisson distribution (realistic variance) |
-| `sweep` | **Number of rate points** (sweep_size) | Auto-discovers rate range, tests N points. Must be >= 2 |
-| `synchronous` | N/A | Single stream, one request at a time (baseline latency) |
+EvalHub handles TLS trust via the `model-auth` Secret (created automatically by a post-install hook with the OpenShift service-serving CA). Pass `--secret-ref model-auth` for internal KServe endpoints.
 
 ## References
 

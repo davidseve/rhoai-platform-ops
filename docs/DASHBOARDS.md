@@ -42,7 +42,7 @@ The script automatically discovers the cluster domain, obtains a MaaS token, and
 | `REQUESTS` | 50 | Total number of inference requests |
 | `CONCURRENCY` | 2 | Parallel workers sending requests (keep <=2, see [Gateway Errors](#gateway-errors)) |
 | `DELAY` | 1 | Seconds between requests per worker |
-| `MODELS` | `tinyllama-test,tinyllama-fast` | Comma-separated model names |
+| `MODELS` | `tinyllama-test,granite-2b` | Comma-separated model names |
 | `MAX_TOKENS` | 30 | Max tokens per completion request |
 | `EMIT_TRACES` | `true` | Send OTLP traces to collector for each request |
 

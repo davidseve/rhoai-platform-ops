@@ -144,8 +144,8 @@ deploy-maas: ## Deploy MaaS operators + platform + models via Helm
 		echo "  Skipping dashboard patch (OdhDashboardConfig not found)"
 	$(HELM) upgrade --install maas-model modules/maas/charts/maas-model \
 		--set namespace.create=false --wait --timeout 15m
-	$(HELM) upgrade --install maas-model-fast modules/maas/charts/maas-model \
-		-f modules/maas/charts/maas-model/values-tinyllama-fast.yaml \
+	$(HELM) upgrade --install maas-model-granite-2b modules/maas/charts/maas-model \
+		-f modules/maas/charts/maas-model/values-granite-2b.yaml \
 		--set namespace.create=false --wait --timeout 15m
 
 .PHONY: test-maas
@@ -157,7 +157,7 @@ test-maas: ## Run MaaS E2E tests
 
 .PHONY: undeploy-maas
 undeploy-maas: ## Undeploy MaaS via Helm
-	-$(HELM) uninstall maas-model-fast 2>/dev/null
+	-$(HELM) uninstall maas-model-granite-2b 2>/dev/null
 	-$(HELM) uninstall maas-model 2>/dev/null
 	-$(HELM) uninstall model-registry -n rhoai-model-registries 2>/dev/null
 	-$(HELM) uninstall maas-platform 2>/dev/null
@@ -200,10 +200,10 @@ undeploy-evaluation: ## Undeploy evaluation via Helm
 
 EVALHUB_BENCHMARK ?= arc_easy
 EVALHUB_PROVIDER ?= lm_evaluation_harness
-MODEL_NAME ?= tinyllama-fast
+MODEL_NAME ?= granite-2b
 # Internal KServe URL (bypasses gateway auth). Override for external endpoints.
 MODEL_URL ?= https://$(MODEL_NAME)-kserve-workload-svc.models-as-a-service.svc:8000/v1
-TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
+TOKENIZER ?= ibm-granite/granite-3.1-2b-instruct
 SECRET_REF ?= model-auth
 EVAL_LIMIT ?= 10
 MAX_SECONDS ?=
@@ -275,44 +275,6 @@ evalhub-security: ## Quick security scan via Garak (timeout=900s, reduced probe 
 		--extra-params '{"garak_config":{"run":{"soft_probe_prompt_cap":1}}}' \
 		--wait
 
-# --- Legacy evaluation targets (DEPRECATED: use evalhub-* targets instead) ---
-
-EVAL_TASK ?= arc_easy
-EVAL_MODEL_URL ?=
-
-.PHONY: run-evaluation
-run-evaluation: ## [DEPRECATED] Run LMEvalJob directly — use 'make evalhub-eval' instead
-	@echo "WARNING: run-evaluation is deprecated. Use 'make evalhub-eval' instead." >&2
-	@echo "=== Running LMEvalJob: $(EVAL_TASK) (limit=$(EVAL_LIMIT)) ==="
-	@EVAL_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
-		--set lmeval.enabled=true \
-		--set lmeval.task=$(EVAL_TASK) \
-		--set lmeval.limit=$(EVAL_LIMIT) \
-		$(if $(EVAL_MODEL_URL),--set lmeval.modelUrl=$(EVAL_MODEL_URL)) \
-		--show-only templates/lmevaljob.yaml); \
-	echo "$$EVAL_YAML" | $(OC) create -f -
-
-BENCHMARK_SCENARIO ?= gateway
-BENCHMARK_TARGET ?=
-BENCHMARK_TOKEN ?=
-
-.PHONY: run-benchmark
-run-benchmark: ## [DEPRECATED] Run GuideLLM Job directly — use 'make evalhub-benchmark' instead
-	@echo "WARNING: run-benchmark is deprecated. Use 'make evalhub-benchmark' instead." >&2
-	@echo "=== Running benchmark scenario: $(BENCHMARK_SCENARIO) ==="
-	@JOB_YAML=$$($(HELM) template evaluation modules/evaluation/charts/evaluation \
-		--set benchmarks.job.enabled=true \
-		$(if $(filter baseline stress slo,$(BENCHMARK_SCENARIO)),-f modules/evaluation/charts/evaluation/values-$(BENCHMARK_SCENARIO).yaml) \
-		$(if $(BENCHMARK_TARGET),--set benchmarks.benchmark.target=$(BENCHMARK_TARGET)) \
-		$(if $(BENCHMARK_TOKEN),--set benchmarks.benchmark.authToken=$(BENCHMARK_TOKEN)) \
-		--show-only templates/benchmarks-job.yaml); \
-	JOB_NAME=$$(echo "$$JOB_YAML" | grep "^  name:" | head -1 | awk '{print $$2}'); \
-	echo "$$JOB_YAML" | $(OC) create -f - && \
-	echo "Waiting for job/$$JOB_NAME to complete..." && \
-	$(OC) wait --for=condition=complete job/$$JOB_NAME -n evaluation --timeout=1800s && \
-	echo "=== Job completed ===" && \
-	$(OC) logs job/$$JOB_NAME -n evaluation
-
 # --- ArgoCD (Stable Deployment) ---
 
 .PHONY: preflight-namespaces
@@ -370,8 +332,8 @@ argocd-branch: ## Point ArgoCD manifests to BRANCH=<name>
 
 WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
-# parent + 10 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, obs-operators, obs-grafana, obs-tracing, evaluation)
-# parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-fast, maas-model-registry, obs-operators, obs-grafana, obs-tracing, evaluation)
+# parent + 10 child apps (database, maas-operators, maas-platform, maas-model, maas-model-granite-2b, obs-operators, obs-grafana, obs-tracing, evaluation)
+# parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-granite-2b, maas-model-registry, obs-operators, obs-grafana, obs-tracing, evaluation)
 MIN_APPS ?= 11
 APP_FILTER = grep -E 'maas-|model-registry|observability-|rhoai-platform-ops|evaluation|database'
 
@@ -503,9 +465,9 @@ deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 
 .PHONY: test-evalhub
 test-evalhub: ## Run EvalHub E2E tests: smoke (lm-eval) + benchmark (GuideLLM). Security (Garak) excluded — too slow on CPU, run manually on GPU.
-	@echo "=== EvalHub E2E: smoke + benchmark against tinyllama-fast ==="
-	$(MAKE) evalhub-smoke MODEL_NAME=tinyllama-fast
-	$(MAKE) evalhub-benchmark MODEL_NAME=tinyllama-fast
+	@echo "=== EvalHub E2E: smoke + benchmark against granite-2b ==="
+	$(MAKE) evalhub-smoke MODEL_NAME=granite-2b
+	$(MAKE) evalhub-benchmark MODEL_NAME=granite-2b
 
 .PHONY: test-all
 test-all: test-observability test-maas test-evaluation test-evalhub ## Run all module tests (includes EvalHub E2E)

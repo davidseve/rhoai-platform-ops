@@ -106,13 +106,11 @@ Grafana dashboards, vLLM metrics collection, tracing, alerting rules.
 
 ### evaluation (Ready)
 
-Unified LLM evaluation: EvalHub (quality), MLflow (tracking), GuideLLM benchmarks (performance). See [ADR-0007](adr/0007-merge-benchmarks-into-evaluation.md) for the merge decision.
+Unified LLM evaluation: EvalHub (quality + performance), MLflow (tracking). See [ADR-0008](adr/0008-evalhub-orchestrator.md) for the EvalHub-first approach.
 
 | Component | Description |
 |-----------|-------------|
-| EvalHub | Evaluation control plane (TrustyAI, RHOAI 3.4 TP) |
+| EvalHub | Evaluation control plane (TrustyAI) — orchestrates lm-eval, GuideLLM, Garak, Lighteval |
 | MLflow | Experiment tracking and artifact storage |
-| GuideLLM | Load testing with PVC results, SA, CA bundle, K8s Job (conditional) |
-| LMEvalJob | On-demand model quality evaluations |
 
-Benchmark scenarios: `gateway`, `baseline`, `stress`, `slo`. See [BENCHMARKS.md](../modules/evaluation/docs/BENCHMARKS.md) and [EVALUATION.md](../modules/evaluation/docs/EVALUATION.md) for details.
+See [EVALUATION.md](EVALUATION.md) and [BENCHMARKS.md](BENCHMARKS.md) for details.

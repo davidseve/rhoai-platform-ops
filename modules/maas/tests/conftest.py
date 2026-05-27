@@ -22,7 +22,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ---------------------------------------------------------------------------
 
 MODEL_NAME = os.getenv("MAAS_MODEL_NAME", "tinyllama-test")
-MODEL2_NAME = os.getenv("MAAS_MODEL2_NAME", "tinyllama-fast")
+MODEL2_NAME = os.getenv("MAAS_MODEL2_NAME", "granite-2b")
 MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "models-as-a-service")
 GATEWAY_NAME = os.getenv("MAAS_GATEWAY_NAME", "maas-default-gateway")
 GATEWAY_NAMESPACE = os.getenv("MAAS_GATEWAY_NAMESPACE", "openshift-ingress")
