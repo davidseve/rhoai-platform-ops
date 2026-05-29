@@ -1,0 +1,64 @@
+---
+description: "MaaS authoritative reference: validate all decisions against official docs."
+globs: modules/maas/**,argocd/apps/templates/maas-*,docs/adr/*maas*,docs/adr/*kuadrant*
+alwaysApply: false
+---
+
+# MaaS Reference Documentation
+
+See [ADR-0006](docs/adr/0006-maas-documentation-sources.md) for the full decision record on source precedence.
+
+## Authoritative Sources (in priority order)
+
+### 1. Red Hat Official Documentation (PRIMARY)
+
+- **MaaS guide:** https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/index
+- **RHOAI 3.4 release notes:** https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/
+- **RHCL / Kuadrant:** https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1
+- **Supported configs:** https://access.redhat.com/articles/rhoai-supported-configs-3.x
+
+Use for: GA/TP status, supported configurations, operator channels, DSC setup, Gateway config.
+
+### 2. Upstream MaaS Documentation (SECONDARY)
+
+- **Docs site:** https://opendatahub-io.github.io/models-as-a-service/latest/
+- **GitHub:** https://github.com/opendatahub-io/models-as-a-service
+
+Use for: CRD field reference (MaaSModelRef, MaaSSubscription, MaaSAuthPolicy, ExternalModel, Tenant), controller behavior, auto-created resources, annotations, migration guides, API reference.
+
+### 3. Upstream MaaS Repository (TERTIARY)
+
+- **Source code:** https://github.com/opendatahub-io/models-as-a-service
+
+Use for: resolving doc conflicts, CRD source of truth, PR-based bug fixes, kustomize manifests.
+
+## When to Consult
+
+- **CRD spec fields** → Upstream docs or repo CRD definitions
+- **Is feature X GA?** → Red Hat docs
+- **Gateway / Route config** → Red Hat docs, then upstream
+- **Auth pipeline (MaaSAuthPolicy)** → Upstream docs (controller behavior)
+- **Rate limiting (MaaSSubscription)** → Upstream docs + [ADR-0005](docs/adr/0005-maas-subscription-model.md)
+- **Kuadrant (AuthPolicy, RLP, TRLP)** → RHCL docs
+- **Bug / unexpected behavior** → Upstream repo issues/PRs
+- **Operator channels** → Red Hat docs
+
+## Validation Rules
+
+1. **Do NOT guess** CRD fields for MaaSModelRef, MaaSSubscription, MaaSAuthPolicy, or Tenant — look them up.
+2. **Use `context7` MCP** or `WebFetch` to retrieve current docs when implementing changes.
+3. **Cite the source** in ADRs and commit messages.
+4. **Conflict resolution**: Red Hat docs win. If upstream has a feature not in Red Hat docs, treat as TP/unsupported.
+
+## Key Components
+
+| Component | CRD / API Group | Purpose |
+|-----------|----------------|---------|
+| LLMInferenceService | `kserve.io/v1alpha1` | Model serving (KServe + vLLM) |
+| MaaSModelRef | `maas.opendatahub.io/v1alpha1` | Model reference in /v1/models API |
+| MaaSSubscription | `maas.opendatahub.io/v1alpha1` | Tier-based token rate limits |
+| MaaSAuthPolicy | `maas.opendatahub.io/v1alpha1` | API key authentication |
+| Tenant | `maas.opendatahub.io/v1alpha1` | Telemetry and multi-tenancy |
+| Gateway | `gateway.networking.k8s.io/v1` | API gateway (data-science-gateway-class) |
+| AuthPolicy | `kuadrant.io/v1` | Kuadrant auth enforcement |
+| TokenRateLimitPolicy | `kuadrant.io/v1alpha1` | Token-based rate limiting |
