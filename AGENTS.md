@@ -41,8 +41,8 @@ make argocd-branch-current # Point ArgoCD manifests to the current git branch
 make argocd-branch-main   # Point ArgoCD manifests back to main
 make argocd-branch BRANCH=feat/my-branch # Point ArgoCD manifests to an explicit branch
 
-# Evaluation module (EvalHub orchestrator + MLflow + benchmarks infra)
-make deploy-evaluation    # Helm install EvalHub + MLflow + benchmarks infra
+# Evaluation module (EvalHub orchestrator + MLflow)
+make deploy-evaluation    # Helm install EvalHub + MLflow
 make evalhub-eval EVALHUB_BENCHMARK=arc_easy MODEL_URL=https://... EVAL_LIMIT=10  # Quality eval via EvalHub API
 make evalhub-benchmark MODEL_URL=https://...  # Performance benchmark (GuideLLM throughput, max-seconds=30)
 make evalhub-smoke MODEL_URL=https://...      # Smoke test: lm-eval limit=1, full pipeline validation
@@ -63,7 +63,7 @@ make preflight-namespaces # Clear namespaces stuck in Terminating (auto-runs bef
 make cluster-cleanup      # Remove ALL resources (skip confirmation)
 make cluster-cleanup-maas # Remove only MaaS resources
 make cluster-cleanup-observability # Remove only observability resources
-make cluster-cleanup-evaluation # Remove only evaluation resources (includes benchmarks)
+make cluster-cleanup-evaluation # Remove only evaluation resources
 make cluster-cleanup-database # Remove only database resources
 make cluster-cleanup-dry  # Dry-run: show what would be deleted
 
@@ -100,9 +100,9 @@ modules/
     tests/                # E2E tests (inference, in-cluster, governance, model registry)
     docs/                 # Architecture, Gateway, troubleshooting
 
-  evaluation/             # Unified LLM evaluation: EvalHub (quality), MLflow (tracking), GuideLLM (performance)
+  evaluation/             # Unified LLM evaluation: EvalHub (quality + performance), MLflow (tracking)
     charts/
-      evaluation/         # EvalHub CR, MLflow CR, GuideLLM Job, DB secrets, routes, CA bundles
+      evaluation/         # EvalHub CR, MLflow CR, DB secrets, routes, CA bundles
     tests/                # E2E tests (template validation + cluster infra)
     docs/                 # EVALUATION.md, BENCHMARKS.md
 ```
@@ -188,6 +188,6 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - [Observability](modules/observability/docs/OBSERVABILITY.md)
 - [MaaS Architecture](modules/maas/docs/ARCHITECTURE.md)
 - [Gateway and Route](modules/maas/docs/GATEWAY-AND-ROUTE.md)
-- [Evaluation](modules/evaluation/docs/EVALUATION.md)
-- [Benchmarks](modules/evaluation/docs/BENCHMARKS.md)
+- [Evaluation](docs/EVALUATION.md)
+- [Benchmarks](docs/BENCHMARKS.md)
 - [ADRs](docs/adr/)

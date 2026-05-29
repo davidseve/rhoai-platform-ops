@@ -13,7 +13,7 @@
 #   REQUESTS     Total requests to send (default: 50)
 #   CONCURRENCY  Parallel workers (default: 2; keep <=2 to avoid gateway 500s)
 #   DELAY        Seconds between requests per worker (default: 1)
-#   MODELS       Comma-separated model list (default: tinyllama-test,tinyllama-fast)
+#   MODELS       Comma-separated model list (default: tinyllama-test,granite-2b)
 #   MAX_TOKENS   Max tokens per request (default: 30)
 #   EMIT_TRACES  Send OTLP traces to collector (default: true)
 #   COLLECTOR_HOST  OTel collector host:port for OTLP HTTP (default: auto via port-forward)
@@ -30,7 +30,7 @@ OC="${OC:-oc}"
 REQUESTS="${REQUESTS:-50}"
 CONCURRENCY="${CONCURRENCY:-2}"
 DELAY="${DELAY:-1}"
-MODELS="${MODELS:-tinyllama-test,tinyllama-fast}"
+MODELS="${MODELS:-tinyllama-test,granite-2b}"
 MAX_TOKENS="${MAX_TOKENS:-30}"
 EMIT_TRACES="${EMIT_TRACES:-true}"
 COLLECTOR_HOST="${COLLECTOR_HOST:-maas-collector-collector.observability.svc:4318}"

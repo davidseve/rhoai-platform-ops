@@ -187,7 +187,7 @@ cleanup_helm_releases() {
     log "  helm not found, skipping Helm release cleanup"
     return 0
   fi
-  for release in evaluation benchmarks model-registry maas-model-fast maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
+  for release in evaluation model-registry maas-model-granite-2b maas-model maas-platform maas-operators database obs-tracing obs-grafana obs-operators; do
     local status
     status=$(helm status "$release" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 || true)
     if [[ -z "$status" ]]; then continue; fi
@@ -405,7 +405,7 @@ cleanup_argocd() {
     for app in $($OC get applications.argoproj.io -n "$ARGOCD_NS" -o name 2>/dev/null | sed 's|application.argoproj.io/||'); do
       run "$OC patch application '$app' -n '$ARGOCD_NS' --type=merge -p '{\"spec\":{\"syncPolicy\":null}}'"
     done
-    for app in evaluation maas-model-registry maas-model-granite-2b maas-model-fast maas-model maas-platform maas-operators database \
+    for app in evaluation maas-model-registry maas-model-granite-2b maas-model maas-platform maas-operators database \
                observability-tracing observability-grafana observability-operators; do
       run "$OC delete application '$app' -n '$ARGOCD_NS' --ignore-not-found"
     done
@@ -463,7 +463,7 @@ cleanup_argocd() {
   done
 
   # 3. Delete child apps in reverse wave order (wave 2 → 1 → 0)
-  delete_apps_and_wait "wave 2" maas-model-registry maas-model-granite-2b maas-model-fast maas-model evaluation
+  delete_apps_and_wait "wave 2" maas-model-registry maas-model-granite-2b maas-model evaluation
   delete_apps_and_wait "wave 1" maas-platform observability-tracing observability-grafana
   delete_apps_and_wait "wave 0" maas-operators observability-operators database
 
@@ -532,7 +532,7 @@ verify_cleanup() {
 }
 
 # ============================================================
-# Module: Evaluation -- residual resources (includes benchmarks, see ADR-0007)
+# Module: Evaluation -- residual resources
 # ============================================================
 cleanup_evaluation_residual() {
   log "=== Evaluation: Cleaning up residual resources ==="
@@ -541,10 +541,6 @@ cleanup_evaluation_residual() {
   # EvalHub-created evaluation Jobs (UUID-named pods)
   log "Deleting EvalHub evaluation Jobs..."
   run "$OC delete jobs --all -n '$ns' --timeout=60s --ignore-not-found"
-
-  # GuideLLM benchmark PVCs
-  log "Deleting benchmark PVCs..."
-  run "$OC delete pvc benchmarks-results -n '$ns' --timeout=60s --ignore-not-found"
 
   # EvalHub CR
   log "Deleting EvalHub CRs..."
@@ -567,15 +563,6 @@ cleanup_evaluation_residual() {
   # Namespace
   run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   wait_ns_gone "$ns" 120
-
-  # Legacy: clean up old benchmarks namespace if it still exists
-  if [[ "$DRY_RUN" != "true" ]] && $OC get ns benchmarks &>/dev/null; then
-    log "Cleaning up legacy benchmarks namespace..."
-    run "$OC delete jobs --all -n benchmarks --timeout=60s --ignore-not-found"
-    run "$OC delete pvc --all -n benchmarks --timeout=60s --ignore-not-found"
-    run "$OC delete ns benchmarks --timeout=60s --ignore-not-found"
-    wait_ns_gone "benchmarks" 120
-  fi
 }
 
 # ============================================================

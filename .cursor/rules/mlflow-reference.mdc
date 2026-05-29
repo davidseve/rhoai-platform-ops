@@ -1,0 +1,58 @@
+---
+description: "MLflow authoritative reference: validate all decisions against official docs."
+globs: modules/evaluation/**/*mlflow*,modules/evaluation/charts/evaluation/**,modules/maas/charts/maas-platform/templates/rhoai/**,docs/EVALUATION.md
+alwaysApply: false
+---
+
+# MLflow Reference Documentation
+
+## Authoritative Sources
+
+All decisions, configurations, and implementations related to MLflow MUST be validated against these official sources (in priority order):
+
+### 1. RHOAI MLflow Operator (deployment & CR)
+
+- **GitHub:** https://github.com/opendatahub-io/mlflow-operator
+- **Architecture:** https://github.com/opendatahub-io/mlflow-operator/blob/main/ARCHITECTURE.md
+- **Red Hat KB:** https://access.redhat.com/articles/7136121
+- **RHOAI 3.4 release notes:** https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/new-features-and-enhancements_relnotes
+
+### 2. MLflow upstream (API, SDK, concepts)
+
+- **Documentation:** https://mlflow.org/docs/latest/
+- **GitHub:** https://github.com/mlflow/mlflow
+- **REST API:** https://mlflow.org/docs/latest/ml/tracking/tracking-api/
+- **Python SDK:** https://mlflow.org/docs/latest/api_reference/python/index.html
+
+## When to Consult
+
+Before making any of these changes, fetch the relevant page:
+
+- **MLflow CR spec fields** → [Operator ARCHITECTURE.md](https://github.com/opendatahub-io/mlflow-operator/blob/main/ARCHITECTURE.md) or the CRD in the operator repo
+- **Tracking API / SDK calls** → [MLflow Tracking APIs](https://mlflow.org/docs/latest/ml/tracking/tracking-api/)
+- **Experiment/run management** → [MLflow Experiments](https://mlflow.org/docs/latest/ml/tracking/)
+- **Enabling in RHOAI** → [Red Hat KB article](https://access.redhat.com/articles/7136121) — `mlflowoperator.managementState: Managed` in DSC
+- **Gateway routing** → Operator ARCHITECTURE.md (HTTPRoute, `/mlflow` prefix, path rewriting)
+- **Workspace isolation** → `--workspace-store-uri=kubernetes://` maps K8s namespaces to MLflow workspaces
+- **Artifact storage** → `serveArtifacts`, `artifactsDestination` in MLflow CR spec
+- **Database backend** → `backendStoreUriFrom` Secret reference in MLflow CR spec
+
+## Validation Rules
+
+1. **Do NOT guess** MLflow CR spec fields — check the operator CRD or ARCHITECTURE.md.
+2. **Use `context7` MCP** or `WebFetch` to retrieve current docs when implementing changes.
+3. **Cite the source** in ADRs and commit messages when a decision is based on MLflow docs.
+4. **API versioning**: MLflow REST API uses `/api/2.0/mlflow/` prefix. The `X-Mlflow-Workspace` header selects the namespace.
+5. **CRD constraint**: `metadata.name` must be `mlflow` — only one shared instance per cluster.
+
+## Key Architecture Facts
+
+- MLflow Operator is Go-based, watches cluster-scoped `MLflow` CRs in `mlflow.opendatahub.io/v1`.
+- In RHOAI mode, deploys to `redhat-ods-applications` namespace.
+- The operator renders an internal Helm chart into K8s resources (Deployment, Service, PVC, HTTPRoute).
+- TLS terminates inside the MLflow pod via `mlflow-tls` Secret (service-ca on OpenShift).
+- Gateway integration: exposed under `/mlflow` prefix with path rewriting (`/mlflow/api` → `/api`).
+- Auth: built-in `kubernetes-auth` with `self_subject_access_review` — uses caller's Bearer token.
+- Workspace isolation: `kubernetes://` store URI maps each K8s namespace to a workspace.
+- Storage: PVC for artifacts, PostgreSQL or SQLite for backend store.
+- EvalHub integration: logs metrics and params to MLflow automatically when `experiment` field is set.

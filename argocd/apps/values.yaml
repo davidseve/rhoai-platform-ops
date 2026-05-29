@@ -14,8 +14,6 @@ modules:
     models:
       tinyllama-test:
         enabled: true
-      tinyllama-fast:
-        enabled: true
       granite-2b:
         enabled: true
   observability:

@@ -1,0 +1,47 @@
+---
+description: "EvalHub authoritative reference: validate all decisions against official docs."
+globs: modules/evaluation/**,docs/EVALUATION.md,docs/BENCHMARKS.md,docs/adr/*evalhub*,docs/adr/*evaluation*
+alwaysApply: false
+---
+
+# EvalHub Reference Documentation
+
+## Authoritative Sources
+
+All decisions, configurations, and implementations related to EvalHub MUST be validated against these official sources:
+
+1. **Documentation site:** https://eval-hub.github.io/
+2. **GitHub organisation:** https://github.com/eval-hub
+   - [eval-hub](https://github.com/eval-hub/eval-hub) — Go server (REST API, orchestration)
+   - [eval-hub-sdk](https://github.com/eval-hub/eval-hub-sdk) — Python SDK, CLI, adapters
+   - [eval-hub-contrib](https://github.com/eval-hub/eval-hub-contrib) — Community adapters
+
+## When to Consult
+
+Before making any of these changes, fetch the relevant page from the docs site:
+
+- **API calls or endpoint changes** → [Server API Reference](https://eval-hub.github.io/reference/server-api/)
+- **SDK / CLI usage** → [Python SDK](https://eval-hub.github.io/reference/python-sdk/) or [CLI Guide](https://eval-hub.github.io/guides/cli/)
+- **Adapter configuration** → [Adapters section](https://eval-hub.github.io/adapters/guidellm/overview/)
+- **Deployment on OpenShift** → [OpenShift Setup](https://eval-hub.github.io/deployment/openshift-setup/)
+- **Architecture questions** → [System Overview](https://eval-hub.github.io/architecture/system-overview/)
+- **Benchmark collections** → [LightEval Benchmarks](https://eval-hub.github.io/adapters/lighteval/benchmarks/)
+- **MCP integration** → [MCP Overview](https://eval-hub.github.io/mcp/overview/)
+- **Disconnected clusters** → [Disconnected Cluster Guide](https://eval-hub.github.io/guides/disconnected-cluster/)
+
+## Validation Rules
+
+1. **Do NOT guess** EvalHub API fields, adapter names, or benchmark identifiers — look them up.
+2. **Use `context7` MCP** or `WebFetch` to retrieve current docs when implementing changes.
+3. **Cite the source** in ADRs and commit messages when a decision is based on EvalHub docs.
+4. **Supported adapters**: lm-eval-harness, LightEval, GuideLLM, Garak, MTEB, IBM CLEAR.
+5. **Provider names** are specific strings (e.g. `lm_evaluation_harness`, `lighteval`, `guidellm`, `garak`, `mteb`, `ibm-clear`) — always verify against the docs.
+
+## Key Architecture Facts
+
+- Server is written in Go; SDK and adapters are Python.
+- Each evaluation runs as an isolated Kubernetes Job.
+- Results are stored as OCI artefacts; metrics go to MLflow.
+- REST API is versioned (`/api/v1/`).
+- Supports PostgreSQL or SQLite as backend database.
+- Multi-tenancy via namespace-based isolation and Kubernetes RBAC.

@@ -203,7 +203,7 @@ Goal: identify system limits with repeatable load tests.
   - Evaluate options: pre-baked datasets in PVC, init container with HF cache, custom `--data` flag with local file
   - Affects reproducibility in restricted environments
 - [x] E2E tests: 16 tests (13 template validation + 3 cluster infra)
-- [x] `make run-benchmark` waits for Job completion and shows logs
+- [x] ~~`make run-benchmark` waits for Job completion and shows logs~~ (removed: direct Job path deprecated in favor of `make evalhub-benchmark`)
 
 **Tools**: [GuideLLM](https://github.com/neuralmagic/guidellm) (load generation + metrics), MLflow (result tracking).
 
