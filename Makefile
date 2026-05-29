@@ -203,7 +203,7 @@ EVALHUB_PROVIDER ?= lm_evaluation_harness
 MODEL_NAME ?= tinyllama-test
 # Internal KServe URL (bypasses gateway auth). Override for external endpoints.
 MODEL_URL ?= https://$(MODEL_NAME)-kserve-workload-svc.models-as-a-service.svc:8000/v1
-TOKENIZER ?= ibm-granite/granite-3.1-2b-instruct
+TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
 SECRET_REF ?= model-auth
 EVAL_LIMIT ?= 10
 MAX_SECONDS ?=
