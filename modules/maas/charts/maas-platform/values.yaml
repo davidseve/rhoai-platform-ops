@@ -60,6 +60,12 @@ dashboard:
   maasAuthPolicies: true
   vLLMDeploymentOnMaaS: true
   observabilityDashboard: false  # TP: requires Cluster Observability Operator (COO)
+  mlflow: true                   # Dev Preview: shows MLflow tile on Applications → Explore
+  disableLMEval: false           # TP: shows model evaluation in the dashboard (TrustyAI/EvalHub)
+  disablePerformanceMetrics: false  # shows Endpoint Performance tab on Deployments page
+  disableModelCatalog: false     # shows AI hub → Catalog menu item
+  disableModelRegistry: false    # shows AI hub → Registry menu item
+  disableLLMd: false             # shows llm-d distributed inference option in model serving wizard
 
 gateway:
   enabled: true

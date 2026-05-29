@@ -307,6 +307,38 @@ Enable TLS on the shared PostgreSQL instance (`maas-db`) and update all consumer
 
 Cross-cutting change affecting modules: `database`, `evaluation`, `maas`, and `model-registry`. Low priority while communication is internal (pod-to-pod via ClusterIP Service within the cluster network).
 
+### Phase 6: RHOAI 3.5+ Features (PLANNED)
+
+Goal: adopt new RHOAI capabilities as they move from Tech Preview to GA.
+
+Identified from [Red Hat blog: Scaling enterprise AI — MaaS with RHOAI 3.4](https://www.redhat.com/en/blog/scaling-enterprise-ai-delivering-models-service-openshift-ai-34) analysis (2026-05-29).
+
+#### Quick wins (implementable now)
+
+- [x] **OdhDashboardConfig flags** -- Enable dashboard features for components we already deploy:
+  - `mlflow: true` (Dev Preview — MLflow tile on Applications → Explore)
+  - `disableLMEval: false` (TP — model evaluation in dashboard)
+  - `disablePerformanceMetrics: false` (Endpoint Performance tab)
+  - `disableModelCatalog: false` (AI hub → Catalog)
+  - `disableModelRegistry: false` (AI hub → Registry)
+  - `disableLLMd: false` (llm-d distributed inference in model serving wizard)
+
+#### When GA (currently Tech Preview)
+
+- [ ] **External Model Routing** (`ExternalModel` CRD) -- Route external cloud LLM providers (AWS Bedrock, Azure OpenAI, Anthropic) through the same gateway with the same governance (auth, rate limits, showback). OpenAI-compatible `/v1/chat/completions` endpoint, applications don't need to know where the model runs. Requires: new Helm templates for `ExternalModel` CRs, Secrets for provider API keys. Reference: [upstream MaaS docs — ExternalModel](https://opendatahub-io.github.io/models-as-a-service/latest/).
+- [ ] **Enterprise OIDC Authentication** -- Configure Authorino OIDC identity source alongside KubernetesTokenReview. Allows external IdP users (Azure AD, Okta, Keycloak) to obtain API keys without needing an OpenShift account. Needs ADR to decide scope (inference only, or management API too).
+- [ ] **COO Native Showback Dashboards** -- Enable `observabilityDashboard: true` in OdhDashboardConfig when Cluster Observability Operator (COO) is GA. Provides built-in token consumption panels in the RHOAI dashboard without requiring Grafana. Already prepared: flag exists in `values.yaml` as `false`.
+
+#### Blocked on upstream
+
+- [ ] **FinOps / Cost Attribution** -- Per-user and per-cost-center token consumption tracking. Blocked on maas-api `/metrics` endpoint (not available in 3.4 GA). When available: add `organization_id`, `cost_center` labels to metrics, adapt RHCL "Business User" dashboard (Grafana ID 20981), create cost-per-token pricing model in showback dashboard.
+- [ ] **TelemetryPolicy per-model metric labels** -- Limitador metrics lack `model`, `subscription`, `organization_id` labels due to WASM/CEL incompatibility. Re-evaluate when Kuadrant separates WASM and Authorino CEL expression evaluation (RHOAI 3.5+).
+
+#### Long-term
+
+- [ ] **Full Red Hat Connectivity Link** -- Multicluster AI inference: `DNSPolicy` and `TLSPolicy` CRDs on the Gateway for automated certificate and DNS management, cross-cluster model failover, DNS-based traffic distribution. Requires full RHCL subscription (Red Hat Application Foundations) and multi-cluster infrastructure.
+- [ ] **Third-party gateway reference architectures** -- Document how LiteLLM, Portkey, or other AI gateways can connect to RHOAI-hosted model endpoints (via external Route with API keys, or direct in-cluster KServe bypass).
+
 ## Decision Log
 
 Key decisions are documented as ADRs in [docs/adr/](adr/):
