@@ -125,12 +125,14 @@ class TestTokenRateLimiting:
 
     Uses a dedicated free-tier API key (subscription in body) to ensure
     the low token budget is exhaustible within a few requests.
+    Strategy: send enough requests to guarantee token budget exhaustion
+    even when vLLM produces fewer tokens than max_tokens on CPU.
     """
 
-    MAX_SEQUENTIAL = 10
+    MAX_SEQUENTIAL = 20
 
     def test_free_tier_rate_limit_triggers_429(
-        self, maas_url, maas_free_api_key, inference_path
+        self, maas_url, maas_free_api_key, inference_path, model_name
     ):
         url = f"{maas_url}{inference_path}"
         headers = {
@@ -138,9 +140,9 @@ class TestTokenRateLimiting:
             "Content-Type": "application/json",
         }
         payload = {
-            "model": "tinyllama-test",
-            "messages": [{"role": "user", "content": "Write a detailed story"}],
-            "max_tokens": 200,
+            "model": model_name,
+            "messages": [{"role": "user", "content": "Write a very long detailed story about a dragon"}],
+            "max_tokens": 250,
         }
         statuses = []
         for _ in range(self.MAX_SEQUENTIAL):
@@ -153,7 +155,7 @@ class TestTokenRateLimiting:
         got_200 = statuses.count(200)
         assert got_429 > 0, (
             f"Expected 429 from free-tier token rate limit (500 tok/1m) "
-            f"after {len(statuses)} requests with max_tokens=200. "
+            f"after {len(statuses)} requests with max_tokens=250. "
             f"Statuses: 200={got_200}, 429={got_429}, "
             f"other={len(statuses) - got_200 - got_429}"
         )

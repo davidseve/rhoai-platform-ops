@@ -1,5 +1,5 @@
 repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-targetRevision: delete-deprecate-evalhub
+targetRevision: main
 # Cluster domain (e.g. apps.ocp.sandbox1476.opentlc.com).
 # Auto-detected by Makefile; sets gateway.hostname and route.host to maas.<clusterDomain>.
 clusterDomain: ""

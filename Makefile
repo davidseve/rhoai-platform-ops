@@ -200,10 +200,10 @@ undeploy-evaluation: ## Undeploy evaluation via Helm
 
 EVALHUB_BENCHMARK ?= arc_easy
 EVALHUB_PROVIDER ?= lm_evaluation_harness
-MODEL_NAME ?= granite-2b
+MODEL_NAME ?= tinyllama-test
 # Internal KServe URL (bypasses gateway auth). Override for external endpoints.
 MODEL_URL ?= https://$(MODEL_NAME)-kserve-workload-svc.models-as-a-service.svc:8000/v1
-TOKENIZER ?= ibm-granite/granite-3.1-2b-instruct
+TOKENIZER ?= TinyLlama/TinyLlama-1.1B-Chat-v1.0
 SECRET_REF ?= model-auth
 EVAL_LIMIT ?= 10
 MAX_SECONDS ?=
@@ -472,9 +472,9 @@ deploy-all: deploy-database deploy-observability ## Deploy all enabled modules
 
 .PHONY: test-evalhub
 test-evalhub: ## Run EvalHub E2E tests: smoke (lm-eval) + benchmark (GuideLLM). Security (Garak) excluded — too slow on CPU, run manually on GPU.
-	@echo "=== EvalHub E2E: smoke + benchmark against granite-2b ==="
-	$(MAKE) evalhub-smoke MODEL_NAME=granite-2b
-	$(MAKE) evalhub-benchmark MODEL_NAME=granite-2b
+	@echo "=== EvalHub E2E: smoke + benchmark against $(MODEL_NAME) ==="
+	$(MAKE) evalhub-smoke
+	$(MAKE) evalhub-benchmark
 
 .PHONY: test-all
 test-all: test-observability test-maas test-evaluation test-evalhub ## Run all module tests (includes EvalHub E2E)
