@@ -251,9 +251,20 @@ cleanup_maas_residual() {
   done
   run "$OC delete dscinitialization --all --timeout=30s --ignore-not-found"
 
-  # Kuadrant CR must be deleted before its operator namespace
+  # Kuadrant CR must be deleted before its operator namespace.
+  # Clear finalizers first — if the operator is gone, they'll never resolve.
   log "Deleting Kuadrant CR..."
+  for kq in $($OC get kuadrant -n "$kuadrant_ns" -o name 2>/dev/null); do
+    run "$OC patch '$kq' -n '$kuadrant_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
   run "$OC delete kuadrant --all -n '$kuadrant_ns' --timeout=60s --ignore-not-found"
+
+  # Authorino CR — finalizer blocks kuadrant-system namespace deletion
+  log "Deleting Authorino CR..."
+  for auth in $($OC get authorinos.operator.authorino.kuadrant.io -n "$kuadrant_ns" -o name 2>/dev/null); do
+    run "$OC patch '$auth' -n '$kuadrant_ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
+  run "$OC delete authorinos.operator.authorino.kuadrant.io --all -n '$kuadrant_ns' --timeout=60s --ignore-not-found"
 
   # LeaderWorkerSetOperator CR
   log "Deleting LeaderWorkerSetOperator CR..."
@@ -321,8 +332,19 @@ cleanup_observability_residual() {
   run "$OC delete tempomonolithic --all -n observability --ignore-not-found"
 
   log "Deleting Grafana CRs..."
+  for gd in $($OC get grafanadashboard -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+    local gdns="${gd%%/*}" gdname="${gd##*/}"
+    run "$OC patch grafanadashboard/'$gdname' -n '$gdns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
   run "$OC delete grafanadashboard --all -A --ignore-not-found"
+  for gds in $($OC get grafanadatasource -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+    local gdsns="${gds%%/*}" gdsname="${gds##*/}"
+    run "$OC patch grafanadatasource/'$gdsname' -n '$gdsns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
   run "$OC delete grafanadatasource --all -A --ignore-not-found"
+  for gf in $($OC get grafana -n observability -o name 2>/dev/null); do
+    run "$OC patch '$gf' -n observability --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+  done
   run "$OC delete grafana --all -n observability --ignore-not-found"
 
   # Operator subscriptions / CSVs in operator namespaces
@@ -554,10 +576,11 @@ cleanup_evaluation_residual() {
   log "Deleting LMEvalJob CRs..."
   run "$OC delete lmevaljob --all -n '$ns' --timeout=60s --ignore-not-found"
 
-  # Secrets in redhat-ods-applications (created by evaluation chart)
+  # Secrets created by evaluation chart (evalhub-db and model-auth in evaluation, mlflow-db-config in redhat-ods-applications)
+  run "$OC delete secret evalhub-db model-auth -n '$ns' --ignore-not-found"
   run "$OC delete secret mlflow-db-config -n redhat-ods-applications --ignore-not-found"
 
-  # Route in redhat-ods-applications (created by evaluation chart)
+  # Route in redhat-ods-applications (created by MLflow operator)
   run "$OC delete route mlflow -n redhat-ods-applications --ignore-not-found"
 
   # Namespace

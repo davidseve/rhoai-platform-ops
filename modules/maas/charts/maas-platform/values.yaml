@@ -61,7 +61,6 @@ dashboard:
   vLLMDeploymentOnMaaS: true
   observabilityDashboard: false  # TP: requires Cluster Observability Operator (COO)
   mlflow: true                   # Dev Preview: shows MLflow tile on Applications → Explore
-  disableLMEval: false           # TP: shows model evaluation in the dashboard (TrustyAI/EvalHub)
   disablePerformanceMetrics: false  # shows Endpoint Performance tab on Deployments page
   disableModelCatalog: false     # shows AI hub → Catalog menu item
   disableModelRegistry: false    # shows AI hub → Registry menu item
@@ -108,7 +107,10 @@ route:
 limitador:
   # Enables limit_name labels on authorized metrics (not just limited_calls)
   exhaustiveTelemetry: true
-  replicas: 2
+  # HA requires shared storage (redis/redis-cached). With in-memory (default),
+  # each replica has independent counters — effective rate limit scales with replicas.
+  # See ROADMAP.md for Redis storage plan.
+  replicas: 1
   resources:
     requests:
       cpu: 100m

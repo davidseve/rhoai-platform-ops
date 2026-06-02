@@ -7,6 +7,7 @@ premium=50000 tok/1m). The API key is tied to the user's subscription.
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
 import requests
@@ -125,11 +126,14 @@ class TestTokenRateLimiting:
 
     Uses a dedicated free-tier API key (subscription in body) to ensure
     the low token budget is exhaustible within a few requests.
-    Strategy: send enough requests to guarantee token budget exhaustion
-    even when vLLM produces fewer tokens than max_tokens on CPU.
+
+    Strategy: fire requests in parallel so they hit the gateway within
+    the same 1-minute Limitador window. Sequential requests on CPU are
+    too slow (~10-30s each) and the window resets before tokens accumulate.
     """
 
-    MAX_SEQUENTIAL = 20
+    PARALLEL = 15
+    WAVES = 3
 
     def test_free_tier_rate_limit_triggers_429(
         self, maas_url, maas_free_api_key, inference_path, model_name
@@ -144,18 +148,26 @@ class TestTokenRateLimiting:
             "messages": [{"role": "user", "content": "Write a very long detailed story about a dragon"}],
             "max_tokens": 250,
         }
+
         statuses = []
-        for _ in range(self.MAX_SEQUENTIAL):
-            code = _fire_one(url, headers, payload)
-            statuses.append(code)
-            if code == 429:
+        for wave in range(self.WAVES):
+            with ThreadPoolExecutor(max_workers=self.PARALLEL) as pool:
+                futures = [
+                    pool.submit(_fire_one, url, headers, payload)
+                    for _ in range(self.PARALLEL)
+                ]
+                for f in as_completed(futures):
+                    statuses.append(f.result())
+
+            if 429 in statuses:
                 break
 
         got_429 = statuses.count(429)
         got_200 = statuses.count(200)
         assert got_429 > 0, (
             f"Expected 429 from free-tier token rate limit (500 tok/1m) "
-            f"after {len(statuses)} requests with max_tokens=250. "
+            f"after {len(statuses)} requests ({self.WAVES} waves x "
+            f"{self.PARALLEL} parallel) with max_tokens=250. "
             f"Statuses: 200={got_200}, 429={got_429}, "
             f"other={len(statuses) - got_200 - got_429}"
         )

@@ -62,7 +62,7 @@ def oc_token():
 
 @pytest.fixture(scope="session")
 def evalhub_url(oc):
-    host = oc("get route evalhub -n evaluation -o jsonpath='{.spec.host}'")
+    host = oc(f"get route evalhub -n {EVALUATION_NAMESPACE} -o jsonpath='{{.spec.host}}'")
     return f"https://{host}"
 
 

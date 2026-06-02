@@ -34,10 +34,17 @@ mlflow:
   route:
     enabled: true
 
-# EvalHub evaluation control plane
+# EvalHub evaluation control plane.
+# Deployed in "evaluation" namespace (same as MLflow workspace) for simplicity.
+# The RHOAI dashboard Evaluations page requires the CR in redhat-ods-applications,
+# but that creates cross-namespace complexity with MLflow (which rejects its own
+# namespace as a workspace). We prioritize a working pipeline over dashboard UI.
+# GA review: when EvalHub moves to GA, re-test dashboard integration with a
+# dedicated namespace — the sidecar may support cross-namespace discovery.
 evalhub:
   enabled: true
   name: evalhub
+  namespace: evaluation
   replicas: 1
   # Database backend for EvalHub (postgresql requires evalhub-db Secret)
   database:
@@ -59,30 +66,5 @@ evalhub:
   otel:
     enabled: false
 
-# DEPRECATED: LMEvalJob on-demand evaluation. Use EvalHub API instead (make evalhub-eval).
-# Kept as fallback when EvalHub is not available.
-lmeval:
-  enabled: false
-  # Model endpoint (vLLM/KServe internal URL)
-  model: tinyllama-test
-  modelUrl: "https://tinyllama-test-kserve-workload-svc.models-as-a-service.svc:8000/v1/completions"
-  # Evaluation task (lm-evaluation-harness task name)
-  task: arc_easy
-  # Number of samples (set low for testing)
-  limit: "10"
-  numConcurrent: "1"
-  # Model type: local-completions (loglikelihood) or local-chat-completions (generation)
-  modelType: local-completions
-  # Allow online access for HuggingFace downloads
-  allowOnline: true
-
-# Combined CA bundle (system root CAs + OpenShift service-serving CA)
-# WORKAROUND for RHOAI 3.4 EA2: LMEvalJob pods need both system root CAs
-# (for HuggingFace downloads) and OpenShift service-serving CA (for vLLM/KServe
-# internal TLS). Neither ConfigMap alone is sufficient.
-# Review at GA: the operator may handle this automatically.
-caBundle:
-  enabled: true
-  name: combined-ca-bundle
-  # Image with oc/kubectl CLI for the init Job
-  image: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+# Image with oc/kubectl CLI for hook Jobs (model-auth-init)
+hookImage: registry.redhat.io/openshift4/ose-cli-rhel9:latest
