@@ -85,12 +85,12 @@ class TestEvalHubAPI:
         collection_ids = [c["resource"]["id"] for c in collections]
         assert "leaderboard-v2" in collection_ids
 
-    def test_model_auth_secret_exists(self, infra_deployed, oc):
-        result = oc("get secret model-auth -n evaluation -o name")
+    def test_model_auth_secret_exists(self, infra_deployed, oc, evaluation_namespace):
+        result = oc(f"get secret model-auth -n {evaluation_namespace} -o name")
         assert "model-auth" in result
 
-    def test_model_auth_has_valid_ca(self, infra_deployed, oc):
-        b64 = oc("get secret model-auth -n evaluation -o jsonpath='{.data.ca_cert}'")
+    def test_model_auth_has_valid_ca(self, infra_deployed, oc, evaluation_namespace):
+        b64 = oc(f"get secret model-auth -n {evaluation_namespace} -o jsonpath='{{.data.ca_cert}}'")
         ca_pem = base64.b64decode(b64).decode()
         assert ca_pem.startswith("-----BEGIN CERTIFICATE-----")
 

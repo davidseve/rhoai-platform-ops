@@ -184,6 +184,12 @@ There are **two sources** of 5xx errors through the MaaS gateway:
 
 The `generate-traffic.sh` script uses `oc port-forward` to reach the OTel Collector from outside the cluster. This is dev-only tooling. In production, application pods emit traces directly to the collector service (`maas-collector-collector.observability.svc:4317`) from within the cluster.
 
+## Cluster Observability Operator (COO)
+
+COO is planned for when the RHOAI native observability stack moves to GA. It enables native OpenShift Console dashboards (PersesDashboard), UIPlugins for tracing/troubleshooting, and the `observabilityDashboard: true` flag on OdhDashboardConfig.
+
+See [COO-INTEGRATION.md](COO-INTEGRATION.md) for the full implementation runbook: prerequisites, configuration steps, key metrics (including `authorized_hits` for billing), and compatibility matrix with the current stack.
+
 ## Cleanup
 
 ```bash

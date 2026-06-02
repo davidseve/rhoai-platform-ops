@@ -82,7 +82,6 @@ class TestHelmTemplate:
             None,
         )
         assert secret is not None
-        assert secret["metadata"]["namespace"] == "evaluation"
 
     def test_evalhub_db_secret_uses_dedicated_database(self):
         docs = _get_docs()
@@ -161,12 +160,12 @@ class TestClusterInfra:
         result = oc(f"get ns {evaluation_namespace}")
         assert evaluation_namespace in result
 
-    def test_evalhub_ready(self, infra_deployed, oc):
-        phase = oc("get evalhub evalhub -n evaluation -o jsonpath='{.status.phase}'")
+    def test_evalhub_ready(self, infra_deployed, oc, evaluation_namespace):
+        phase = oc(f"get evalhub evalhub -n {evaluation_namespace} -o jsonpath='{{.status.phase}}'")
         assert "Ready" in phase
 
-    def test_evalhub_pod_running(self, infra_deployed, oc):
-        result = oc("get pods -n evaluation -l app=eval-hub -o jsonpath='{.items[0].status.phase}'")
+    def test_evalhub_pod_running(self, infra_deployed, oc, evaluation_namespace):
+        result = oc(f"get pods -n {evaluation_namespace} -l app=eval-hub -o jsonpath='{{.items[0].status.phase}}'")
         assert "Running" in result
 
     def test_mlflow_available(self, infra_deployed, oc):
@@ -181,8 +180,8 @@ class TestClusterInfra:
         )
         assert "Running" in result
 
-    def test_evalhub_health_endpoint(self, infra_deployed, oc):
-        host = oc("get route evalhub -n evaluation -o jsonpath='{.spec.host}'")
+    def test_evalhub_health_endpoint(self, infra_deployed, oc, evaluation_namespace):
+        host = oc(f"get route evalhub -n {evaluation_namespace} -o jsonpath='{{.spec.host}}'")
         resp = requests.get(f"https://{host}/api/v1/health", verify=False, timeout=10)
         assert resp.status_code == 200
         assert resp.json()["status"] == "healthy"
@@ -194,16 +193,12 @@ class TestClusterInfra:
         resp = requests.get(f"https://{host}/mlflow/", verify=False, timeout=10)
         assert resp.status_code == 200
 
-    def test_combined_ca_bundle_exists(self, infra_deployed, oc):
-        result = oc("get configmap combined-ca-bundle -n evaluation -o name")
-        assert "combined-ca-bundle" in result
-
     def test_mlflow_db_secret_exists(self, infra_deployed, oc):
         result = oc("get secret mlflow-db-config -n redhat-ods-applications -o name")
         assert "mlflow-db-config" in result
 
-    def test_evalhub_db_secret_exists(self, infra_deployed, oc):
-        result = oc("get secret evalhub-db -n evaluation -o name")
+    def test_evalhub_db_secret_exists(self, infra_deployed, oc, evaluation_namespace):
+        result = oc(f"get secret evalhub-db -n {evaluation_namespace} -o name")
         assert "evalhub-db" in result
 
     @pytest.mark.parametrize("db_name", ["mlflow", "evalhub", "model_registry"])

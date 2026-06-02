@@ -14,7 +14,6 @@ spec:
     vLLMDeploymentOnMaaS: {{ .Values.dashboard.vLLMDeploymentOnMaaS | default false }}
     observabilityDashboard: {{ .Values.dashboard.observabilityDashboard | default false }}
     mlflow: {{ .Values.dashboard.mlflow | default false }}
-    disableLMEval: {{ .Values.dashboard.disableLMEval | default false }}
     disablePerformanceMetrics: {{ .Values.dashboard.disablePerformanceMetrics | default false }}
     disableModelCatalog: {{ .Values.dashboard.disableModelCatalog | default false }}
     disableModelRegistry: {{ .Values.dashboard.disableModelRegistry | default false }}
