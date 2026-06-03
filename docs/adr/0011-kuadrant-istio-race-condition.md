@@ -31,13 +31,23 @@ The condition persists until the Kuadrant operator pod is manually restarted.
 
 ## Decision
 
-Integrate the health check as **Step 0** of the existing `authorino-tls-setup` PostSync Job in `maas-platform`. The logic:
+Integrate the health check as **Step 0** of the existing `authorino-tls-setup` PostSync Job in `maas-platform`. The logic handles two scenarios:
 
+### When AuthPolicies exist (re-sync or later waves)
 1. Query AuthPolicies in `models-as-a-service` for `Accepted` condition
 2. If all are Accepted → skip (no-op, ~1s)
 3. If reason is `MissingDependency` → restart the Kuadrant operator pod in `redhat-connectivity-link`
 4. Wait up to 3 minutes for AuthPolicies to become Accepted
-5. Continue with existing TLS setup steps (which now benefit from a healthy Kuadrant)
+
+### When no AuthPolicies exist yet (first deploy, wave 1)
+On first deploy, the PostSync runs at wave 1 but AuthPolicies are created by the MaaS controller at wave 3 (after models deploy). Without this check, the original logic would pass vacuously (0 not-accepted out of 0) and miss the race condition entirely. The fix:
+
+1. Detect zero AuthPolicies in `models-as-a-service`
+2. Check Kuadrant operator logs for the `"is not installed"` message (indicates it missed the Gateway API provider)
+3. If found → restart the operator pod preemptively
+4. Wait for the operator to become Ready
+
+This ensures the operator detects Istio **before** wave 3 creates AuthPolicies, so they are born `Accepted: True`.
 
 This runs BEFORE the Authorino TLS steps because the TLS configuration also depends on Kuadrant properly detecting the Gateway API provider.
 

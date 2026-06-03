@@ -104,6 +104,9 @@ rules:
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -153,16 +156,57 @@ spec:
           MODEL_NS="models-as-a-service"
 
           echo "Step 0: Verify Kuadrant AuthPolicy acceptance (Istio race condition workaround)..."
-          NOT_ACCEPTED=$(oc get authpolicy -n "$MODEL_NS" \
-            -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Accepted")].status}{"\n"}{end}' \
-            2>/dev/null | grep -c "False" || true)
 
-          if [ "$NOT_ACCEPTED" -gt 0 ]; then
-            REASON=$(oc get authpolicy -n "$MODEL_NS" \
-              -o jsonpath='{.items[0].status.conditions[?(@.type=="Accepted")].reason}' 2>/dev/null || echo "")
-            if [ "$REASON" = "MissingDependency" ]; then
-              echo "  AuthPolicies not accepted (Istio race condition) — restarting Kuadrant operator..."
-              oc delete pod -n "$OPERATOR_NS" -l app=kuadrant,control-plane=controller-manager
+          needs_restart=false
+
+          AP_COUNT=$(oc get authpolicy -n "$MODEL_NS" --no-headers 2>/dev/null | wc -l)
+          AP_COUNT=$(echo "$AP_COUNT" | tr -d ' ')
+
+          if [ "$AP_COUNT" -gt 0 ]; then
+            NOT_ACCEPTED=$(oc get authpolicy -n "$MODEL_NS" \
+              -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Accepted")].status}{"\n"}{end}' \
+              2>/dev/null | grep -c "False" || true)
+            if [ "$NOT_ACCEPTED" -gt 0 ]; then
+              REASON=$(oc get authpolicy -n "$MODEL_NS" \
+                -o jsonpath='{.items[0].status.conditions[?(@.type=="Accepted")].reason}' 2>/dev/null || echo "")
+              if [ "$REASON" = "MissingDependency" ]; then
+                echo "  AuthPolicies not accepted (MissingDependency) — need restart"
+                needs_restart=true
+              else
+                echo "  WARNING: AuthPolicies not accepted (reason: $REASON) — not the Istio race condition"
+              fi
+            else
+              echo "  All $AP_COUNT AuthPolicies already Accepted."
+            fi
+          else
+            echo "  No AuthPolicies exist yet (models deploy later at wave 3)."
+            echo "  Checking Kuadrant operator logs for Istio detection..."
+            MISSING_DEP=$(oc logs -n "$OPERATOR_NS" \
+              -l control-plane=controller-manager --tail=200 2>/dev/null \
+              | grep -c "is not installed" || true)
+            if [ "$MISSING_DEP" -gt 0 ]; then
+              echo "  Kuadrant operator logged 'is not installed' — need restart"
+              needs_restart=true
+            else
+              echo "  Kuadrant operator appears to have detected Gateway API provider."
+            fi
+          fi
+
+          if [ "$needs_restart" = true ]; then
+            echo "  Restarting Kuadrant operator (Istio race condition)..."
+            oc delete pod -n "$OPERATOR_NS" -l control-plane=controller-manager --ignore-not-found
+            echo "  Waiting for operator pod to be Ready (up to 2min)..."
+            for i in $(seq 1 24); do
+              sleep 5
+              READY=$(oc get pod -n "$OPERATOR_NS" -l control-plane=controller-manager \
+                -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+              if [ "$READY" = "true" ]; then
+                echo "  Kuadrant operator pod Ready."
+                break
+              fi
+              echo "  waiting ($i/24)..."
+            done
+            if [ "$AP_COUNT" -gt 0 ]; then
               echo "  Waiting for AuthPolicies to be Accepted (up to 3min)..."
               for i in $(seq 1 18); do
                 sleep 10
@@ -179,10 +223,8 @@ spec:
                 echo "  WARNING: AuthPolicies still not accepted after 3min — continuing with TLS setup"
               fi
             else
-              echo "  WARNING: AuthPolicies not accepted (reason: $REASON) — not the Istio race condition"
+              echo "  No AuthPolicies to verify yet — they will be created healthy when models deploy."
             fi
-          else
-            echo "  All AuthPolicies already Accepted."
           fi
 
           echo "Step 1: Annotate Authorino service for serving cert..."
