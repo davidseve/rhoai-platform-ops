@@ -139,6 +139,10 @@ Always use Red Hat products first:
 - **Cluster Observability Operator** for monitoring
 - Community projects only when Red Hat doesn't cover the need
 
+### Reference Implementations
+
+For **new features**, also review the [RHOAI BU Cluster](https://github.com/rh-aiservices-bu/rhoaibu-cluster) GitOps repo — Red Hat's internal reference for a fully GitOps-managed RHOAI platform (MaaS, 15+ models, observability, GPU). Use it for proven deployment patterns; product docs and ADRs still take precedence.
+
 ### Testing
 
 - Every module has `tests/` with pytest

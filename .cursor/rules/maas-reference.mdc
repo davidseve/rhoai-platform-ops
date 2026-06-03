@@ -32,6 +32,12 @@ Use for: CRD field reference (MaaSModelRef, MaaSSubscription, MaaSAuthPolicy, Ex
 
 Use for: resolving doc conflicts, CRD source of truth, PR-based bug fixes, kustomize manifests.
 
+### 4. RHOAI BU Cluster Reference (IMPLEMENTATION PATTERNS)
+
+- **GitOps repo:** https://github.com/rh-aiservices-bu/rhoaibu-cluster
+
+Use for: proven deployment patterns when implementing **new MaaS/RHOAI features** — model serving configs, gateway setup, multi-model layouts, GPU/CPU image choices, observability wiring. Review `components/` and `clusters/` before designing from scratch. Product docs and ADRs still take precedence; this repo is a secondary reference for "how Red Hat BU does it in production."
+
 ## When to Consult
 
 - **CRD spec fields** → Upstream docs or repo CRD definitions
@@ -42,6 +48,7 @@ Use for: resolving doc conflicts, CRD source of truth, PR-based bug fixes, kusto
 - **Kuadrant (AuthPolicy, RLP, TRLP)** → RHCL docs
 - **Bug / unexpected behavior** → Upstream repo issues/PRs
 - **Operator channels** → Red Hat docs
+- **New feature design / deployment patterns** → [RHOAI BU Cluster](https://github.com/rh-aiservices-bu/rhoaibu-cluster) (secondary reference), then adapt to this repo's module structure
 
 ## Validation Rules
 

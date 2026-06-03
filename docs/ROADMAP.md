@@ -12,6 +12,7 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 | **Traceability**  | Part of observability    | Request tracing with OpenTelemetry + Tempo | Observability module          |
 | **Evaluation**    | `modules/evaluation/`    | Quality eval, MLflow tracking, GuideLLM benchmarks | MaaS (models must be running) |
 | **Model Registry**| `modules/maas/charts/model-registry/` + `maas-model` catalog | Model governance catalog in RHOAI Dashboard | MaaS (DSC modelregistry: Managed) |
+| **Guardrails**    | `modules/guardrails/` (planned) | Runtime input/output safety via NeMo Guardrails (TrustyAI) | MaaS (models must be running), TrustyAI operator |
 
 
 ## Implementation Order
@@ -89,6 +90,8 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 - **EvalHub OTel logs**: `enableLogs: false` in EvalHub CR because there is no log backend (Loki/Vector) in the observability stack. The OTel Collector only has trace and metric exporters. Re-evaluate when a log backend is added (e.g., COO with logging UIPlugin, or standalone Loki). Enabling without a backend would cause the collector to drop or reject log signals.
 - [x] **Gateway production hardening** -- Limitador: resource limits (100m-500m CPU, 128-256Mi memory) via Limitador CR. PDBs for Authorino and Limitador (minAvailable: 1). Two new alerts: `MaaSAuthTimeoutRateHigh` (auth errors >1%) and `MaaSAuthorinoCPUSaturation` (CPU >80%). E2E tests for PDBs. Documentation in GATEWAY-AND-ROUTE.md. **Pending**: Authorino replicas and resource limits — CRD (`v1beta2`) does not expose `spec.resources`; re-evaluate when Authorino operator adds support.
 - [ ] **Limitador HA with Redis storage** -- Currently running 1 replica with in-memory storage. Multiple replicas without shared storage means each has independent counters, effectively multiplying the allowed rate. HA requires `storage: redis-cached` in the Limitador CR with a shared Redis instance. Deploy Redis (standalone or operator), create Secret with `URL`, configure `spec.storage.redis-cached.configSecretRef`. Then scale to 2+ replicas.
+- [ ] **Gateway Route re-encrypt (upstream pattern)** -- Evaluate whether to migrate from `tlsTermination: passthrough` (current default) to the upstream [clusterip-route-reencrypt](https://github.com/opendatahub-io/models-as-a-service/tree/main/docs/samples/gateway-patterns/clusterip-route-reencrypt) pattern: ClusterIP Gateway Service, service-ca cert via `gw-options` ConfigMap + `serving-cert-secret-name` annotation, Route with `reencrypt` and `router.openshift.io/service-ca-certificate: "true"`. **Potential benefits**: Router handles external TLS with the cluster wildcard (no need to mount `ingress-certs` on the Gateway), platform-independent pattern documented by upstream MaaS, possible enablement of HAProxy Route metrics (currently blocked by passthrough — see [DASHBOARDS.md](DASHBOARDS.md)). **Impact if adopted**: in-cluster access must be revisited — tests and agents currently use ClusterIP with `--resolve` and SNI Host header ([IN-CLUSTER-ACCESS.md](../modules/maas/docs/IN-CLUSTER-ACCESS.md), `test_02_incluster.py`); with re-encrypt the Gateway cert would be service-ca, not wildcard, and direct ClusterIP calls would need to trust `openshift-service-ca.crt` or continue using the external Route. The chart already supports both modes in `route.yaml` and [GATEWAY-AND-ROUTE.md](../modules/maas/docs/GATEWAY-AND-ROUTE.md); still needed: evaluate `gw-options` ConfigMap, automate Service annotation, and update tests/docs.
+- [ ] **vLLM CPU upstream image (`docker.io/vllm/vllm-openai-cpu:v0.22.0`)** -- Evaluate migrating from the custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` (vLLM v0.7.3 + pip-installed OTel) to the official upstream v0.22.0 image. Red Hat does not publish an x86_64 CPU image; this community image may improve CPU performance (GuideLLM benchmarks, lm-eval evaluations) and reduce maintenance of the custom Containerfile. **Validate before adopting**: compatibility with `LLMInferenceService` (command/args, KServe probes), native OpenTelemetry support or need for rebuild, minimum resources, and tracing regression (`--otlp-traces-endpoint`, `--collect-detailed-traces`). Update `maas-model/values.yaml` and `docs/versions.md` if confirmed.
 - **Cluster Observability Operator (COO)**: instalar cuando el observability stack de RHOAI pase a GA (estimado 3.5+). COO habilita dashboards nativos en la consola OpenShift (PersesDashboard), UIPlugins de tracing/troubleshooting, y detección de incidentes (Korrel8r). Prerequisito para `observabilityDashboard: true` en OdhDashboardConfig. No conflicta con Grafana/OTel/Tempo actuales. Ya preparado en `values.yaml` con `observabilityDashboard: false`. **Runbook completo**: [COO-INTEGRATION.md](../modules/observability/docs/COO-INTEGRATION.md).
 
 #### Diferido a RHOAI 3.4 -- Gateway distributed tracing
@@ -161,7 +164,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **Gateway listener config:** Upstream defines HTTP(80)+HTTPS(443) with hostname and `from: All`. We have HTTPS-only, no hostname, `from: Selector`. More restrictive = better security. Validate HTTPRoutes are accepted.
 >
-> **vLLM CPU x86_64:** Red Hat does NOT publish an x86_64 CPU image (`odh-vllm-cpu-rhel9` only has ppc64le/s390x). Custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` remains necessary. Base community image (`quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9`) has no newer versions than 0.3.
+> **vLLM CPU x86_64:** Red Hat does NOT publish an x86_64 CPU image (`odh-vllm-cpu-rhel9` only has ppc64le/s390x). Custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` remains in use today. Base community image (`quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9`) has no newer versions than 0.3. **Roadmap**: evaluate upstream `docker.io/vllm/vllm-openai-cpu:v0.22.0` as a replacement (see Phase 2b pending).
 >
 > **Kuadrant namespace:** Upstream mentions `AUTHORINO_NAMESPACE=rh-connectivity-link` for RHOAI. Hardcoded `kuadrant-system` in templates replaced with `{{ .Values.kuadrant.namespace }}` for flexibility.
 >
@@ -340,6 +343,51 @@ Identified from [Red Hat blog: Scaling enterprise AI — MaaS with RHOAI 3.4](ht
 
 - [ ] **Full Red Hat Connectivity Link** -- Multicluster AI inference: `DNSPolicy` and `TLSPolicy` CRDs on the Gateway for automated certificate and DNS management, cross-cluster model failover, DNS-based traffic distribution. Requires full RHCL subscription (Red Hat Application Foundations) and multi-cluster infrastructure.
 - [ ] **Third-party gateway reference architectures** -- Document how LiteLLM, Portkey, or other AI gateways can connect to RHOAI-hosted model endpoints (via external Route with API keys, or direct in-cluster KServe bypass).
+
+### Phase 7: Guardrails — NeMo Guardrails via TrustyAI (PLANNED)
+
+Goal: add runtime input/output safety to MaaS-served models using [NVIDIA NeMo Guardrails](https://docs.nvidia.com/nemo/guardrails/latest/index.html), deployed and managed by the [TrustyAI Service Operator](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/enabling_ai_safety_with_guardrails/index) (same ecosystem as EvalHub). NeMo Guardrails is **fully supported in RHOAI 3.4**; the legacy FMS Guardrails Orchestrator is deprecated — do not adopt it for new work.
+
+**Scope**: programmable guardrails (input, dialog, output, retrieval, execution rails) between clients and LLM endpoints — content safety, jailbreak detection, topic control, PII masking, and custom Colang flows. Complements offline security scanning via Garak in the evaluation module; guardrails enforce policy at inference time.
+
+**Prerequisites** (already met or planned):
+- `trustyai: Managed` in DSC (already enabled in `maas-platform/values.yaml`)
+- At least one `LLMInferenceService` deployed via MaaS
+- TrustyAI operator installed (same operator that manages EvalHub)
+
+**References**:
+- Red Hat: [Enabling AI safety with Guardrails (RHOAI 3.4)](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/enabling_ai_safety_with_guardrails/index)
+- Red Hat: [Deploying NeMo Guardrails](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/enabling_ai_safety_with_guardrails/deploying-nemo-guardrails_nemo-guardrails)
+- NVIDIA: [NeMo Guardrails Developer Guide](https://docs.nvidia.com/nemo/guardrails/latest/index.html)
+- NVIDIA: [NeMo Guardrails GitHub](https://github.com/NVIDIA-NeMo/Guardrails)
+
+#### Configuration complexity tiers
+
+Engineering guidance: NeMo Guardrails configs fall into four tiers of increasing effort. Plan implementation and customer onboarding around these tiers.
+
+| Tier | Description | Config contents | Example rails |
+| ---- | ----------- | ----------------- | ------------- |
+| **1 — Out of the box** | Built-in flow; add to `config.yml` and it works | `config.yml` only | Jailbreak detection, content safety (Nemotron), topic control |
+| **2 — Configured OOTB** | Built-in flow that needs prompts or parameters | `config.yml` + prompts / rail config | Self-check input/output, sensitive data detection (PII entities) |
+| **3 — Custom Colang** | User-defined flows using built-in actions | `config.yml` + `*.co` (no `actions.py`) | Custom dialog rails, topical restrictions, domain-specific refusal paths |
+| **4 — Custom actions** | Fully custom logic with Python actions | `config.yml` + `*.co` + `actions.py` | External API integrations, LangChain tools, bespoke validation |
+
+#### Implementation plan
+
+- [ ] **ADR: Guardrails architecture** — Decide deployment model: standalone `NemoGuardrails` CR per model vs shared guardrails service; integration point with MaaS Gateway (proxy route vs sidecar vs client-side); relationship to Kuadrant auth/rate limits (guardrails after auth, before model). Document why NeMo Guardrails over deprecated FMS Orchestrator.
+- [ ] **Module scaffold** — `modules/guardrails/` with Helm chart, tests, docs, ArgoCD Application template, Makefile targets (`deploy-guardrails`, `test-guardrails`), cluster-cleanup function.
+- [ ] **Tier 1 — Baseline rails (OOTB)** — Deploy `NemoGuardrails` CR with ConfigMap containing `config.yml` referencing catalog rails: jailbreak detection, content safety. Wire to an existing MaaS model endpoint (OpenAI-compatible `/v1/chat/completions`). Validate `/v1/guardrail/checks` for input-only validation.
+- [ ] **Tier 2 — Configured rails** — Add self-check input/output rails and PII detection (Presidio/GLiNER) with entity lists in `config.yml`. Document prompt tuning for false-positive/negative trade-offs.
+- [ ] **Tier 3 — Custom Colang flows** — Ship example `*.co` files: topic restriction, insult handling, domain assistant dialog path. Helm values to mount custom Colang from ConfigMap.
+- [ ] **Tier 4 — Custom actions** — Example `actions.py` with a simple custom validation action; document actions-server pattern if actions run out-of-process.
+- [ ] **MaaS integration** — Route inference traffic through guardrails layer: evaluate HTTPRoute/Gateway pattern to expose guardrailed endpoint alongside raw model endpoint; preserve MaaS API keys and subscription headers through the chain.
+- [ ] **Observability** — Leverage NeMo Guardrails native OpenTelemetry support; connect to existing OTel Collector + Tempo stack. Dashboard panels for blocked requests, rail activation counts, latency overhead.
+- [ ] **E2E tests** — Template validation (ConfigMap structure, `NemoGuardrails` CR fields); cluster tests: guardrails pod Ready, `/v1/chat/completions` with blocked input returns refusal, allowed input passes through, `/v1/guardrail/checks` rejects toxic content.
+- [ ] **Vulnerability scanning baseline** — Run `nemoguardrails evaluate` against Tier 1 config; cross-reference with Garak results from evaluation module for defense-in-depth validation.
+
+**Red Hat products**: TrustyAI Operator (`NemoGuardrails` CR, `trustyai.opendatahub.io`), RHOAI model serving (LLMInferenceService as backend LLM).
+
+**Status note**: TrustyAI operator is GA; NeMo Guardrails moved from Tech Preview to fully supported in RHOAI 3.4 ([release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/new-features-and-enhancements_relnotes)). Reconcile any remaining TP warnings in upstream chapter headers against release notes before production use.
 
 ## Decision Log
 

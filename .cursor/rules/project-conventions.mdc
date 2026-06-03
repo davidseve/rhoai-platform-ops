@@ -36,6 +36,14 @@ Always prioritize Red Hat products and official Red Hat documentation:
 
 Use community projects only when Red Hat does not cover the need.
 
+## Reference Implementations
+
+When designing or implementing **new features**, also review the [RHOAI BU Cluster](https://github.com/rh-aiservices-bu/rhoaibu-cluster) GitOps repository. It is Red Hat's internal reference architecture for a fully GitOps-managed RHOAI platform (MaaS with 15+ models, operators, observability, GPU serving). Use it for proven patterns — not as a source of truth over Red Hat product docs.
+
+- **Repo:** https://github.com/rh-aiservices-bu/rhoaibu-cluster (`dev` branch for development cluster, `main` for production)
+- **Use for:** LLMInferenceService configs, MaaS/Gateway setup, model deployment patterns, observability integration, GitOps layout
+- **Do NOT copy blindly:** adapt to this repo's Helm-first module structure, ADRs, and test requirements; upstream choices may differ from our supported RHOAI version
+
 ## Testing
 
 Every change needs tests. Tests must be:
