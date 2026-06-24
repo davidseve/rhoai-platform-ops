@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/davidseve/rhoai-platform-ops.git
-    targetRevision: main
+    targetRevision: feat/coo-telemetry-usage-metrics
     path: argocd/apps
     helm:
       parameters:
