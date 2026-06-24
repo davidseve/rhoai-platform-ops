@@ -2,11 +2,13 @@
 
 Versions used in this project, aligned with RHOAI 3.4 GA.
 
+**Note:** RHOAI is pinned to 3.4.0 (`installPlanApproval: Manual`, `startingCSV: rhods-operator.3.4.0`) to avoid 3.4.1 regressions. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md) for the Wasm plugin auth issue affecting both versions.
+
 ## RHOAI Core
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
-| RHOAI Operator | 3.4 GA | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
+| RHOAI Operator | 3.4.0 (pinned) | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
 | KServe | 0.17.0 | -- | Managed by RHOAI operator |
 | MaaS (Models-as-a-Service) | 0.1.1 (GA) | -- | Managed by RHOAI operator |
 | llm-d (distributed inference) | 0.7.1 (GA) | -- | Used via LLMInferenceService (single-replica CPU, no disaggregation) |
@@ -57,6 +59,7 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 | Component | Version | Notes |
 |---|---|---|
 | OpenShift Container Platform | 4.19.9+ / 4.20 / 4.21 | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
+| OpenShift Service Mesh 3 | 3.3.4 | Managed by RHOAI operator; Envoy 1.34.2-dev ([ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md) — GET auth bug) |
 | PostgreSQL | 16 | `registry.redhat.io/rhel9/postgresql-16` (shared DB for maas-api and EvalHub) |
 
 ## Version Bump Summary (3.3 -> 3.4 GA)
