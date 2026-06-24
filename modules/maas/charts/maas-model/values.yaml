@@ -93,11 +93,6 @@ authPolicy:
 # Groups must be Kubernetes groups (from TokenReview), not OpenShift Groups.
 subscription:
   enabled: true
-  # Required for Usage dashboard metrics (TelemetryPolicy labels).
-  # Without these, the Wasm plugin fails to evaluate CEL expressions.
-  tokenMetadata:
-    costCenter: "default"
-    organizationId: "rhoai-platform-ops"
   tiers:
     free:
       groups:

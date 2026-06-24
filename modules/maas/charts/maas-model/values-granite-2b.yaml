@@ -51,9 +51,6 @@ authPolicy:
 
 subscription:
   enabled: true
-  tokenMetadata:
-    costCenter: "default"
-    organizationId: "rhoai-platform-ops"
   tiers:
     free:
       groups:
