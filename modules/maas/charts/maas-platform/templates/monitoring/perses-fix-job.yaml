@@ -166,25 +166,54 @@ spec:
               sleep 5
             done
 
-            echo "  Scaling up Perses operator for dashboard sync..."
-            oc scale deployment perses-operator -n openshift-operators --replicas=1
-            echo "  Waiting 30s for dashboard sync..."
-            sleep 30
+            DASHBOARD_CRS=$(oc get persesdashboard -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$DASHBOARD_CRS" -gt 0 ]; then
+              echo "  Scaling up Perses operator to sync $DASHBOARD_CRS dashboard CRs..."
+              oc scale deployment perses-operator -n openshift-operators --replicas=1
 
-            echo "  Scaling down operator again (prevent TLS revert)..."
-            oc scale deployment perses-operator -n openshift-operators --replicas=0
-            sleep 5
+              PERSES_SVC="http://data-science-perses.redhat-ods-monitoring.svc:8080"
+              echo "  Waiting for dashboards in Perses API (up to 90s)..."
+              for i in $(seq 1 18); do
+                sleep 5
+                API_COUNT=$(curl -sf "$PERSES_SVC/api/v1/dashboards" 2>/dev/null \
+                  | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+                echo "  dashboards in API: $API_COUNT / CRs: $DASHBOARD_CRS ($i/18)"
+                if [ "$API_COUNT" -ge "$DASHBOARD_CRS" ]; then
+                  echo "  All dashboards synced"
+                  break
+                fi
+              done
 
-            echo "  Re-patching StatefulSet (operator may have reverted)..."
-            oc patch statefulset data-science-perses -n redhat-ods-monitoring \
-              --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--config=/etc/perses/config/config.yaml","--web.listen-address=:8080"]}]' 2>/dev/null || true
+              echo "  Scaling down operator (prevent TLS revert)..."
+              oc scale deployment perses-operator -n openshift-operators --replicas=0
+              sleep 5
+            else
+              echo "  No PersesDashboard CRs found — skipping operator sync"
+            fi
+
+            echo "  Re-patching StatefulSet if operator reverted..."
+            ARGS_AFTER=$(oc get statefulset data-science-perses -n redhat-ods-monitoring \
+              -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null || echo "")
+            if echo "$ARGS_AFTER" | grep -q 'tls-min-version'; then
+              oc patch statefulset data-science-perses -n redhat-ods-monitoring \
+                --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--config=/etc/perses/config/config.yaml","--web.listen-address=:8080"]}]'
+            fi
 
             PERSES_STATUS=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
-              -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-            if [ "$PERSES_STATUS" != "Running" ]; then
-              echo "  Perses crashed — restarting..."
+              -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+            if [ "$PERSES_STATUS" != "true" ]; then
+              echo "  Perses not ready — restarting..."
               oc delete pod data-science-perses-0 -n redhat-ods-monitoring --ignore-not-found
-              sleep 15
+              echo "  Waiting for Perses to come back..."
+              for i in $(seq 1 20); do
+                sleep 5
+                READY=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
+                  -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+                if [ "$READY" = "true" ]; then
+                  echo "  Perses Ready"
+                  break
+                fi
+              done
             fi
           else
             echo "  No TLS flag bug (3.4.1+ or already fixed)"
