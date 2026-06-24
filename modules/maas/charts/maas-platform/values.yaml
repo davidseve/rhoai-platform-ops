@@ -180,13 +180,11 @@ kuadrant:
   # Namespace where RHCL operator pod runs (for restart on Istio race condition)
   operatorNamespace: redhat-connectivity-link
   observability: true
-  # Authorino TLS PostSync Job: manually configures TLS on Authorino (cert, CA bundle,
-  # volume mounts, SSL_CERT_FILE). For standard MaaS this is NOT needed — the Gateway
-  # annotation `security.opendatahub.io/authorino-tls-bootstrap: "true"` tells the RHOAI
-  # MaaS controller to handle Authorino TLS automatically. Enable only for llm-d or
-  # if the automatic bootstrap is insufficient.
+  # Authorino TLS: mount OpenShift service-ca bundle so Authorino trusts maas-api cert.
+  # Required for API key validation (Authorino → maas-api HTTPS callbacks).
+  # Runs as ArgoCD post-sync Job (setup-authorino-tls.sh equivalent).
   authorinoTls:
-    enabled: false
+    enabled: true
   # Authorino replicas and resource limits: the Authorino CRD (v1beta2) supports
   # spec.replicas but NOT spec.resources. Patching the Deployment directly from
   # a PostSync Job is fragile (operator can revert on reconciliation).
