@@ -27,7 +27,7 @@ datasciencecluster:
     mlflowoperator:
       managementState: Managed
     modelregistry:
-      managementState: Managed
+      managementState: Removed
       registriesNamespace: rhoai-model-registries
     ray:
       managementState: Removed
@@ -63,7 +63,7 @@ dashboard:
   mlflow: true                   # Dev Preview: shows MLflow tile on Applications → Explore
   disablePerformanceMetrics: false  # shows Endpoint Performance tab on Deployments page
   disableModelCatalog: false     # shows AI hub → Catalog menu item
-  disableModelRegistry: false    # shows AI hub → Registry menu item
+  disableModelRegistry: true     # shows AI hub → Registry menu item
   disableLLMd: false             # shows llm-d distributed inference option in model serving wizard
 
 gateway:

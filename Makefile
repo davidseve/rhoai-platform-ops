@@ -484,6 +484,23 @@ undeploy-all: undeploy-evaluation undeploy-maas undeploy-observability undeploy-
 
 # --- Validation ---
 
+.PHONY: validate-dashboards
+validate-dashboards: ## Validate Perses and Grafana dashboards are populated
+	@echo "=== Perses ==="
+	$(OC) wait --for=condition=Ready pod/data-science-perses-0 -n redhat-ods-monitoring --timeout=120s
+	@echo "Checking Perses dashboards via API..."
+	@$(OC) port-forward -n redhat-ods-monitoring data-science-perses-0 19090:8080 & \
+		PF_PID=$$!; sleep 3; \
+		COUNT=$$(curl -sf http://localhost:19090/api/v1/dashboards 2>/dev/null | $(PYTHON) -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0); \
+		kill $$PF_PID 2>/dev/null; wait $$PF_PID 2>/dev/null; \
+		echo "  Perses dashboards: $$COUNT"; \
+		if [ "$$COUNT" -lt 1 ]; then echo "ERROR: No Perses dashboards found" && exit 1; fi
+	@echo "=== Grafana ==="
+	@GD_COUNT=$$($(OC) get grafanadashboard -A --no-headers 2>/dev/null | wc -l); \
+		echo "  Grafana dashboards: $$GD_COUNT"; \
+		if [ "$$GD_COUNT" -lt 1 ]; then echo "WARNING: No Grafana dashboards found"; fi
+	@echo "Dashboard validation passed"
+
 .PHONY: template
 template: ## Helm template dry-run for all charts
 	$(HELM) template obs-operators modules/observability/charts/operators

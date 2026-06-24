@@ -68,6 +68,7 @@ make cluster-cleanup-database # Remove only database resources
 make cluster-cleanup-dry  # Dry-run: show what would be deleted
 
 # Validation
+make validate-dashboards  # Check Perses + Grafana dashboards are populated
 make template             # helm template for all charts (dry-run)
 make lint                 # Helm lint + YAML validation
 ```

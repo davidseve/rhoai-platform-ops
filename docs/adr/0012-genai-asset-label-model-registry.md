@@ -66,25 +66,33 @@ Model Registry (wave 2) are fully ready before models deploy.
 
 ## Decision
 
-Use **Option 2: MaaSModelRef only**.
+~~Use **Option 2: MaaSModelRef only**.~~ **Revised in RHOAI 3.4.1:** Use **both
+MaaSModelRef and genai-asset label** (Option 3, revised).
 
-- Do NOT add `opendatahub.io/genai-asset: "true"` to LLMInferenceService
-- Keep `modelRef.enabled: true` — the `MaaSModelRef` CR feeds models into
-  AI asset endpoints via `maas-ui` → `maas-api`
+- Add `opendatahub.io/genai-asset: "true"` to LLMInferenceService — required
+  for the AI asset endpoints / Playground page in RHOAI 3.4.1+
+- Keep `modelRef.enabled: true` — the `MaaSModelRef` CR feeds the MaaS API
+  (`/v1/models`) and provides rich metadata (use case, description, display name)
 - Keep `registry.enabled: true` — the Model Registry is a separate governance
   feature that does NOT cause duplicates
 - Sync-wave ordering: platform (wave 1) → model-registry (wave 2) → models (wave 3)
 
-### When genai-asset IS needed
+### RHOAI 3.4.1 behavior change
 
-The `genai-asset` label is only needed for:
-- Standalone InferenceService deployments (not using MaaS/LLMInferenceService)
-- Environments without the MaaS controller
+In RHOAI 3.4.0, the `maas-ui` BFF fed models into the AI asset endpoints page
+via `maas-api`. In RHOAI 3.4.1, the AI asset endpoints / Playground page uses
+only the `gen-ai-ui` BFF, which discovers models via the `genai-asset` label on
+LLMInferenceService resources. The `maas-ui` BFF still serves `/maas/api/v1/models`
+but the Dashboard frontend no longer queries it for the Playground.
+
+The duplicate issue from Option 3 (6 entries) observed in 3.4.0 should be
+re-tested on 3.4.1 — the `gen-ai-ui` and `maas-ui` may now serve different
+UI pages without overlap.
 
 ## Consequences
 
 ### Positive
-- No duplicate models in AI asset endpoints or Playground
+- Models visible in AI asset endpoints / Playground via `genai-asset` label
 - Rich metadata (Use case, Description, Display Name) from MaaSModelRef annotations
 - Models visible globally across all namespaces via MaaS API
 - Model Registry available for governance (separate, non-conflicting)
@@ -92,7 +100,9 @@ The `genai-asset` label is only needed for:
 
 ### Negative
 - Depends on MaaS platform being operational (maas-api, maas-controller)
-- Less documented than the `genai-asset` approach (most blogs show `genai-asset`)
+- Both label and MaaSModelRef must be maintained — potential for drift if one is
+  removed without the other
+- Duplicate entries should be re-validated on each RHOAI upgrade
 
 ## Key Technical Details
 

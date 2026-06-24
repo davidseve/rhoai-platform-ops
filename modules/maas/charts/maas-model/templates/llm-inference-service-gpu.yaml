@@ -6,6 +6,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
   annotations:
     security.opendatahub.io/enable-auth: "true"
 spec:
