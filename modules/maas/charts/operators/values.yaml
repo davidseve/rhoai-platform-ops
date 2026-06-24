@@ -4,6 +4,11 @@ rhoai:
   channel: stable-3.4
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  # Pin to 3.4.0 to avoid 3.4.1 regressions (AUTH_FAILURE on /v1/models,
+  # Perses TLS crashloop, Prometheus missing secret, Gateway OOM).
+  # Remove startingCSV and set installPlanApproval: Automatic to upgrade.
+  startingCSV: rhods-operator.3.4.0
+  installPlanApproval: Manual
 
 connectivityLink:
   enabled: true

@@ -9,5 +9,8 @@ spec:
   channel: {{ .Values.rhoai.channel }}
   source: {{ .Values.rhoai.source }}
   sourceNamespace: {{ .Values.rhoai.sourceNamespace }}
-  installPlanApproval: Automatic
+  installPlanApproval: {{ .Values.rhoai.installPlanApproval | default "Automatic" }}
+  {{- if .Values.rhoai.startingCSV }}
+  startingCSV: {{ .Values.rhoai.startingCSV }}
+  {{- end }}
 {{- end }}
