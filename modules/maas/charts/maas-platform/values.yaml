@@ -186,7 +186,7 @@ kuadrant:
   # controller to handle this automatically. Enable only for llm-d or if the
   # automatic bootstrap is insufficient.
   authorinoTls:
-    enabled: false
+    enabled: true
   # Authorino replicas and resource limits: the Authorino CRD (v1beta2) supports
   # spec.replicas but NOT spec.resources. Patching the Deployment directly from
   # a PostSync Job is fragile (operator can revert on reconciliation).
