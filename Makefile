@@ -360,7 +360,12 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		echo "  [$$((elapsed / 60))m] $$healthy/$$total apps Synced+Healthy  pending: $$not_healthy"; \
 		for ns in openshift-operators redhat-ods-operator redhat-connectivity-link leader-worker-set; do \
 			for ip in $$($(OC) get installplan -n $$ns -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do \
-				echo "  Auto-approving InstallPlan $$ip in $$ns..."; \
+				ip_csv=$$($(OC) get installplan "$$ip" -n $$ns -o jsonpath='{.spec.clusterServiceVersionNames[0]}' 2>/dev/null || echo ""); \
+				if [ "$$ns" = "redhat-ods-operator" ] && echo "$$ip_csv" | grep -q "rhods-operator" && ! echo "$$ip_csv" | grep -qF "3.4.0"; then \
+					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned 3.4.0)"; \
+					continue; \
+				fi; \
+				echo "  Auto-approving InstallPlan $$ip in $$ns ($$ip_csv)..."; \
 				$(OC) patch installplan "$$ip" -n $$ns --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true; \
 			done; \
 		done; \
@@ -405,10 +410,10 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 	@echo "Waiting for model pods to be Ready..."
 	@elapsed=0; \
 	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
-		pod_count=$$($(OC) get pods -n models-as-a-service -l app=isvc-predictor --no-headers 2>/dev/null | wc -l); \
-		not_ready=$$($(OC) get pods -n models-as-a-service -l app=isvc-predictor --no-headers 2>/dev/null | grep -cv "Running" || true); \
+		pod_count=$$($(OC) get pods -n models-as-a-service -l app.kubernetes.io/part-of=llminferenceservice --no-headers 2>/dev/null | wc -l); \
+		not_ready=$$($(OC) get pods -n models-as-a-service -l app.kubernetes.io/part-of=llminferenceservice --no-headers 2>/dev/null | grep -cv "Running" || true); \
 		if [ "$$pod_count" -gt 0 ] && [ "$$not_ready" -eq 0 ]; then \
-			$(OC) get pods -n models-as-a-service -l app=isvc-predictor; \
+			$(OC) get pods -n models-as-a-service -l app.kubernetes.io/part-of=llminferenceservice; \
 			echo "All model pods are Running."; \
 			break; \
 		fi; \
