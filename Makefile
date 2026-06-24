@@ -370,16 +370,47 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		$(OC) get applications -n openshift-gitops; \
 		exit 1; \
 	fi
+	@echo "Waiting for DataScienceCluster to be Ready..."
+	@elapsed=0; \
+	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
+		phase=$$($(OC) get datasciencecluster -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Pending"); \
+		if [ "$$phase" = "Ready" ]; then \
+			echo "  DataScienceCluster is Ready."; \
+			break; \
+		fi; \
+		echo "  [$$((elapsed / 60))m] DSC phase: $$phase"; \
+		sleep $(WAIT_INTERVAL); \
+		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
+	done; \
+	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
+		echo "WARNING: DSC not Ready after $(WAIT_TIMEOUT)m (phase: $$($(OC) get datasciencecluster -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo unknown)) -- continuing anyway"; \
+	fi
+	@echo "Waiting for Gateway pods to be Running..."
+	@elapsed=0; \
+	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
+		gw_pods=$$($(OC) get pods -n openshift-ingress -l gateway.networking.k8s.io/gateway-name=maas-default-gateway --no-headers 2>/dev/null | grep -c "Running" || true); \
+		if [ "$$gw_pods" -gt 0 ]; then \
+			echo "  Gateway pod(s) running: $$gw_pods"; \
+			break; \
+		fi; \
+		echo "  [$$((elapsed / 60))m] No gateway pods yet..."; \
+		sleep $(WAIT_INTERVAL); \
+		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
+	done; \
+	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
+		echo "WARNING: Gateway pods not found after $(WAIT_TIMEOUT)m -- continuing anyway"; \
+	fi
 	@echo "Waiting for model pods to be Ready..."
 	@elapsed=0; \
 	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
-		not_ready=$$($(OC) get pods -n models-as-a-service --no-headers 2>/dev/null | grep -cv "Running" || true); \
-		if [ "$$not_ready" -eq 0 ] && [ "$$($(OC) get pods -n models-as-a-service --no-headers 2>/dev/null | wc -l)" -gt 0 ]; then \
-			$(OC) get pods -n models-as-a-service; \
+		pod_count=$$($(OC) get pods -n models-as-a-service -l app=isvc-predictor --no-headers 2>/dev/null | wc -l); \
+		not_ready=$$($(OC) get pods -n models-as-a-service -l app=isvc-predictor --no-headers 2>/dev/null | grep -cv "Running" || true); \
+		if [ "$$pod_count" -gt 0 ] && [ "$$not_ready" -eq 0 ]; then \
+			$(OC) get pods -n models-as-a-service -l app=isvc-predictor; \
 			echo "All model pods are Running."; \
 			break; \
 		fi; \
-		echo "  [$$((elapsed / 60))m] $$not_ready pod(s) not ready yet..."; \
+		echo "  [$$((elapsed / 60))m] $$pod_count pod(s) found, $$not_ready not ready..."; \
 		sleep $(WAIT_INTERVAL); \
 		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
 	done; \
