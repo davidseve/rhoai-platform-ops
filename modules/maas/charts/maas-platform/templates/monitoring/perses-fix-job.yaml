@@ -1,0 +1,199 @@
+{{- if (ne (.Values.dsci.managed | toString) "false") }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: perses-fix
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: perses-fix
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["secrets", "configmaps"]
+  verbs: ["get", "create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: perses-fix
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: perses-fix
+subjects:
+- kind: ServiceAccount
+  name: perses-fix
+  namespace: redhat-ods-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: perses-fix-operator
+  namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: perses-fix-operator
+  namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: perses-fix-operator
+subjects:
+- kind: ServiceAccount
+  name: perses-fix
+  namespace: redhat-ods-monitoring
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: perses-fix
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      serviceAccountName: perses-fix
+      restartPolicy: OnFailure
+      containers:
+      - name: fix
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+
+          echo "=== RHOAI 3.4.0 Monitoring Workarounds ==="
+
+          echo "Step 1: Ensure prometheus-web-tls-ca Secret exists..."
+          if ! oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring 2>/dev/null; then
+            echo "  Creating empty TLS CA secret..."
+            oc create secret generic prometheus-web-tls-ca -n redhat-ods-monitoring
+          else
+            echo "  Secret already exists"
+          fi
+
+          echo "Step 2: Wait for Perses StatefulSet..."
+          for i in $(seq 1 60); do
+            if oc get statefulset data-science-perses -n redhat-ods-monitoring 2>/dev/null; then
+              echo "  StatefulSet found"
+              break
+            fi
+            echo "  waiting ($i/60)..."
+            sleep 5
+          done
+
+          echo "Step 3: Check if Perses has TLS flag bug..."
+          ARGS=$(oc get statefulset data-science-perses -n redhat-ods-monitoring \
+            -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null || echo "")
+          if echo "$ARGS" | grep -q 'tls-min-version'; then
+            echo "  TLS flag bug detected — fixing..."
+
+            echo "  Scaling down Perses operator..."
+            oc scale deployment perses-operator -n openshift-operators --replicas=0
+
+            echo "  Waiting for operator to stop..."
+            for i in $(seq 1 12); do
+              READY=$(oc get deployment perses-operator -n openshift-operators \
+                -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "1")
+              if [ "$READY" = "" ] || [ "$READY" = "0" ]; then
+                echo "  Operator stopped"
+                break
+              fi
+              sleep 5
+            done
+
+            echo "  Patching StatefulSet to remove TLS flags..."
+            oc patch statefulset data-science-perses -n redhat-ods-monitoring \
+              --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--config=/etc/perses/config/config.yaml","--web.listen-address=:8080"]}]'
+
+            echo "  Restarting Perses pod..."
+            oc delete pod data-science-perses-0 -n redhat-ods-monitoring --ignore-not-found
+
+            echo "  Waiting for Perses to be Ready..."
+            for i in $(seq 1 30); do
+              READY=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
+                -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+              if [ "$READY" = "true" ]; then
+                echo "  Perses Ready"
+                break
+              fi
+              sleep 5
+            done
+
+            echo "  Scaling up Perses operator for dashboard sync..."
+            oc scale deployment perses-operator -n openshift-operators --replicas=1
+            echo "  Waiting 30s for dashboard sync..."
+            sleep 30
+
+            echo "  Scaling down operator again (prevent TLS revert)..."
+            oc scale deployment perses-operator -n openshift-operators --replicas=0
+            sleep 5
+
+            echo "  Re-patching StatefulSet (operator may have reverted)..."
+            oc patch statefulset data-science-perses -n redhat-ods-monitoring \
+              --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--config=/etc/perses/config/config.yaml","--web.listen-address=:8080"]}]' 2>/dev/null || true
+
+            PERSES_STATUS=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
+              -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$PERSES_STATUS" != "Running" ]; then
+              echo "  Perses crashed — restarting..."
+              oc delete pod data-science-perses-0 -n redhat-ods-monitoring --ignore-not-found
+              sleep 15
+            fi
+          else
+            echo "  No TLS flag bug (3.4.1+ or already fixed)"
+          fi
+
+          echo "Step 4: Verify Perses is healthy..."
+          READY=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
+            -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+          echo "  Perses ready: $READY"
+
+          echo "=== Monitoring workarounds complete ==="
+{{- end }}
