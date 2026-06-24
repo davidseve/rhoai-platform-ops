@@ -96,7 +96,7 @@ force_delete_ns() {
   # Target CRDs from our operators first (fast path).
   local crds
   crds=$($OC get crd -o name 2>/dev/null \
-    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset|maas)' \
+    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset|maas|perses)' \
     | sed 's|customresourcedefinition.apiextensions.k8s.io/||' || true)
 
   for crd in $crds; do
@@ -346,6 +346,25 @@ cleanup_observability_residual() {
     run "$OC patch '$gf' -n observability --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
   done
   run "$OC delete grafana --all -n observability --ignore-not-found"
+
+  # Perses CRs (deployed by RHOAI in redhat-ods-monitoring; have perses.dev/finalizer)
+  log "Deleting Perses CRs..."
+  for ns in redhat-ods-monitoring observability; do
+    if $OC get ns "$ns" &>/dev/null; then
+      for perses in $($OC get perses -n "$ns" -o name 2>/dev/null); do
+        run "$OC patch '$perses' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete perses --all -n '$ns' --timeout=30s --ignore-not-found"
+      for pd in $($OC get persesdashboard -n "$ns" -o name 2>/dev/null); do
+        run "$OC patch '$pd' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete persesdashboard --all -n '$ns' --timeout=30s --ignore-not-found"
+      for pds in $($OC get persesdatasource -n "$ns" -o name 2>/dev/null); do
+        run "$OC patch '$pds' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete persesdatasource --all -n '$ns' --timeout=30s --ignore-not-found"
+    fi
+  done
 
   # COO resources (UIPlugins, MonitoringStack in redhat-ods-monitoring)
   log "Deleting COO UIPlugins..."
