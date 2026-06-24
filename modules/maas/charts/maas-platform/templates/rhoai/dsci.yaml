@@ -1,14 +1,26 @@
 {{- if (ne (.Values.dsci.managed | toString) "false") }}
-apiVersion: dscinitialization.opendatahub.io/v2
+apiVersion: dscinitialization.opendatahub.io/v1
 kind: DSCInitialization
 metadata:
   name: default-dsci
+  annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true
 spec:
   applicationsNamespace: redhat-ods-applications
   monitoring:
     managementState: Managed
-    metrics: {}
     namespace: redhat-ods-monitoring
+    alerting: {}
+    metrics:
+      replicas: 1
+      storage:
+        size: 5Gi
+        retention: 90d
+    traces:
+      sampleRatio: "0.1"
+      storage:
+        backend: pv
+        retention: 2160h0m0s
   trustedCABundle:
     customCABundle: ""
     managementState: Managed
