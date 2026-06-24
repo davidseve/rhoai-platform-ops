@@ -11,10 +11,9 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: perses-fix
-  namespace: redhat-ods-monitoring
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/hook: PostSync
@@ -24,60 +23,33 @@ rules:
   resources: ["statefulsets"]
   verbs: ["get", "patch"]
 - apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "update", "patch"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["get", "patch", "update"]
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list", "delete"]
 - apiGroups: [""]
   resources: ["secrets", "configmaps"]
   verbs: ["get", "create", "patch"]
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  verbs: ["create"]
+- apiGroups: ["perses.dev"]
+  resources: ["persesdashboards", "persesdatasources"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: perses-fix
-  namespace: redhat-ods-monitoring
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: perses-fix
-subjects:
-- kind: ServiceAccount
-  name: perses-fix
-  namespace: redhat-ods-monitoring
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: perses-fix-operator
-  namespace: openshift-operators
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-rules:
-- apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale"]
-  verbs: ["get", "patch", "update"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: perses-fix-operator
-  namespace: openshift-operators
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: perses-fix-operator
 subjects:
 - kind: ServiceAccount
   name: perses-fix
@@ -107,6 +79,9 @@ spec:
         - -c
         - |
           set -euo pipefail
+          PERSES_SVC="http://data-science-perses.redhat-ods-monitoring.svc:8080"
+          THANOS_URL="https://thanos-querier.openshift-monitoring.svc:9091"
+          PROXY_SA="data-science-prometheus-namespace-proxy"
 
           echo "=== RHOAI 3.4.0 Monitoring Workarounds ==="
 
@@ -114,11 +89,28 @@ spec:
           if ! oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring 2>/dev/null; then
             echo "  Creating empty TLS CA secret..."
             oc create secret generic prometheus-web-tls-ca -n redhat-ods-monitoring
-          else
-            echo "  Secret already exists"
           fi
 
-          echo "Step 2: Wait for Perses StatefulSet..."
+          echo "Step 2: Create long-lived SA token for Thanos proxy..."
+          if ! oc get secret perses-thanos-token -n redhat-ods-monitoring 2>/dev/null; then
+            echo "  Creating SA token secret..."
+            cat <<EOSECRET | oc apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: perses-thanos-token
+            namespace: redhat-ods-monitoring
+            annotations:
+              kubernetes.io/service-account.name: ${PROXY_SA}
+          type: kubernetes.io/service-account-token
+          EOSECRET
+            sleep 5
+          fi
+          THANOS_TOKEN=$(oc get secret perses-thanos-token -n redhat-ods-monitoring \
+            -o jsonpath='{.data.token}' | base64 -d)
+          echo "  Token length: ${#THANOS_TOKEN}"
+
+          echo "Step 3: Wait for Perses StatefulSet..."
           for i in $(seq 1 60); do
             if oc get statefulset data-science-perses -n redhat-ods-monitoring 2>/dev/null; then
               echo "  StatefulSet found"
@@ -128,101 +120,139 @@ spec:
             sleep 5
           done
 
-          echo "Step 3: Check if Perses has TLS flag bug..."
+          echo "Step 4: Fix Perses TLS flag bug (COO 1.5.0)..."
           ARGS=$(oc get statefulset data-science-perses -n redhat-ods-monitoring \
             -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null || echo "")
+          NEEDS_FIX=false
           if echo "$ARGS" | grep -q 'tls-min-version'; then
-            echo "  TLS flag bug detected — fixing..."
+            NEEDS_FIX=true
+          fi
 
+          HAS_CA=$(oc get statefulset data-science-perses -n redhat-ods-monitoring \
+            -o jsonpath='{.spec.template.spec.volumes[?(@.name=="tls-ca")].name}' 2>/dev/null || echo "")
+          NEEDS_CA=false
+          if [ -z "$HAS_CA" ]; then
+            NEEDS_CA=true
+          fi
+
+          if [ "$NEEDS_FIX" = true ] || [ "$NEEDS_CA" = true ]; then
             echo "  Scaling down Perses operator..."
             oc scale deployment perses-operator -n openshift-operators --replicas=0
-
-            echo "  Waiting for operator to stop..."
             for i in $(seq 1 12); do
               READY=$(oc get deployment perses-operator -n openshift-operators \
                 -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "1")
-              if [ "$READY" = "" ] || [ "$READY" = "0" ]; then
-                echo "  Operator stopped"
-                break
-              fi
+              if [ "$READY" = "" ] || [ "$READY" = "0" ]; then break; fi
               sleep 5
             done
 
-            echo "  Patching StatefulSet to remove TLS flags..."
+            PATCH='[]'
+            if [ "$NEEDS_FIX" = true ]; then
+              echo "  Removing TLS flags from args..."
+              PATCH=$(echo "$PATCH" | python3 -c "import sys,json; p=json.load(sys.stdin); p.append({'op':'replace','path':'/spec/template/spec/containers/0/args','value':['--config=/etc/perses/config/config.yaml','--web.listen-address=:8080']}); print(json.dumps(p))")
+            fi
+
+            if [ "$NEEDS_CA" = true ]; then
+              echo "  Adding CA volume + SSL_CERT_DIR..."
+              PATCH=$(echo "$PATCH" | python3 -c "
+          import sys,json
+          p=json.load(sys.stdin)
+          p.append({'op':'add','path':'/spec/template/spec/volumes/-','value':{'name':'tls-ca','configMap':{'name':'prometheus-web-tls-ca','defaultMode':420}}})
+          p.append({'op':'add','path':'/spec/template/spec/containers/0/volumeMounts/-','value':{'name':'tls-ca','mountPath':'/etc/ssl/certs/openshift','readOnly':True}})
+          p.append({'op':'add','path':'/spec/template/spec/containers/0/env','value':[{'name':'SSL_CERT_DIR','value':'/etc/ssl/certs:/etc/ssl/certs/openshift'}]})
+          print(json.dumps(p))
+          ")
+            fi
+
             oc patch statefulset data-science-perses -n redhat-ods-monitoring \
-              --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--config=/etc/perses/config/config.yaml","--web.listen-address=:8080"]}]'
+              --type=json -p "$PATCH"
 
             echo "  Restarting Perses pod..."
             oc delete pod data-science-perses-0 -n redhat-ods-monitoring --ignore-not-found
-
             echo "  Waiting for Perses to be Ready..."
             for i in $(seq 1 30); do
               READY=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
                 -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
-              if [ "$READY" = "true" ]; then
-                echo "  Perses Ready"
-                break
-              fi
+              if [ "$READY" = "true" ]; then echo "  Perses Ready"; break; fi
               sleep 5
             done
+          fi
 
-            DASHBOARD_CRS=$(oc get persesdashboard -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
-            if [ "$DASHBOARD_CRS" -gt 0 ]; then
-              echo "  Scaling up Perses operator to sync $DASHBOARD_CRS dashboard CRs..."
-              oc scale deployment perses-operator -n openshift-operators --replicas=1
+          echo "Step 5: Sync dashboards (scale operator briefly)..."
+          DASHBOARD_CRS=$(oc get persesdashboard -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+          API_COUNT=$(curl -sf "$PERSES_SVC/api/v1/dashboards" 2>/dev/null \
+            | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
 
-              PERSES_SVC="http://data-science-perses.redhat-ods-monitoring.svc:8080"
-              echo "  Waiting for dashboards in Perses API (up to 90s)..."
-              for i in $(seq 1 18); do
-                sleep 5
-                API_COUNT=$(curl -sf "$PERSES_SVC/api/v1/dashboards" 2>/dev/null \
-                  | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
-                echo "  dashboards in API: $API_COUNT / CRs: $DASHBOARD_CRS ($i/18)"
-                if [ "$API_COUNT" -ge "$DASHBOARD_CRS" ]; then
-                  echo "  All dashboards synced"
-                  break
-                fi
-              done
-
-              echo "  Scaling down operator (prevent TLS revert)..."
-              oc scale deployment perses-operator -n openshift-operators --replicas=0
+          if [ "$DASHBOARD_CRS" -gt 0 ] && [ "$API_COUNT" -lt "$DASHBOARD_CRS" ]; then
+            echo "  Dashboards: API=$API_COUNT, CRs=$DASHBOARD_CRS — need sync"
+            oc scale deployment perses-operator -n openshift-operators --replicas=1
+            for i in $(seq 1 18); do
               sleep 5
-            else
-              echo "  No PersesDashboard CRs found — skipping operator sync"
-            fi
+              API_COUNT=$(curl -sf "$PERSES_SVC/api/v1/dashboards" 2>/dev/null \
+                | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+              echo "  dashboards: $API_COUNT / $DASHBOARD_CRS ($i/18)"
+              if [ "$API_COUNT" -ge "$DASHBOARD_CRS" ]; then echo "  Synced"; break; fi
+            done
+            oc scale deployment perses-operator -n openshift-operators --replicas=0
+            sleep 5
 
-            echo "  Re-patching StatefulSet if operator reverted..."
             ARGS_AFTER=$(oc get statefulset data-science-perses -n redhat-ods-monitoring \
               -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null || echo "")
             if echo "$ARGS_AFTER" | grep -q 'tls-min-version'; then
+              echo "  Operator reverted StatefulSet — re-patching..."
               oc patch statefulset data-science-perses -n redhat-ods-monitoring \
                 --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--config=/etc/perses/config/config.yaml","--web.listen-address=:8080"]}]'
-            fi
-
-            PERSES_STATUS=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
-              -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
-            if [ "$PERSES_STATUS" != "true" ]; then
-              echo "  Perses not ready — restarting..."
               oc delete pod data-science-perses-0 -n redhat-ods-monitoring --ignore-not-found
-              echo "  Waiting for Perses to come back..."
               for i in $(seq 1 20); do
                 sleep 5
                 READY=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
                   -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
-                if [ "$READY" = "true" ]; then
-                  echo "  Perses Ready"
-                  break
-                fi
+                if [ "$READY" = "true" ]; then echo "  Perses Ready"; break; fi
               done
             fi
           else
-            echo "  No TLS flag bug (3.4.1+ or already fixed)"
+            echo "  Dashboards OK: API=$API_COUNT, CRs=$DASHBOARD_CRS"
           fi
 
-          echo "Step 4: Verify Perses is healthy..."
+          echo "Step 6: Create datasource secrets + datasources in Perses API..."
+          DS_COUNT=$(curl -sf "$PERSES_SVC/api/v1/projects/default/datasources" 2>/dev/null \
+            | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+
+          if [ "$DS_COUNT" -lt 2 ]; then
+            echo "  Creating Perses API secrets..."
+            for DS_NAME in prometheus-datasource-secret kuadrant-prometheus-datasource-secret; do
+              curl -sf -X POST "$PERSES_SVC/api/v1/projects/default/secrets" \
+                -H "Content-Type: application/json" \
+                -d "{\"kind\":\"Secret\",\"metadata\":{\"name\":\"$DS_NAME\"},\"spec\":{\"authorization\":{\"type\":\"Bearer\",\"credentials\":\"$THANOS_TOKEN\"}}}" \
+                2>/dev/null | python3 -c "import sys,json; print(f'  secret: {json.load(sys.stdin).get(\"metadata\",{}).get(\"name\",\"?\")}')" 2>/dev/null || \
+                echo "  secret $DS_NAME already exists or failed"
+            done
+
+            echo "  Creating default Prometheus datasource..."
+            curl -sf -X POST "$PERSES_SVC/api/v1/projects/default/datasources" \
+              -H "Content-Type: application/json" \
+              -d "{\"kind\":\"Datasource\",\"metadata\":{\"name\":\"prometheus-datasource\"},\"spec\":{\"default\":true,\"display\":{\"name\":\"Prometheus\"},\"plugin\":{\"kind\":\"PrometheusDatasource\",\"spec\":{\"proxy\":{\"kind\":\"HTTPProxy\",\"spec\":{\"url\":\"$THANOS_URL\",\"secret\":\"prometheus-datasource-secret\"}},\"scrapeInterval\":\"30s\"}}}}" \
+              2>/dev/null | python3 -c "import sys,json; print(f'  datasource: {json.load(sys.stdin).get(\"metadata\",{}).get(\"name\",\"?\")}')" 2>/dev/null || \
+              echo "  default datasource failed"
+
+            echo "  Creating kuadrant Prometheus datasource..."
+            curl -sf -X POST "$PERSES_SVC/api/v1/projects/default/datasources" \
+              -H "Content-Type: application/json" \
+              -d "{\"kind\":\"Datasource\",\"metadata\":{\"name\":\"kuadrant-prometheus-datasource\"},\"spec\":{\"default\":false,\"display\":{\"name\":\"Prometheus (Thanos Querier)\"},\"plugin\":{\"kind\":\"PrometheusDatasource\",\"spec\":{\"proxy\":{\"kind\":\"HTTPProxy\",\"spec\":{\"url\":\"$THANOS_URL\",\"secret\":\"kuadrant-prometheus-datasource-secret\"}},\"scrapeInterval\":\"30s\"}}}}" \
+              2>/dev/null | python3 -c "import sys,json; print(f'  datasource: {json.load(sys.stdin).get(\"metadata\",{}).get(\"name\",\"?\")}')" 2>/dev/null || \
+              echo "  kuadrant datasource failed"
+          else
+            echo "  Datasources already exist ($DS_COUNT)"
+          fi
+
+          echo "Step 7: Final verification..."
           READY=$(oc get pod data-science-perses-0 -n redhat-ods-monitoring \
             -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+          DS_FINAL=$(curl -sf "$PERSES_SVC/api/v1/projects/default/datasources" 2>/dev/null \
+            | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+          DASH_FINAL=$(curl -sf "$PERSES_SVC/api/v1/dashboards" 2>/dev/null \
+            | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
           echo "  Perses ready: $READY"
-
+          echo "  Datasources: $DS_FINAL"
+          echo "  Dashboards: $DASH_FINAL"
           echo "=== Monitoring workarounds complete ==="
 {{- end }}
