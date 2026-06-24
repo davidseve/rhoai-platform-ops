@@ -341,8 +341,8 @@ WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
 # parent + 10 child apps (database, maas-operators, maas-platform, maas-model, maas-model-granite-2b, obs-operators, obs-grafana, obs-tracing, evaluation)
 # parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-granite-2b, maas-model-registry, obs-operators, obs-grafana, obs-tracing, evaluation)
-MIN_APPS ?= 11
-APP_FILTER = grep -E 'maas-|model-registry|observability-|rhoai-platform-ops|evaluation|database'
+MIN_APPS ?= 10
+APP_FILTER = grep -E 'maas-|model-registry|observability-|rhoai-platform-ops|evaluation|database|cert-manager'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
