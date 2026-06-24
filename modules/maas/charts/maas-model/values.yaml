@@ -71,8 +71,9 @@ tracing:
 
 # Model Registry: registers the model in RHOAI Model Registry via REST API Job.
 # Creates RegisteredModel + ModelVersion + ModelArtifact (idempotent).
+# Requires Model Registry to be deployed (modelregistry: Managed in DSC).
 registry:
-  enabled: true
+  enabled: false
 
 # MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
 modelRef:

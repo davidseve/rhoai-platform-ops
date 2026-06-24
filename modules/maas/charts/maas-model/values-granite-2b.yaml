@@ -37,7 +37,7 @@ tracing:
   serviceName: ""
 
 registry:
-  enabled: true
+  enabled: false
 
 modelRef:
   enabled: true
