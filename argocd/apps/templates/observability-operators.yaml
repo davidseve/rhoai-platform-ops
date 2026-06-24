@@ -18,6 +18,8 @@ spec:
       parameters:
         - name: coo.enabled
           value: "true"
+        - name: coo.dsciHelmManaged
+          value: "false"
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
