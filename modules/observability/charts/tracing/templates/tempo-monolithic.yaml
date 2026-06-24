@@ -1,3 +1,4 @@
+{{- if not .Values.coo.enabled }}
 ---
 apiVersion: tempo.grafana.com/v1alpha1
 kind: TempoMonolithic
@@ -22,3 +23,4 @@ spec:
       compactor:
         compaction:
           block_retention: {{ .Values.tempo.retention }}
+{{- end }}

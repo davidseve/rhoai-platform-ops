@@ -1,0 +1,42 @@
+{{- if and .Values.tempo.enabled .Values.coo.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tempo-gateway-read
+rules:
+- apiGroups:
+  - tempo.grafana.com
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: grafana-sa-tempo-gateway-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tempo-gateway-read
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.grafana.name }}-sa
+  namespace: {{ .Values.grafana.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: grafana-tempo-reader
+  namespace: {{ .Values.coo.tempoNamespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tempo-gateway-read
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.grafana.name }}-sa
+  namespace: {{ .Values.grafana.namespace }}
+{{- end }}

@@ -10,12 +10,24 @@ spec:
   instanceSelector:
     matchLabels:
       dashboards: grafana
+{{- if .Values.coo.enabled }}
+  valuesFrom:
+  - targetPath: datasource.secureJsonData.httpHeaderValue1
+    valueFrom:
+      secretKeyRef:
+        name: {{ .Values.grafana.name }}-sa-token
+        key: token
+{{- end }}
   datasource:
     uid: tempo
     name: Tempo
     type: tempo
     access: proxy
+{{- if .Values.coo.enabled }}
+    url: {{ .Values.coo.tempoUrl }}/api/traces/v1/{{ .Values.coo.tempoTenant }}/tempo
+{{- else }}
     url: {{ .Values.tempo.url }}
+{{- end }}
     isDefault: false
     jsonData:
       tracesToMetrics:
@@ -24,4 +36,10 @@ spec:
         enabled: true
       serviceMap:
         datasourceUid: prometheus
+{{- if .Values.coo.enabled }}
+      tlsSkipVerify: true
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: "Bearer ${token}"
+{{- end }}
 {{- end }}

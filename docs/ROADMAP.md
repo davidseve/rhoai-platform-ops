@@ -5,14 +5,14 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 ## Pillar Overview
 
 
-| Pillar            | Module                   | Purpose                                    | Dependencies                  |
-| ----------------- | ------------------------ | ------------------------------------------ | ----------------------------- |
-| **MaaS**          | `modules/maas/`          | Model serving with API governance          | None (base module)            |
-| **Observability** | `modules/observability/` | Metrics, dashboards, alerts                | MaaS (for vLLM metrics)       |
-| **Traceability**  | Part of observability    | Request tracing with OpenTelemetry + Tempo | Observability module          |
-| **Evaluation**    | `modules/evaluation/`    | Quality eval, MLflow tracking, GuideLLM benchmarks | MaaS (models must be running) |
-| **Model Registry**| `modules/maas/charts/model-registry/` + `maas-model` catalog | Model governance catalog in RHOAI Dashboard | MaaS (DSC modelregistry: Managed) |
-| **Guardrails**    | `modules/guardrails/` (planned) | Runtime input/output safety via NeMo Guardrails (TrustyAI) | MaaS (models must be running), TrustyAI operator |
+| Pillar             | Module                                                       | Purpose                                                    | Dependencies                                     |
+| ------------------ | ------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------ |
+| **MaaS**           | `modules/maas/`                                              | Model serving with API governance                          | None (base module)                               |
+| **Observability**  | `modules/observability/`                                     | Metrics, dashboards, alerts                                | MaaS (for vLLM metrics)                          |
+| **Traceability**   | Part of observability                                        | Request tracing with OpenTelemetry + Tempo                 | Observability module                             |
+| **Evaluation**     | `modules/evaluation/`                                        | Quality eval, MLflow tracking, GuideLLM benchmarks         | MaaS (models must be running)                    |
+| **Model Registry** | `modules/maas/charts/model-registry/` + `maas-model` catalog | Model governance catalog in RHOAI Dashboard                | MaaS (DSC modelregistry: Managed)                |
+| **Guardrails**     | `modules/guardrails/` (planned)                              | Runtime input/output safety via NeMo Guardrails (TrustyAI) | MaaS (models must be running), TrustyAI operator |
 
 
 ## Implementation Order
@@ -70,17 +70,17 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 
 #### Completed
 
-- [x] **vLLM CPU image con OpenTelemetry** -- imagen custom `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` con `opentelemetry-sdk`, `opentelemetry-exporter-otlp`, etc. ([Containerfile](../modules/maas/images/vllm-cpu-otel/Containerfile))
-- [x] **vLLM tracing funcional** -- `--otlp-traces-endpoint` CLI arg (vLLM v0.7.3 ignora env vars OTEL), spans visibles en Tempo
-- [x] **Token-level tracing** -- `--collect-detailed-traces request` opt-in via `tracing.detailed: true`
-- [x] **Dashboards de tracing** -- Trace Exploration (service map, latency, request rate) + Trace Search (tabla con filtro por servicio y Trace ID clickable)
-- [x] **GPU model serving** -- `llm-inference-service-gpu.yaml` template con imagen vLLM CUDA, `gpu.extraArgs`, `gpu.env`, shared memory (`/dev/shm`), `nvidia.com/gpu` resources, `nodeSelector`/`tolerations`. Mutuamente excluyente con CPU via `gpu.enabled` (default: `false`). Portado desde proyecto cliente.
-- [x] **Datasource UIDs determinísticos** -- `uid: prometheus` y `uid: tempo` para evitar roturas por UIDs aleatorios del operador Grafana
+- **vLLM CPU image con OpenTelemetry** -- imagen custom `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` con `opentelemetry-sdk`, `opentelemetry-exporter-otlp`, etc. ([Containerfile](../modules/maas/images/vllm-cpu-otel/Containerfile))
+- **vLLM tracing funcional** -- `--otlp-traces-endpoint` CLI arg (vLLM v0.7.3 ignora env vars OTEL), spans visibles en Tempo
+- **Token-level tracing** -- `--collect-detailed-traces request` opt-in via `tracing.detailed: true`
+- **Dashboards de tracing** -- Trace Exploration (service map, latency, request rate) + Trace Search (tabla con filtro por servicio y Trace ID clickable)
+- **GPU model serving** -- `llm-inference-service-gpu.yaml` template con imagen vLLM CUDA, `gpu.extraArgs`, `gpu.env`, shared memory (`/dev/shm`), `nvidia.com/gpu` resources, `nodeSelector`/`tolerations`. Mutuamente excluyente con CPU via `gpu.enabled` (default: `false`). Portado desde proyecto cliente.
+- **Datasource UIDs determinísticos** -- `uid: prometheus` y `uid: tempo` para evitar roturas por UIDs aleatorios del operador Grafana
 
 #### Pending
 
-- [x] **Persistent Tempo storage** -- TempoMonolithic CR configured with `backend: pv` and `size: 10Gi`. PVC created and Bound. Test coverage added (`test_tempo_pvc_bound`).
-- [x] **Trace-based SLO alerts** -- PrometheusRule `tracing-slo` with 3 alerts from spanmetrics: `TracingHighP99Latency` (P99 > 10s), `TracingHighErrorRate` (errors > 5%), `TracingPipelineDown` (no spans for 10m). Test coverage added (`test_tracing_prometheusrule_exists`).
+- **Persistent Tempo storage** -- TempoMonolithic CR configured with `backend: pv` and `size: 10Gi`. PVC created and Bound. Test coverage added (`test_tempo_pvc_bound`).
+- **Trace-based SLO alerts** -- PrometheusRule `tracing-slo` with 3 alerts from spanmetrics: `TracingHighP99Latency` (P99 > 10s), `TracingHighErrorRate` (errors > 5%), `TracingPipelineDown` (no spans for 10m). Test coverage added (`test_tracing_prometheusrule_exists`).
 - **Kuadrant WASM CEL errors (resolved in GA)**: EA2 had ~333 errors/hour caused by `groups_str` bug in maas-controller TRLP predicates (PR #543). Fixed in RHOAI 3.4 GA — MaaSAuthPolicy uses API key subscription scoping instead of `groups_str`. Verify `kuadrant_errors` drops to ~0 after GA deployment.
 - **TelemetryPolicy CEL incompatibility (non-fatal in GA)**: `responseBodyJSON("/model")` and `auth.identity.selected_subscription` are Kuadrant WASM expressions, NOT valid Authorino CEL. Tenant CR with `telemetry.enabled: true` auto-creates a TelemetryPolicy with these expressions. Authorino logs `failed to parse CEL expression` errors — **non-fatal** (metric label evaluation only, not auth decisions). **GA finding (2026-05-18)**: Unlike EA2 where this caused 403 errors (conflated with TLS issue), in GA these CEL errors are strictly cosmetic. The 403 was caused by Authorino→maas-api TLS trust, not CEL. Tenant `telemetry.enabled: true` is safe to use. **Impact**: Limitador metrics lack `model`, `subscription`, `organization_id`, and `cost_center` labels — only aggregate gateway-level metrics. Per-model attribution requires Kuadrant to separate WASM and Authorino CEL expression evaluation. **Current approach**: Tenant `telemetry.enabled: true` enabled via Helm template (ArgoCD SSA). **Re-evaluate in RHOAI 3.5+** for per-model metric labels.
 - **MaaSAuthPolicy 403 on API key inference (RESOLVED 2026-05-18)**: Root cause was Authorino→maas-api TLS trust. Fix: mount `openshift-service-ca.crt` ConfigMap + `SSL_CERT_FILE` env var. Automated as ArgoCD PostSync Job (`authorino-tls-job.yaml`). See commit `552276c`.
@@ -88,11 +88,28 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 - **AuthPolicy per-model behavior**: MaaSAuthPolicy creates AuthPolicies that accept OCP tokens ONLY for `/v1/models` (listing). Inference (`/v1/chat/completions`) requires API keys (`sk-oai-*`). This is by design in RHOAI 3.4 GA. Tests using OCP tokens for inference must be refactored to use API keys.
 - **ArgoCD PreDelete hooks for ordered cleanup**: ArgoCD sync-waves control creation order but NOT deletion order between child apps in app-of-apps (all children delete simultaneously). This causes stuck `models-as-a-service` namespace because operators (wave 0) are deleted before their CRs (wave 2) resolve finalizers. ArgoCD 3.3+ adds `argocd.argoproj.io/hook: PreDelete` — add a PreDelete Job to `maas-operators` that clears LLMInferenceService/DSC/DSCI finalizers before operators are removed. **Blocked on**: OpenShift GitOps shipping ArgoCD 3.3+ (current: GitOps 1.20.3 = ArgoCD 2.x). **Workaround**: `scripts/cluster-cleanup.sh` deletes apps in reverse wave order manually. See [ArgoCD 3.3 PreDelete](https://dev.to/x4nent/argocd-33-predelete-hook-making-gitops-deletion-a-safe-lifecycle-3f28).
 - **EvalHub OTel logs**: `enableLogs: false` in EvalHub CR because there is no log backend (Loki/Vector) in the observability stack. The OTel Collector only has trace and metric exporters. Re-evaluate when a log backend is added (e.g., COO with logging UIPlugin, or standalone Loki). Enabling without a backend would cause the collector to drop or reject log signals.
-- [x] **Gateway production hardening** -- Limitador: resource limits (100m-500m CPU, 128-256Mi memory) via Limitador CR. PDBs for Authorino and Limitador (minAvailable: 1). Two new alerts: `MaaSAuthTimeoutRateHigh` (auth errors >1%) and `MaaSAuthorinoCPUSaturation` (CPU >80%). E2E tests for PDBs. Documentation in GATEWAY-AND-ROUTE.md. **Pending**: Authorino replicas and resource limits — CRD (`v1beta2`) does not expose `spec.resources`; re-evaluate when Authorino operator adds support.
-- [ ] **Limitador HA with Redis storage** -- Currently running 1 replica with in-memory storage. Multiple replicas without shared storage means each has independent counters, effectively multiplying the allowed rate. HA requires `storage: redis-cached` in the Limitador CR with a shared Redis instance. Deploy Redis (standalone or operator), create Secret with `URL`, configure `spec.storage.redis-cached.configSecretRef`. Then scale to 2+ replicas.
-- [ ] **Gateway Route re-encrypt (upstream pattern)** -- Evaluate whether to migrate from `tlsTermination: passthrough` (current default) to the upstream [clusterip-route-reencrypt](https://github.com/opendatahub-io/models-as-a-service/tree/main/docs/samples/gateway-patterns/clusterip-route-reencrypt) pattern: ClusterIP Gateway Service, service-ca cert via `gw-options` ConfigMap + `serving-cert-secret-name` annotation, Route with `reencrypt` and `router.openshift.io/service-ca-certificate: "true"`. **Potential benefits**: Router handles external TLS with the cluster wildcard (no need to mount `ingress-certs` on the Gateway), platform-independent pattern documented by upstream MaaS, possible enablement of HAProxy Route metrics (currently blocked by passthrough — see [DASHBOARDS.md](DASHBOARDS.md)). **Impact if adopted**: in-cluster access must be revisited — tests and agents currently use ClusterIP with `--resolve` and SNI Host header ([IN-CLUSTER-ACCESS.md](../modules/maas/docs/IN-CLUSTER-ACCESS.md), `test_02_incluster.py`); with re-encrypt the Gateway cert would be service-ca, not wildcard, and direct ClusterIP calls would need to trust `openshift-service-ca.crt` or continue using the external Route. The chart already supports both modes in `route.yaml` and [GATEWAY-AND-ROUTE.md](../modules/maas/docs/GATEWAY-AND-ROUTE.md); still needed: evaluate `gw-options` ConfigMap, automate Service annotation, and update tests/docs.
-- [ ] **vLLM CPU upstream image (`docker.io/vllm/vllm-openai-cpu:v0.22.0`)** -- Evaluate migrating from the custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` (vLLM v0.7.3 + pip-installed OTel) to the official upstream v0.22.0 image. Red Hat does not publish an x86_64 CPU image; this community image may improve CPU performance (GuideLLM benchmarks, lm-eval evaluations) and reduce maintenance of the custom Containerfile. **Validate before adopting**: compatibility with `LLMInferenceService` (command/args, KServe probes), native OpenTelemetry support or need for rebuild, minimum resources, and tracing regression (`--otlp-traces-endpoint`, `--collect-detailed-traces`). Update `maas-model/values.yaml` and `docs/versions.md` if confirmed.
-- **Cluster Observability Operator (COO)**: instalar cuando el observability stack de RHOAI pase a GA (estimado 3.5+). COO habilita dashboards nativos en la consola OpenShift (PersesDashboard), UIPlugins de tracing/troubleshooting, y detección de incidentes (Korrel8r). Prerequisito para `observabilityDashboard: true` en OdhDashboardConfig. No conflicta con Grafana/OTel/Tempo actuales. Ya preparado en `values.yaml` con `observabilityDashboard: false`. **Runbook completo**: [COO-INTEGRATION.md](../modules/observability/docs/COO-INTEGRATION.md).
+- **Gateway production hardening** -- Limitador: resource limits (100m-500m CPU, 128-256Mi memory) via Limitador CR. PDBs for Authorino and Limitador (minAvailable: 1). Two new alerts: `MaaSAuthTimeoutRateHigh` (auth errors >1%) and `MaaSAuthorinoCPUSaturation` (CPU >80%). E2E tests for PDBs. Documentation in GATEWAY-AND-ROUTE.md. **Pending**: Authorino replicas and resource limits — CRD (`v1beta2`) does not expose `spec.resources`; re-evaluate when Authorino operator adds support.
+- **llm-d observability audit** -- LLMInferenceService IS the llm-d CRD; the KServe controller auto-creates `PodMonitor` (`kserve-llm-isvc-vllm-engine-*`) and `ServiceMonitor` (`kserve-llm-isvc-scheduler-*`) with label `app.kubernetes.io/component=llm-monitoring`. Current custom `vllm-metrics` PodMonitor may duplicate scraping. The EPP (Endpoint Picker) is auto-deployed and exposes `inference_objective_*`, `inference_extension_*`, and `inference_pool_*` metrics not captured in our dashboards or alerts. **Action items (require cluster access)**:
+  1. Verify auto-created PodMonitor/ServiceMonitor exist (`oc get podmonitors,servicemonitors -n models-as-a-service -l app.kubernetes.io/component=llm-monitoring`)
+  2. Check if EPP pod is running (`oc get pods -n models-as-a-service | grep epp`)
+  3. Determine metric prefix in use (`vllm:` vs `kserve_vllm:`) — dashboards and alerts must match
+  4. If auto-created monitors exist, evaluate removing custom `vllm-metrics` PodMonitor to avoid double scraping
+  5. Add EPP/inference objective metrics to vLLM dashboard: SLO violations (`inference_objective_request_slo_violation_total`), scheduling latency (`inference_extension_scheduler_e2e_duration_seconds`), pool health (`inference_pool_ready_pods`, `inference_pool_average_kv_cache_utilization`)
+  6. Evaluate importing [llm-d community Grafana dashboards](https://docs.redhat.com/en/documentation/red_hat_ai_inference/3.4/html/monitor_and_troubleshoot_distributed_inference_with_llm-d_deployments/monitoring-llmd-deployments#importing-grafana-dashboards-for-llmd_monitoring-llmd) as GrafanaDashboard CRs (5 dashboards: vLLM Overview, Failure/Saturation, Diagnostic Drill-Down, Performance/KV Cache, P/D Coordinator)
+  7. Add PrometheusRule alerts for EPP health: `inference_objective_request_error_total` error rate, `inference_extension_scheduler_attempts_total{status="failure"}`, EPP down (`up{job=~".*epp.*"}`)
+  **Note**: llm-d observability is **Developer Preview** in RHOAI 3.4 ([docs](https://docs.redhat.com/en/documentation/red_hat_ai_inference/3.4/html/monitor_and_troubleshoot_distributed_inference_with_llm-d_deployments/monitoring-llmd-deployments)). Metrics and dashboards may change. Prioritize audit (items 1-4) over new dashboards/alerts.
+- **Limitador HA with Redis storage** -- Currently running 1 replica with in-memory storage. Multiple replicas without shared storage means each has independent counters, effectively multiplying the allowed rate. HA requires `storage: redis-cached` in the Limitador CR with a shared Redis instance. Deploy Redis (standalone or operator), create Secret with `URL`, configure `spec.storage.redis-cached.configSecretRef`. Then scale to 2+ replicas.
+- **Gateway Route re-encrypt (upstream pattern)** -- Evaluate whether to migrate from `tlsTermination: passthrough` (current default) to the upstream [clusterip-route-reencrypt](https://github.com/opendatahub-io/models-as-a-service/tree/main/docs/samples/gateway-patterns/clusterip-route-reencrypt) pattern: ClusterIP Gateway Service, service-ca cert via `gw-options` ConfigMap + `serving-cert-secret-name` annotation, Route with `reencrypt` and `router.openshift.io/service-ca-certificate: "true"`. **Potential benefits**: Router handles external TLS with the cluster wildcard (no need to mount `ingress-certs` on the Gateway), platform-independent pattern documented by upstream MaaS, possible enablement of HAProxy Route metrics (currently blocked by passthrough — see [DASHBOARDS.md](DASHBOARDS.md)). **Impact if adopted**: in-cluster access must be revisited — tests and agents currently use ClusterIP with `--resolve` and SNI Host header ([IN-CLUSTER-ACCESS.md](../modules/maas/docs/IN-CLUSTER-ACCESS.md), `test_02_incluster.py`); with re-encrypt the Gateway cert would be service-ca, not wildcard, and direct ClusterIP calls would need to trust `openshift-service-ca.crt` or continue using the external Route. The chart already supports both modes in `route.yaml` and [GATEWAY-AND-ROUTE.md](../modules/maas/docs/GATEWAY-AND-ROUTE.md); still needed: evaluate `gw-options` ConfigMap, automate Service annotation, and update tests/docs.
+- **vLLM CPU upstream image (`docker.io/vllm/vllm-openai-cpu:v0.22.0`)** -- Evaluate migrating from the custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` (vLLM v0.7.3 + pip-installed OTel) to the official upstream v0.22.0 image. Red Hat does not publish an x86_64 CPU image; this community image may improve CPU performance (GuideLLM benchmarks, lm-eval evaluations) and reduce maintenance of the custom Containerfile. **Validate before adopting**: compatibility with `LLMInferenceService` (command/args, KServe probes), native OpenTelemetry support or need for rebuild, minimum resources, and tracing regression (`--otlp-traces-endpoint`, `--collect-detailed-traces`). Update `maas-model/values.yaml` and `docs/versions.md` if confirmed.
+- **RHOAI MaaS Guide deep review** -- In-depth comparison of [rh-aiservices-bu/rhoai-maas-guide](https://github.com/rh-aiservices-bu/rhoai-maas-guide) against this repo's Helm/ArgoCD modules. The guide is a companion to official RHOAI 3.4 MaaS docs (Kustomize manifests, phased install, single `setup-maas.sh` script). **Review scope**:
+  1. **Phase model and status gates** — seven phases (prerequisites → platform → DB → DSC → models → verification → optional observability) with explicit pass/fail gates between steps; compare with our sync-waves, Makefile targets, and `make wait-healthy`.
+  2. **Automation patterns** — idempotent `setup-maas.sh`, `--from-phase` resume, `--with-observability`; evaluate whether similar orchestration belongs in `make bootstrap-argocd` or a dedicated script.
+  3. **CPU validation without GPU** — `simulator` model and other CPU-friendly models (`granite-tiny-gpu` sizing); adopt or document equivalents in `maas-model` for clusters without GPUs.
+  4. **Manifest and config deltas** — Gateway/Route, Authorino TLS, PostgreSQL, DSC/DSCI, subscription/API-key verification steps; reconcile with our charts and [ADR-0006](adr/0006-maas-documentation-sources.md) source precedence (product docs > upstream > BU reference).
+  5. **Observability phase** — COO subscription + Gateway telemetry dashboards in phase 7; map to `modules/observability/` and pending COO integration.
+  6. **Documentation and troubleshooting** — per-phase runbooks and failure recovery; extract gaps in `modules/maas/docs/` (GATEWAY-AND-ROUTE, IN-CLUSTER-ACCESS, etc.).
+  **Deliverable**: prioritized backlog of adoptable improvements (with ADRs where non-obvious), not a blind port of Kustomize to Helm. Complements [RHOAI BU Cluster](https://github.com/rh-aiservices-bu/rhoaibu-cluster) review (production GitOps at scale vs. guided install path).
+- **Cluster Observability Operator (COO) (DONE)**: Migrated to RHOAI-managed observability stack. COO Subscription + DSCI `spec.monitoring: Managed` + UIPlugins (Perses, Korrel8r, DistributedTracing) deployed. TempoMonolithic replaced by RHOAI Tempo in `redhat-ods-monitoring`. OTel Collector redirected to RHOAI Tempo (spanmetrics preserved). Grafana retained for custom MaaS dashboards. `observabilityDashboard: true` enabled in OdhDashboardConfig. Gated behind `coo.enabled: false` (default) -- TP in RHOAI 3.4. See [ADR-0013](adr/0013-coo-observability-migration.md), [COO-INTEGRATION.md](../modules/observability/docs/COO-INTEGRATION.md).
 
 #### Diferido a RHOAI 3.4 -- Gateway distributed tracing
 
@@ -101,6 +118,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > **Por qué**: El enfoque original (`EnvoyExtensionPolicy` de `extensions.kuadrant.io`) era incorrecto — esa API pertenece a Envoy Gateway, no al stack Istio/OSSM que usa `openshift-default` GatewayClass. El Istio CR del cluster-ingress-operator es gestionado y no se puede customizar con `extensionProviders` para OTel. Las alternativas viables (OSSM 3 independiente, o tracing de componentes Kuadrant sin correlación) tienen un coste/beneficio cuestionable hasta que el stack evolucione.
 >
 > **Qué evaluar en RHOAI 3.4**:
+>
 > - Si el GatewayClass cambia o soporta tracing nativo
 > - Si el Kuadrant CR consolida configuración de tracing con correlación end-to-end
 > - Si la propagación de trace IDs a WASM modules (Limitador) se resuelve ([limitación conocida](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/))
@@ -113,42 +131,47 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > **Status (2026-05-14)**: RHOAI 3.4 GA available. Operator channel updated to `stable-3.4`. MaaSAuthPolicy enabled. See [ADR-0005](adr/0005-maas-subscription-model.md).
 >
 > **Evaluated:**
-> - [x] maas-controller AuthPolicy management -- `opendatahub.io/managed: "false"` works in 3.4. `cleanup-authn-hook` disabled.
-> - [x] Authorino TLS bootstrap -- `security.opendatahub.io/authorino-tls-bootstrap: "true"` handles TLS automatically. `kuadrant-readiness-hook` disabled.
-> - [x] MaaSSubscription model -- adopted. Models moved to `models-as-a-service` namespace. Per-tier RLP/TRLP disabled, subscriptions manage rate limits.
-> - [x] PostgreSQL for maas-api -- evaluation DB in `modules/maas/prereqs/maas-db.yaml`, automated in Makefile.
-> - [x] New CRDs: Tenant (auto-created), MaaSModelRef, MaaSSubscription, gateway-default-auth/deny (auto-created by controller).
-> - [x] New DSC components: `rawDeploymentServiceConfig: Headed`, `sparkoperator: Removed`, `kserve.wva: Removed`.
+>
+> - maas-controller AuthPolicy management -- `opendatahub.io/managed: "false"` works in 3.4. `cleanup-authn-hook` disabled.
+> - Authorino TLS bootstrap -- `security.opendatahub.io/authorino-tls-bootstrap: "true"` handles TLS automatically. `kuadrant-readiness-hook` disabled.
+> - MaaSSubscription model -- adopted. Models moved to `models-as-a-service` namespace. Per-tier RLP/TRLP disabled, subscriptions manage rate limits.
+> - PostgreSQL for maas-api -- evaluation DB in `modules/maas/prereqs/maas-db.yaml`, automated in Makefile.
+> - New CRDs: Tenant (auto-created), MaaSModelRef, MaaSSubscription, gateway-default-auth/deny (auto-created by controller).
+> - New DSC components: `rawDeploymentServiceConfig: Headed`, `sparkoperator: Removed`, `kserve.wva: Removed`.
 >
 > **EA2 known bug (fixed in GA):** Token rate limits didn't fire in EA2 -- `maas-controller` TRLP predicates used `auth.identity.groups_str` but AuthPolicy's KubernetesTokenReview put groups in `auth.identity.user.groups`. Fixed in GA via [PR #543](https://github.com/opendatahub-io/models-as-a-service/pull/543). MaaSAuthPolicy enabled, xfail markers removed.
 >
 > **GA validation (2026-05-14) — key findings:**
+>
 > - MaaSSubscription `owner.groups` must use **Kubernetes groups** (from TokenReview), NOT OpenShift Group objects. TokenReview returns `cluster-admins`, `system:authenticated:oauth`, `system:authenticated` — but NOT `maas-test-users` or `tier-premium-users`. Fixed in commit `3d9e5ca`.
 > - TelemetryPolicy disabled (`telemetry.enabled: false`) — `responseBodyJSON()` is a Kuadrant WASM function, not valid Authorino CEL. Causes 403 on all requests when MaaSAuthPolicy is active. Fixed in commit `205d39f`.
 > - MaaSAuthPolicy 403 on API key inference — **RESOLVED (2026-05-18)**. Root cause: Authorino could not reach maas-api's `/internal/v1/api-keys/validate` endpoint because it did not trust the OpenShift service-ca certificate. Fix: mount `openshift-service-ca.crt` ConfigMap into Authorino deployment and set `SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca.crt`. Upstream documents this in `scripts/setup-authorino-tls.sh`. Must be automated in Helm charts.
 > - AuthPolicy per-model design: OCP tokens accepted for `/v1/models` listing only; inference (`/v1/chat/completions`) requires API keys (`sk-oai-*`). Multiple subscriptions require `X-MaaS-Subscription` header. This is by design — inference tests need `maas_api_key` fixture, not `maas_token`.
 >
 > **Evaluated (2026-05-11):**
-> - [x] GatewayClass tracing nativo — **NOT AVAILABLE**. `data-science-gateway-class` uses `openshift.io/gateway-controller/v1` (Istio managed by cluster-ingress-operator). The managed Istio CR cannot be customized with `extensionProviders` for OTel. Would require independent OSSM 3 or upstream controller changes.
-> - [x] RHCL operator: mover a `openshift-operators` — **IMPLEMENTED** on branch `feat/rhcl-openshift-operators`. Subscription moved from `kuadrant-system` to `openshift-operators` (global OperatorGroup). OperatorGroup removed. Kuadrant CR stays in `kuadrant-system`.
-> - [x] WASM trace ID propagation (Limitador) — **NOT AVAILABLE**. Kuadrant 1.3.x: W3C `traceparent` headers NOT propagated to WASM modules. Known upstream limitation, no fix available. See [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/).
+>
+> - GatewayClass tracing nativo — **NOT AVAILABLE**. `data-science-gateway-class` uses `openshift.io/gateway-controller/v1` (Istio managed by cluster-ingress-operator). The managed Istio CR cannot be customized with `extensionProviders` for OTel. Would require independent OSSM 3 or upstream controller changes.
+> - RHCL operator: mover a `openshift-operators` — **IMPLEMENTED** on branch `feat/rhcl-openshift-operators`. Subscription moved from `kuadrant-system` to `openshift-operators` (global OperatorGroup). OperatorGroup removed. Kuadrant CR stays in `kuadrant-system`.
+> - WASM trace ID propagation (Limitador) — **NOT AVAILABLE**. Kuadrant 1.3.x: W3C `traceparent` headers NOT propagated to WASM modules. Known upstream limitation, no fix available. See [Kuadrant Tracing Docs](https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/observability/tracing/).
 >
 > **Evaluated (2026-05-18, clean cluster OCP 4.20.8 + RHOAI 3.4 GA):**
-> - [x] Tenant CR — auto-created as `default-tenant` in `models-as-a-service` namespace with `spec.telemetry.enabled: true`. Controller creates TelemetryPolicy + Istio Telemetry automatically.
-> - [x] TelemetryPolicy CEL — **STILL BROKEN in GA**. Tenant creates `maas-telemetry` TelemetryPolicy with WASM expressions (`responseBodyJSON("/model")`, `auth.identity.selected_subscription`). Authorino logs `failed to parse CEL expression` errors but these are **non-fatal** (metric label errors only, not auth denials). The CEL errors do NOT cause 403 — the 403 was from TLS. Patch Tenant to `telemetry.enabled: false` to suppress errors; controller does NOT auto-delete the TelemetryPolicy.
-> - [x] MaaSAuthPolicy 403 on API key inference — **RESOLVED**. Root cause was Authorino→maas-api TLS trust. See GA validation findings above.
-> - [x] Kuadrant/Authorino namespace — confirmed **`kuadrant-system`** on RHOAI 3.4 GA (not `rh-connectivity-link`). Upstream docs are misleading for RHOAI installations.
-> - [x] maas-controller auto-resources — controller creates: `gateway-default-auth` AuthPolicy (Enforced: False, overridden by per-model policies), `gateway-default-deny` TokenRateLimitPolicy, TelemetryPolicy, DestinationRule, NetworkPolicy. Per-model: `maas-auth-<model>` AuthPolicy (Enforced: True), `maas-trlp-<model>` TRLP. No conflicts with Helm resources when `opendatahub.io/managed: "false"` is set.
-> - [x] Authorino TLS setup — requires manual steps from upstream `scripts/setup-authorino-tls.sh`: (1) annotate service for cert, (2) mount `openshift-service-ca.crt` ConfigMap, (3) set `SSL_CERT_FILE` env var. The `authorino-tls-bootstrap` Gateway annotation creates EnvoyFilter for Gateway→Authorino TLS but does NOT handle Authorino→maas-api outbound trust.
-> - [x] HTTPRoute paths — RHOAI 3.4 GA uses namespaced paths: `/models-as-a-service/<model>/v1/chat/completions`. Tests must use full path.
-> - [x] DSCI auto-creation — operator creates `default-dsci` automatically. Helm should NOT manage it (`dsci.managed: false`).
-> - [x] `models-as-a-service` namespace — created by maas-controller. Helm must use `namespace.create: false`.
+>
+> - Tenant CR — auto-created as `default-tenant` in `models-as-a-service` namespace with `spec.telemetry.enabled: true`. Controller creates TelemetryPolicy + Istio Telemetry automatically.
+> - TelemetryPolicy CEL — **STILL BROKEN in GA**. Tenant creates `maas-telemetry` TelemetryPolicy with WASM expressions (`responseBodyJSON("/model")`, `auth.identity.selected_subscription`). Authorino logs `failed to parse CEL expression` errors but these are **non-fatal** (metric label errors only, not auth denials). The CEL errors do NOT cause 403 — the 403 was from TLS. Patch Tenant to `telemetry.enabled: false` to suppress errors; controller does NOT auto-delete the TelemetryPolicy.
+> - MaaSAuthPolicy 403 on API key inference — **RESOLVED**. Root cause was Authorino→maas-api TLS trust. See GA validation findings above.
+> - Kuadrant/Authorino namespace — confirmed `**kuadrant-system`** on RHOAI 3.4 GA (not `rh-connectivity-link`). Upstream docs are misleading for RHOAI installations.
+> - maas-controller auto-resources — controller creates: `gateway-default-auth` AuthPolicy (Enforced: False, overridden by per-model policies), `gateway-default-deny` TokenRateLimitPolicy, TelemetryPolicy, DestinationRule, NetworkPolicy. Per-model: `maas-auth-<model>` AuthPolicy (Enforced: True), `maas-trlp-<model>` TRLP. No conflicts with Helm resources when `opendatahub.io/managed: "false"` is set.
+> - Authorino TLS setup — requires manual steps from upstream `scripts/setup-authorino-tls.sh`: (1) annotate service for cert, (2) mount `openshift-service-ca.crt` ConfigMap, (3) set `SSL_CERT_FILE` env var. The `authorino-tls-bootstrap` Gateway annotation creates EnvoyFilter for Gateway→Authorino TLS but does NOT handle Authorino→maas-api outbound trust.
+> - HTTPRoute paths — RHOAI 3.4 GA uses namespaced paths: `/models-as-a-service/<model>/v1/chat/completions`. Tests must use full path.
+> - DSCI auto-creation — operator creates `default-dsci` automatically. Helm should NOT manage it (`dsci.managed: false`).
+> - `models-as-a-service` namespace — created by maas-controller. Helm must use `namespace.create: false`.
 >
 > **Evaluated (2026-05-18, continued):**
-> - [x] OSSM 3 meshConfig — **NOT APPLICABLE**. RHOAI 3.4 GA uses `openshift.io/gateway-controller/v1` (cluster-ingress-operator managed Istio). OSSM 3 is NOT required and would conflict. The managed Istio cannot be customized with `extensionProviders`. Gateway tracing remains blocked until Kuadrant supports tracing natively or the controller allows custom Istio config.
-> - [x] Authorino ServiceMonitor — **NOT INVESTIGATED** (low priority). maas-api runs in `redhat-ods-applications` and likely exposes a metrics port, but scraping it requires a ServiceMonitor in that namespace. Deferred to Phase 3+ when FinOps dashboards need maas-api metrics (API key usage, subscription counts).
-> - [x] Dashboard flags `modelAsService` + `observabilityDashboard` — **VALIDATED**. `genAiStudio: true` and `modelAsService: true` are required in OdhDashboardConfig for the MaaS/GenAI Studio UI. Both work in GA. `observabilityDashboard: true` requires Cluster Observability Operator (COO), which is NOT deployed — left as `false`. See `values.yaml` dashboard section.
-> - [x] Unified endpoint routing — **NOT AVAILABLE in 3.4 GA**. LLMInferenceService creates per-model HTTPRoutes with namespaced paths (`/<namespace>/<model>/v1/...`). No routing-by-payload (model field in JSON body) support. Each model requires its own path prefix. Single-endpoint routing would require a custom HTTPRoute or middleware — not worth the complexity for current use cases.
+>
+> - OSSM 3 meshConfig — **NOT APPLICABLE**. RHOAI 3.4 GA uses `openshift.io/gateway-controller/v1` (cluster-ingress-operator managed Istio). OSSM 3 is NOT required and would conflict. The managed Istio cannot be customized with `extensionProviders`. Gateway tracing remains blocked until Kuadrant supports tracing natively or the controller allows custom Istio config.
+> - Authorino ServiceMonitor — **NOT INVESTIGATED** (low priority). maas-api runs in `redhat-ods-applications` and likely exposes a metrics port, but scraping it requires a ServiceMonitor in that namespace. Deferred to Phase 3+ when FinOps dashboards need maas-api metrics (API key usage, subscription counts).
+> - Dashboard flags `modelAsService` + `observabilityDashboard` — **VALIDATED**. `genAiStudio: true` and `modelAsService: true` are required in OdhDashboardConfig for the MaaS/GenAI Studio UI. Both work in GA. `observabilityDashboard: true` requires Cluster Observability Operator (COO), which is NOT deployed — left as `false`. See `values.yaml` dashboard section.
+> - Unified endpoint routing — **NOT AVAILABLE in 3.4 GA**. LLMInferenceService creates per-model HTTPRoutes with namespaced paths (`/<namespace>/<model>/v1/...`). No routing-by-payload (model field in JSON body) support. Each model requires its own path prefix. Single-endpoint routing would require a custom HTTPRoute or middleware — not worth the complexity for current use cases.
 >
 > **RHOAI 3.4 GA documentation analysis (2026-05-18):**
 >
@@ -171,43 +194,44 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 > **Deprecations:** TGIS, ModelMesh, Serverless KServe, Kubeflow v1 Training Operator — none used in this project.
 >
 > **Installation flow:** Database → Gateway → DSC → Models. Current sync-waves: 0(operators+DB) → 1(platform+gateway+DSC) → 2(models). Close enough — ArgoCD retries handle ordering within a wave.
+
 ### Phase 3: Benchmarks (merged into evaluation module -- see [ADR-0007](adr/0007-merge-benchmarks-into-evaluation.md))
 
 Goal: identify system limits with repeatable load tests.
 
-- [x] Set up benchmark runner with [GuideLLM](https://github.com/neuralmagic/guidellm) (v0.6.0+)
+- Set up benchmark runner with [GuideLLM](https://github.com/neuralmagic/guidellm) (v0.6.0+)
   - OpenAI-compatible load generator with native TTFT, ITL, throughput collection
   - Profiles: `concurrent` (fixed parallelism), `sweep` (auto-find operating range), `poisson` (realistic arrivals), `constant` (fixed RPS)
   - Output: JSON + CSV reports with per-request timings
   - Deploy as Kubernetes Job with results to PVC
   - TLS via cluster CA bundle injection (not `verify: false`)
   - `--processor` for HuggingFace tokenizer (synthetic data generation)
-- [x] Define scenarios:
+- Define scenarios:
   - `gateway`: concurrent c=1,2,4,8 against external Gateway route
   - `baseline`: concurrent c=1,2,4,8 direct to kserve workload service (A/B vs gateway)
   - `stress`: sweep auto-discovery (5 rate points, 4Gi memory)
   - `slo`: constant 4 RPS, validate SLO alerts don't fire
-- [x] Payload matrix: all scenarios use small payload (32/64 tokens) for CPU model; configurable via values overrides
-- [x] Collect key metrics per request:
+- Payload matrix: all scenarios use small payload (32/64 tokens) for CPU model; configurable via values overrides
+- Collect key metrics per request:
   - TTFT (Time To First Token) at P50/P90/P99
   - ITL (Inter-Token Latency) at P50/P99
   - E2E latency at P50/P90
   - Throughput (total output tokens / wall clock seconds)
-- [ ] Find model limits with payload sweep
+- Find model limits with payload sweep
   - Run stress (sweep) with growing payloads: small (32/64), medium (256/512), large (1024/1024)
   - Build throughput vs payload size curve to identify where the model degrades
-- [ ] Build Prometheus monitoring during benchmarks **(deferred to GPU)**
+- Build Prometheus monitoring during benchmarks **(deferred to GPU)**
   - Adapt approach from [MaaS-AI-Gateway-Performance-Scale](https://github.com/arielharush96/MaaS-AI-Gateway-Performance-Scale): collect pod CPU/memory/network + Istio/Authorino latency during each test run
   - Correlate infrastructure metrics with GuideLLM results
   - Monitor `kserve_vllm:gpu_cache_usage_perc` during tests (GPU deployments)
   - **Why deferred:** GuideLLM has never completed on CPU (vLLM too slow for default payloads). Without successful benchmark runs there is nothing to correlate. The headline metric (`gpu_cache_usage_perc`) is GPU-only. Observability infra (PodMonitor, vLLM/Istio/spanmetrics) is already in place — the gap is only the correlation script/dashboard, not data collection.
-- [ ] Integrate with MLflow for result tracking **(deferred to GPU — see GuideLLM MLflow note below)**
-- [ ] Offline benchmark execution (air-gapped clusters)
+- Integrate with MLflow for result tracking **(deferred to GPU — see GuideLLM MLflow note below)**
+- Offline benchmark execution (air-gapped clusters)
   - GuideLLM requires internet to download HuggingFace tokenizers and datasets at runtime
   - Evaluate options: pre-baked datasets in PVC, init container with HF cache, custom `--data` flag with local file
   - Affects reproducibility in restricted environments
-- [x] E2E tests: 16 tests (13 template validation + 3 cluster infra)
-- [x] ~~`make run-benchmark` waits for Job completion and shows logs~~ (removed: direct Job path deprecated in favor of `make evalhub-benchmark`)
+- E2E tests: 16 tests (13 template validation + 3 cluster infra)
+- ~~`make run-benchmark` waits for Job completion and shows logs~~ (removed: direct Job path deprecated in favor of `make evalhub-benchmark`)
 
 **Tools**: [GuideLLM](https://github.com/neuralmagic/guidellm) (load generation + metrics), MLflow (result tracking).
 
@@ -219,50 +243,56 @@ Goal: identify system limits with repeatable load tests.
 
 Goal: unified evaluation platform for model quality, experiment tracking, and performance benchmarks.
 
-- [x] Deploy EvalHub (TrustyAI) as evaluation control plane
+- Deploy EvalHub (TrustyAI) as evaluation control plane
   - Providers: lm-evaluation-harness, guidellm, garak, lighteval
   - Collections: leaderboard-v2
-- [x] Deploy MLflow Tracking Server via RHOAI MLflow Operator
+- Deploy MLflow Tracking Server via RHOAI MLflow Operator
   - Cluster-scoped CR, operator deploys to `redhat-ods-applications`
   - Artifact storage: PVC (10Gi), `--serve-artifacts` enabled
   - Route for MLflow UI
-- [x] Extract shared PostgreSQL to independent `database` module
+- Extract shared PostgreSQL to independent `database` module
   - `modules/database/charts/database/` with own ArgoCD Application (sync-wave 0)
   - Used by MaaS API, MLflow, and EvalHub
-- [x] LMEvalJob template for on-demand evaluations (DEPRECATED — use EvalHub API)
+- LMEvalJob template for on-demand evaluations (DEPRECATED — use EvalHub API)
   - Combined CA bundle (system root CAs + OpenShift service-serving CA) for internal TLS + HuggingFace
-- [x] EvalHub as evaluation orchestrator (see [ADR-0008](0008-evalhub-orchestrator.md))
+- EvalHub as evaluation orchestrator (see [ADR-0008](0008-evalhub-orchestrator.md))
   - REST API: `POST /api/v1/evaluations/jobs` creates K8s Jobs, auto-logs to MLflow
   - `scripts/evalhub.sh` wrapper + `make evalhub-eval` / `make evalhub-benchmark` / `make evalhub-smoke` / `make evalhub-security`
   - 4 providers (lm-eval 174 benchmarks, guidellm 7 profiles, garak 8, lighteval 23)
   - Collection: `leaderboard-v2` (IFEval, BBH, GPQA, MMLU-Pro, MuSR, MATH-Hard)
   - TLS resolved via `model.auth.secret_ref` — Secret with `ca_cert` key (service-serving CA), auto-created by Helm post-install hook
   - MLflow logging functional with `experiment` field in job payload (auto-generated by `evalhub.sh`)
-- [x] E2E tests: 47 tests (12 template evaluation + 10 cluster infra + 15 template benchmarks + 2 cluster benchmarks + 8 API/infra)
-- [x] Speed optimization: `--max-seconds`, `--timeout`, `--extra-params` flags in `evalhub.sh`, benchmark default `throughput` instead of `sweep`
+- E2E tests: 47 tests (12 template evaluation + 10 cluster infra + 15 template benchmarks + 2 cluster benchmarks + 8 API/infra)
+- Speed optimization: `--max-seconds`, `--timeout`, `--extra-params` flags in `evalhub.sh`, benchmark default `throughput` instead of `sweep`
 
 #### Provider validation status (2026-05-14, CPU models)
 
-| Provider | Status | Details |
-|----------|--------|---------|
-| **lm-eval** | **Working** | `arc_easy` with `limit=10` completes in ~15 min. MLflow metrics logged correctly. `limit=1` also works but still takes ~15 min (9500 API requests for loglikelihood across all answer choices). |
-| **GuideLLM** | **Not validated** | `throughput` profile with `max_seconds=30`: setup completes (tokenizer download, config) but no benchmark output after 10+ min. `sweep` (10 strategies): 2h+ without completing. Root cause: vLLM on CPU is too slow for the default payload (256/128 tokens). Needs GPU or much smaller payloads. |
-| **Garak** | **Not validated** | `quick` scan with `timeout=900` + `soft_probe_prompt_cap=10`: loads probe `dan.Dan_11_0` but gets stuck at "Preparing prompts 0%" — waiting for model response. CPU inference too slow for garak's prompt patterns. Default 600s timeout insufficient. |
-| **Lighteval** | **Not validated** | `hellaswag`: OOMKilled repeatedly (full dataset ~10k items, ignores `--limit` parameter). Needs small datasets like `glue:cola` (~250 items) or GPU with more memory. |
+
+| Provider      | Status            | Details                                                                                                                                                                                                                                                                                            |
+| ------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **lm-eval**   | **Working**       | `arc_easy` with `limit=10` completes in ~15 min. MLflow metrics logged correctly. `limit=1` also works but still takes ~15 min (9500 API requests for loglikelihood across all answer choices).                                                                                                    |
+| **GuideLLM**  | **Not validated** | `throughput` profile with `max_seconds=30`: setup completes (tokenizer download, config) but no benchmark output after 10+ min. `sweep` (10 strategies): 2h+ without completing. Root cause: vLLM on CPU is too slow for the default payload (256/128 tokens). Needs GPU or much smaller payloads. |
+| **Garak**     | **Not validated** | `quick` scan with `timeout=900` + `soft_probe_prompt_cap=10`: loads probe `dan.Dan_11_0` but gets stuck at "Preparing prompts 0%" — waiting for model response. CPU inference too slow for garak's prompt patterns. Default 600s timeout insufficient.                                             |
+| **Lighteval** | **Not validated** | `hellaswag`: OOMKilled repeatedly (full dataset ~~10k items, ignores `--limit` parameter). Needs small datasets like `glue:cola` (~~250 items) or GPU with more memory.                                                                                                                            |
+
 
 #### Pending
 
-- [ ] **Validate GuideLLM on GPU**: `throughput` profile should complete in minutes on GPU. Test with `make evalhub-benchmark MODEL_URL=<gpu-model-url>`.
-- [ ] **Validate Garak on GPU**: `quick` scan with `soft_probe_prompt_cap=1` times out at 1200s on CPU even without contention. Garak is excluded from `test-evalhub` (CPU-only E2E). Test on GPU with `make evalhub-security MODEL_URL=<gpu-model-url>` — should complete in <5 min.
-- [ ] **Validate Lighteval**: Use `glue:cola` (small dataset) or test on GPU with more memory. Lighteval ignores `--limit` — this is an adapter limitation, not configurable.
-- [ ] **Smoke test on GPU**: `make evalhub-smoke` should complete in ~3-5 min on GPU. On CPU it takes ~15 min due to 9500 loglikelihood API requests even with `limit=1`.
-- [ ] **MLflow Tracing for evaluations**: MLflow server exposes `/v1/traces` OTLP endpoint (since RHOAI 3.3), but EvalHub adapter does not instrument LLM calls with `mlflow.trace()` — only final metrics are logged. Tracked: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The EvalHub ADR (`ODH-ADR-EH-0001`) plans dual tracing (parent trace from EvalHub, child spans from benchmark pods). Re-evaluate when upstream implements this.
-- [ ] **Real-time evaluation progress in MLflow**: MLflow "Duration" shows only the logging call (~40ms), not the actual evaluation time (stored as `duration_seconds` parameter). Investigate: (1) streaming intermediate metrics from adapters during evaluation so MLflow shows live progress, (2) using MLflow `system_metrics` to track pod resource usage during runs, (3) whether EvalHub's event API (`/jobs/{id}/events`) can feed a progress dashboard.
-- [x] **Register evaluated models in Model Registry**: Resolved via Phase 5 (Model Registry). Models are registered declaratively via ConfigMap catalog entries generated from `maas-model` chart. RHOAI Model Registry (Kubeflow) chosen over MLflow Model Registry — our models are serving models, not training outputs. Traceability via `customProperties.mlflow_experiment` linking to MLflow experiment names. See [ADR-0010](adr/0010-model-registry-postgresql.md).
-- [ ] **GuideLLM adapter does not log to MLflow (deferred to GPU)**: The GuideLLM adapter reports metrics to EvalHub via events but does not create an MLflow run. The lm-eval adapter does (`mlflow_run_id` present). Benchmark results are only visible via `evalhub.sh status <job-id>`, not in MLflow UI. Investigate: is this an upstream limitation of the GuideLLM adapter, or does it require explicit MLflow configuration in the EvalHub CR? Same likely applies to Garak adapter. **Why deferred:** GuideLLM has never completed successfully on CPU — we cannot test any fix. Sequence when GPU is available: (1) validate GuideLLM completes, (2) investigate adapter MLflow integration, (3) build Prometheus correlation.
-- [ ] **Create experiment comparison workflows in MLflow**
-- [ ] **External authenticated endpoints**: `api-key` in `model.auth.secret_ref` is exposed as `ModelCredentials.api_key` but NOT set as `OPENAI_API_KEY` env var. Adapters (GuideLLM, lm-eval) that read `OPENAI_API_KEY` natively won't work with external authenticated endpoints. Use internal KServe URLs (no auth) for now.
-- [ ] **EvalHub dashboard integration (blocked on GA)**: EvalHub CR lives in the `evaluation` namespace (same as MLflow workspace). The RHOAI dashboard "Evaluations" page is unavailable because the `eval-hub-ui` sidecar only discovers EvalHub CRs in `redhat-ods-applications`. Moving the CR there creates cross-namespace complexity: MLflow rejects `redhat-ods-applications` as a workspace (its own namespace), so jobs must target a different namespace. We prioritize a working CLI/API pipeline (`make evalhub-benchmark`) over dashboard UI for now. **GA review**: when EvalHub moves to GA, re-test whether (1) the dashboard sidecar supports cross-namespace CR discovery, (2) MLflow allows its own namespace as a workspace, (3) the operator supports a `jobNamespace` field for cross-namespace execution.
+- **GuideLLM adapter fixes — review on RHOAI 3.5 EA2** ([RHOAIENG-65610](https://redhat.atlassian.net/browse/RHOAIENG-65610)): Upstream resolved two blockers we hit on disconnected clusters and large tokenizers. **Fixed in 3.5 EA2** — validate when upgrading:
+  1. **HTML report crash offline** — adapter hardcoded `--outputs json,csv,html,yaml`; GuideLLM downloaded the HTML template from GitHub via `GUIDELLM__REPORT_GENERATION__SOURCE`, failing without internet access.
+  2. **OOMKill with default 2Gi** — sweep profile (10 strategies) + large tokenizer (e.g. Qwen3, 23MB) exceeded `memory_limit: 2Gi` in the OOTB provider ConfigMap; `--extra-params profile=...` override did not take effect (precedence between provider config and job params).
+  **Review checklist**: (1) run `make evalhub-benchmark` on a disconnected cluster without patching `evalhub-provider-guidellm`, (2) run sweep/throughput against a large-tokenizer model without the 4Gi ConfigMap workaround ([workarounds.md](workarounds.md)), (3) confirm `--extra-params` profile override works, (4) remove manual provider ConfigMap patches if OOTB defaults are sufficient.
+- **Validate GuideLLM on GPU**: `throughput` profile should complete in minutes on GPU. Test with `make evalhub-benchmark MODEL_URL=<gpu-model-url>`.
+- **Validate Garak on GPU**: `quick` scan with `soft_probe_prompt_cap=1` times out at 1200s on CPU even without contention. Garak is excluded from `test-evalhub` (CPU-only E2E). Test on GPU with `make evalhub-security MODEL_URL=<gpu-model-url>` — should complete in <5 min.
+- **Validate Lighteval**: Use `glue:cola` (small dataset) or test on GPU with more memory. Lighteval ignores `--limit` — this is an adapter limitation, not configurable.
+- **Smoke test on GPU**: `make evalhub-smoke` should complete in ~3-5 min on GPU. On CPU it takes ~15 min due to 9500 loglikelihood API requests even with `limit=1`.
+- **MLflow Tracing for evaluations**: MLflow server exposes `/v1/traces` OTLP endpoint (since RHOAI 3.3), but EvalHub adapter does not instrument LLM calls with `mlflow.trace()` — only final metrics are logged. Tracked: [eval-hub#549](https://github.com/eval-hub/eval-hub/issues/549). The EvalHub ADR (`ODH-ADR-EH-0001`) plans dual tracing (parent trace from EvalHub, child spans from benchmark pods). Re-evaluate when upstream implements this.
+- **Real-time evaluation progress in MLflow**: MLflow "Duration" shows only the logging call (~40ms), not the actual evaluation time (stored as `duration_seconds` parameter). Investigate: (1) streaming intermediate metrics from adapters during evaluation so MLflow shows live progress, (2) using MLflow `system_metrics` to track pod resource usage during runs, (3) whether EvalHub's event API (`/jobs/{id}/events`) can feed a progress dashboard.
+- **Register evaluated models in Model Registry**: Resolved via Phase 5 (Model Registry). Models are registered declaratively via ConfigMap catalog entries generated from `maas-model` chart. RHOAI Model Registry (Kubeflow) chosen over MLflow Model Registry — our models are serving models, not training outputs. Traceability via `customProperties.mlflow_experiment` linking to MLflow experiment names. See [ADR-0010](adr/0010-model-registry-postgresql.md).
+- **GuideLLM adapter does not log to MLflow (deferred to GPU)**: The GuideLLM adapter reports metrics to EvalHub via events but does not create an MLflow run. The lm-eval adapter does (`mlflow_run_id` present). Benchmark results are only visible via `evalhub.sh status <job-id>`, not in MLflow UI. Investigate: is this an upstream limitation of the GuideLLM adapter, or does it require explicit MLflow configuration in the EvalHub CR? Same likely applies to Garak adapter. **Why deferred:** GuideLLM has never completed successfully on CPU — we cannot test any fix. Sequence when GPU is available: (1) validate GuideLLM completes, (2) investigate adapter MLflow integration, (3) build Prometheus correlation.
+- **Create experiment comparison workflows in MLflow**
+- **External authenticated endpoints**: `api-key` in `model.auth.secret_ref` is exposed as `ModelCredentials.api_key` but NOT set as `OPENAI_API_KEY` env var. Adapters (GuideLLM, lm-eval) that read `OPENAI_API_KEY` natively won't work with external authenticated endpoints. Use internal KServe URLs (no auth) for now.
+- **EvalHub dashboard integration (blocked on GA)** ([RHOAIENG-66068](https://redhat.atlassian.net/browse/RHOAIENG-66068), [RHAIRFE-2289](https://redhat.atlassian.net/browse/RHAIRFE-2289)): EvalHub CR lives in the `evaluation` namespace (same as MLflow workspace). The RHOAI dashboard "Evaluations" page is unavailable because the `eval-hub-ui` BFF sidecar only discovers EvalHub CRs in `redhat-ods-applications` (fixed namespace lookup). Moving the CR there creates cross-namespace complexity: MLflow rejects `redhat-ods-applications` as a workspace (its own namespace), so jobs must target a different namespace. We prioritize a working CLI/API pipeline (`make evalhub-benchmark`) over dashboard UI for now. **GA review**: when EvalHub moves to GA, re-test whether (1) the dashboard sidecar supports cross-namespace CR discovery, (2) MLflow allows its own namespace as a workspace, (3) the operator supports a `jobNamespace` field for cross-namespace execution.
 
 **Known issue -- MLflow DNS resolution (RHOAI 3.4 EA2):**
 The MLflow operator creates a NetworkPolicy allowing egress on port 53 (DNS), but OpenShift CoreDNS pods listen on target port 5353. OVN-Kubernetes evaluates egress rules after DNAT, so traffic to CoreDNS arrives on port 5353, which is blocked.
@@ -277,17 +307,17 @@ Workaround: `mlflow-dns-fix.yaml` adds a supplementary NetworkPolicy allowing eg
 
 Goal: model governance catalog visible in RHOAI Dashboard, with traceability to MLflow experiments.
 
-- [x] Enable `modelregistry: Managed` in DSC with `registriesNamespace: rhoai-model-registries`
-- [x] Create `model-registry` Helm chart with ModelRegistry CR (v1beta1) and PostgreSQL backend
+- Enable `modelregistry: Managed` in DSC with `registriesNamespace: rhoai-model-registries`
+- Create `model-registry` Helm chart with ModelRegistry CR (v1beta1) and PostgreSQL backend
   - Reuses shared `maas-db` with `skipDBCreation: true` (MLMD tables don't collide)
   - `sslMode: disable` (consistent with all other PostgreSQL consumers)
-- [x] Declarative model catalog via ConfigMap entries generated from `maas-model` chart
+- Declarative model catalog via ConfigMap entries generated from `maas-model` chart
   - `customProperties.mlflow_experiment` links to MLflow experiment names for traceability
   - One ConfigMap per model, labeled `opendatahub.io/dashboard: "true"`
-- [x] ArgoCD Application at sync-wave 2 with retry limit 30 (exponential backoff up to 15m)
-- [x] Makefile targets: `deploy-model-registry`, `undeploy-model-registry`
-- [x] E2E tests: 8 template validation + 4 cluster validation
-- [x] Cluster cleanup script updated
+- ArgoCD Application at sync-wave 2 with retry limit 30 (exponential backoff up to 15m)
+- Makefile targets: `deploy-model-registry`, `undeploy-model-registry`
+- E2E tests: 8 template validation + 4 cluster validation
+- Cluster cleanup script updated
 
 **Red Hat products**: RHOAI Model Registry (Kubeflow Model Registry operator).
 
@@ -298,6 +328,7 @@ Goal: model governance catalog visible in RHOAI Dashboard, with traceability to 
 MLflow and EvalHub now use dedicated databases (`mlflow`, `evalhub`) on the shared PostgreSQL instance, alongside `model_registry` (already separate). The `maas` database remains as the primary for MaaS API. All databases are created at startup via the `extraDatabases` mechanism in `modules/database/charts/database/values.yaml`.
 
 Changes:
+
 - `extraDatabases: [model_registry, mlflow, evalhub]` in database chart
 - `postgresql.mlflowDatabase` / `postgresql.evalhubDatabase` in evaluation chart
 - Template and cluster tests verify dedicated database names and existence
@@ -306,6 +337,7 @@ Changes:
 #### Future: PostgreSQL TLS
 
 Enable TLS on the shared PostgreSQL instance (`maas-db`) and update all consumers to use `sslMode: verify-ca`. Requires:
+
 1. Configure certificates on PostgreSQL pod via `service-ca` or `cert-manager`
 2. Update all connection strings: MLflow, EvalHub, MaaS API, Model Registry
 3. Distribute CA bundle to all consuming pods
@@ -318,9 +350,13 @@ Goal: adopt new RHOAI capabilities as they move from Tech Preview to GA.
 
 Identified from [Red Hat blog: Scaling enterprise AI — MaaS with RHOAI 3.4](https://www.redhat.com/en/blog/scaling-enterprise-ai-delivering-models-service-openshift-ai-34) analysis (2026-05-29).
 
+#### RHOAI 3.5 EA2 review
+
+- **EvalHub GuideLLM adapter fixes** ([RHOAIENG-65610](https://redhat.atlassian.net/browse/RHOAIENG-65610)) — HTML report offline crash and OOMKill with 2Gi / large tokenizers. Fixed upstream in 3.5 EA2. See Phase 4 pending item for validation checklist; remove [workarounds.md](workarounds.md) ConfigMap patch if no longer needed.
+
 #### Quick wins (implementable now)
 
-- [x] **OdhDashboardConfig flags** -- Enable dashboard features for components we already deploy:
+- **OdhDashboardConfig flags** -- Enable dashboard features for components we already deploy:
   - `mlflow: true` (Dev Preview — MLflow tile on Applications → Explore)
   - `disableLMEval: false` (TP — model evaluation in dashboard)
   - `disablePerformanceMetrics: false` (Endpoint Performance tab)
@@ -330,19 +366,19 @@ Identified from [Red Hat blog: Scaling enterprise AI — MaaS with RHOAI 3.4](ht
 
 #### When GA (currently Tech Preview)
 
-- [ ] **External Model Routing** (`ExternalModel` CRD) -- Route external cloud LLM providers (AWS Bedrock, Azure OpenAI, Anthropic) through the same gateway with the same governance (auth, rate limits, showback). OpenAI-compatible `/v1/chat/completions` endpoint, applications don't need to know where the model runs. Requires: new Helm templates for `ExternalModel` CRs, Secrets for provider API keys. Reference: [upstream MaaS docs — ExternalModel](https://opendatahub-io.github.io/models-as-a-service/latest/).
-- [ ] **Enterprise OIDC Authentication** -- Configure Authorino OIDC identity source alongside KubernetesTokenReview. Allows external IdP users (Azure AD, Okta, Keycloak) to obtain API keys without needing an OpenShift account. Needs ADR to decide scope (inference only, or management API too).
-- [ ] **COO Native Showback Dashboards** -- Enable `observabilityDashboard: true` in OdhDashboardConfig when Cluster Observability Operator (COO) is GA. Provides built-in token consumption panels in the RHOAI dashboard without requiring Grafana. Already prepared: flag exists in `values.yaml` as `false`. Implementation runbook: [COO-INTEGRATION.md](../modules/observability/docs/COO-INTEGRATION.md).
+- **External Model Routing** (`ExternalModel` CRD) -- Route external cloud LLM providers (AWS Bedrock, Azure OpenAI, Anthropic) through the same gateway with the same governance (auth, rate limits, showback). OpenAI-compatible `/v1/chat/completions` endpoint, applications don't need to know where the model runs. Requires: new Helm templates for `ExternalModel` CRs, Secrets for provider API keys. Reference: [upstream MaaS docs — ExternalModel](https://opendatahub-io.github.io/models-as-a-service/latest/).
+- **Enterprise OIDC Authentication** -- Configure Authorino OIDC identity source alongside KubernetesTokenReview. Allows external IdP users (Azure AD, Okta, Keycloak) to obtain API keys without needing an OpenShift account. Needs ADR to decide scope (inference only, or management API too).
+- **COO Native Showback Dashboards (DONE)** -- `observabilityDashboard: true` enabled. COO deployed with UIPlugins. See [ADR-0013](adr/0013-coo-observability-migration.md). **Remaining when GA**: remove `coo.enabled` gate (make default), verify DSCI monitoring API stability.
 
 #### Blocked on upstream
 
-- [ ] **FinOps / Cost Attribution** -- Per-user and per-cost-center token consumption tracking. Blocked on maas-api `/metrics` endpoint (not available in 3.4 GA). When available: add `organization_id`, `cost_center` labels to metrics, adapt RHCL "Business User" dashboard (Grafana ID 20981), create cost-per-token pricing model in showback dashboard.
-- [ ] **TelemetryPolicy per-model metric labels** -- Limitador metrics lack `model`, `subscription`, `organization_id` labels due to WASM/CEL incompatibility. Re-evaluate when Kuadrant separates WASM and Authorino CEL expression evaluation (RHOAI 3.5+).
+- **FinOps / Cost Attribution** -- Per-user and per-cost-center token consumption tracking. Blocked on maas-api `/metrics` endpoint (not available in 3.4 GA). When available: add `organization_id`, `cost_center` labels to metrics, adapt RHCL "Business User" dashboard (Grafana ID 20981), create cost-per-token pricing model in showback dashboard.
+- **TelemetryPolicy per-model metric labels** -- Limitador metrics lack `model`, `subscription`, `organization_id` labels due to WASM/CEL incompatibility. Re-evaluate when Kuadrant separates WASM and Authorino CEL expression evaluation (RHOAI 3.5+).
 
 #### Long-term
 
-- [ ] **Full Red Hat Connectivity Link** -- Multicluster AI inference: `DNSPolicy` and `TLSPolicy` CRDs on the Gateway for automated certificate and DNS management, cross-cluster model failover, DNS-based traffic distribution. Requires full RHCL subscription (Red Hat Application Foundations) and multi-cluster infrastructure.
-- [ ] **Third-party gateway reference architectures** -- Document how LiteLLM, Portkey, or other AI gateways can connect to RHOAI-hosted model endpoints (via external Route with API keys, or direct in-cluster KServe bypass).
+- **Full Red Hat Connectivity Link** -- Multicluster AI inference: `DNSPolicy` and `TLSPolicy` CRDs on the Gateway for automated certificate and DNS management, cross-cluster model failover, DNS-based traffic distribution. Requires full RHCL subscription (Red Hat Application Foundations) and multi-cluster infrastructure.
+- **Third-party gateway reference architectures** -- Document how LiteLLM, Portkey, or other AI gateways can connect to RHOAI-hosted model endpoints (via external Route with API keys, or direct in-cluster KServe bypass).
 
 ### Phase 7: Guardrails — NeMo Guardrails via TrustyAI (PLANNED)
 
@@ -351,11 +387,13 @@ Goal: add runtime input/output safety to MaaS-served models using [NVIDIA NeMo G
 **Scope**: programmable guardrails (input, dialog, output, retrieval, execution rails) between clients and LLM endpoints — content safety, jailbreak detection, topic control, PII masking, and custom Colang flows. Complements offline security scanning via Garak in the evaluation module; guardrails enforce policy at inference time.
 
 **Prerequisites** (already met or planned):
+
 - `trustyai: Managed` in DSC (already enabled in `maas-platform/values.yaml`)
 - At least one `LLMInferenceService` deployed via MaaS
 - TrustyAI operator installed (same operator that manages EvalHub)
 
 **References**:
+
 - Red Hat: [Enabling AI safety with Guardrails (RHOAI 3.4)](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/enabling_ai_safety_with_guardrails/index)
 - Red Hat: [Deploying NeMo Guardrails](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/enabling_ai_safety_with_guardrails/deploying-nemo-guardrails_nemo-guardrails)
 - NVIDIA: [NeMo Guardrails Developer Guide](https://docs.nvidia.com/nemo/guardrails/latest/index.html)
@@ -365,25 +403,27 @@ Goal: add runtime input/output safety to MaaS-served models using [NVIDIA NeMo G
 
 Engineering guidance: NeMo Guardrails configs fall into four tiers of increasing effort. Plan implementation and customer onboarding around these tiers.
 
-| Tier | Description | Config contents | Example rails |
-| ---- | ----------- | ----------------- | ------------- |
-| **1 — Out of the box** | Built-in flow; add to `config.yml` and it works | `config.yml` only | Jailbreak detection, content safety (Nemotron), topic control |
-| **2 — Configured OOTB** | Built-in flow that needs prompts or parameters | `config.yml` + prompts / rail config | Self-check input/output, sensitive data detection (PII entities) |
-| **3 — Custom Colang** | User-defined flows using built-in actions | `config.yml` + `*.co` (no `actions.py`) | Custom dialog rails, topical restrictions, domain-specific refusal paths |
-| **4 — Custom actions** | Fully custom logic with Python actions | `config.yml` + `*.co` + `actions.py` | External API integrations, LangChain tools, bespoke validation |
+
+| Tier                    | Description                                     | Config contents                         | Example rails                                                            |
+| ----------------------- | ----------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------ |
+| **1 — Out of the box**  | Built-in flow; add to `config.yml` and it works | `config.yml` only                       | Jailbreak detection, content safety (Nemotron), topic control            |
+| **2 — Configured OOTB** | Built-in flow that needs prompts or parameters  | `config.yml` + prompts / rail config    | Self-check input/output, sensitive data detection (PII entities)         |
+| **3 — Custom Colang**   | User-defined flows using built-in actions       | `config.yml` + `*.co` (no `actions.py`) | Custom dialog rails, topical restrictions, domain-specific refusal paths |
+| **4 — Custom actions**  | Fully custom logic with Python actions          | `config.yml` + `*.co` + `actions.py`    | External API integrations, LangChain tools, bespoke validation           |
+
 
 #### Implementation plan
 
-- [ ] **ADR: Guardrails architecture** — Decide deployment model: standalone `NemoGuardrails` CR per model vs shared guardrails service; integration point with MaaS Gateway (proxy route vs sidecar vs client-side); relationship to Kuadrant auth/rate limits (guardrails after auth, before model). Document why NeMo Guardrails over deprecated FMS Orchestrator.
-- [ ] **Module scaffold** — `modules/guardrails/` with Helm chart, tests, docs, ArgoCD Application template, Makefile targets (`deploy-guardrails`, `test-guardrails`), cluster-cleanup function.
-- [ ] **Tier 1 — Baseline rails (OOTB)** — Deploy `NemoGuardrails` CR with ConfigMap containing `config.yml` referencing catalog rails: jailbreak detection, content safety. Wire to an existing MaaS model endpoint (OpenAI-compatible `/v1/chat/completions`). Validate `/v1/guardrail/checks` for input-only validation.
-- [ ] **Tier 2 — Configured rails** — Add self-check input/output rails and PII detection (Presidio/GLiNER) with entity lists in `config.yml`. Document prompt tuning for false-positive/negative trade-offs.
-- [ ] **Tier 3 — Custom Colang flows** — Ship example `*.co` files: topic restriction, insult handling, domain assistant dialog path. Helm values to mount custom Colang from ConfigMap.
-- [ ] **Tier 4 — Custom actions** — Example `actions.py` with a simple custom validation action; document actions-server pattern if actions run out-of-process.
-- [ ] **MaaS integration** — Route inference traffic through guardrails layer: evaluate HTTPRoute/Gateway pattern to expose guardrailed endpoint alongside raw model endpoint; preserve MaaS API keys and subscription headers through the chain.
-- [ ] **Observability** — Leverage NeMo Guardrails native OpenTelemetry support; connect to existing OTel Collector + Tempo stack. Dashboard panels for blocked requests, rail activation counts, latency overhead.
-- [ ] **E2E tests** — Template validation (ConfigMap structure, `NemoGuardrails` CR fields); cluster tests: guardrails pod Ready, `/v1/chat/completions` with blocked input returns refusal, allowed input passes through, `/v1/guardrail/checks` rejects toxic content.
-- [ ] **Vulnerability scanning baseline** — Run `nemoguardrails evaluate` against Tier 1 config; cross-reference with Garak results from evaluation module for defense-in-depth validation.
+- **ADR: Guardrails architecture** — Decide deployment model: standalone `NemoGuardrails` CR per model vs shared guardrails service; integration point with MaaS Gateway (proxy route vs sidecar vs client-side); relationship to Kuadrant auth/rate limits (guardrails after auth, before model). Document why NeMo Guardrails over deprecated FMS Orchestrator.
+- **Module scaffold** — `modules/guardrails/` with Helm chart, tests, docs, ArgoCD Application template, Makefile targets (`deploy-guardrails`, `test-guardrails`), cluster-cleanup function.
+- **Tier 1 — Baseline rails (OOTB)** — Deploy `NemoGuardrails` CR with ConfigMap containing `config.yml` referencing catalog rails: jailbreak detection, content safety. Wire to an existing MaaS model endpoint (OpenAI-compatible `/v1/chat/completions`). Validate `/v1/guardrail/checks` for input-only validation.
+- **Tier 2 — Configured rails** — Add self-check input/output rails and PII detection (Presidio/GLiNER) with entity lists in `config.yml`. Document prompt tuning for false-positive/negative trade-offs.
+- **Tier 3 — Custom Colang flows** — Ship example `*.co` files: topic restriction, insult handling, domain assistant dialog path. Helm values to mount custom Colang from ConfigMap.
+- **Tier 4 — Custom actions** — Example `actions.py` with a simple custom validation action; document actions-server pattern if actions run out-of-process.
+- **MaaS integration** — Route inference traffic through guardrails layer: evaluate HTTPRoute/Gateway pattern to expose guardrailed endpoint alongside raw model endpoint; preserve MaaS API keys and subscription headers through the chain.
+- **Observability** — Leverage NeMo Guardrails native OpenTelemetry support; connect to existing OTel Collector + Tempo stack. Dashboard panels for blocked requests, rail activation counts, latency overhead.
+- **E2E tests** — Template validation (ConfigMap structure, `NemoGuardrails` CR fields); cluster tests: guardrails pod Ready, `/v1/chat/completions` with blocked input returns refusal, allowed input passes through, `/v1/guardrail/checks` rejects toxic content.
+- **Vulnerability scanning baseline** — Run `nemoguardrails evaluate` against Tier 1 config; cross-reference with Garak results from evaluation module for defense-in-depth validation.
 
 **Red Hat products**: TrustyAI Operator (`NemoGuardrails` CR, `trustyai.opendatahub.io`), RHOAI model serving (LLMInferenceService as backend LLM).
 
@@ -403,3 +443,6 @@ Key decisions are documented as ADRs in [docs/adr/](adr/):
 - [ADR-0008: EvalHub Orchestrator](adr/0008-evalhub-orchestrator.md)
 - [ADR-0009: Unified MaaS Access Groups](adr/0009-unified-maas-access-groups.md)
 - [ADR-0010: Model Registry with PostgreSQL Backend](adr/0010-model-registry-postgresql.md)
+- [ADR-0012: GenAI Asset Label for Model Registry](adr/0012-genai-asset-label-model-registry.md)
+- [ADR-0013: COO Observability Migration](adr/0013-coo-observability-migration.md)
+

@@ -9,7 +9,7 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 | RHOAI Operator | 3.4 GA | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
 | KServe | 0.17.0 | -- | Managed by RHOAI operator |
 | MaaS (Models-as-a-Service) | 0.1.1 (GA) | -- | Managed by RHOAI operator |
-| llm-d (distributed inference) | 0.7.1 (GA) | -- | Not used (CPU deployment) |
+| llm-d (distributed inference) | 0.7.1 (GA) | -- | Used via LLMInferenceService (single-replica CPU, no disaggregation) |
 | Red Hat AI Inference Server | 3.4.0 (GA) | -- | Not used (custom vLLM CPU) |
 
 ## API Governance
@@ -23,6 +23,7 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
+| Cluster Observability Operator (COO) | 1.x | `stable` | [COO Docs](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/) ([ADR-0013](adr/0013-coo-observability-migration.md)) |
 | Grafana Operator | 5.x | `v5` | Community operator ([ADR-0003](adr/0003-grafana-operator.md)) |
 | Red Hat build of OpenTelemetry | -- | `stable` | [OTel Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
 | Red Hat build of Tempo | -- | `stable` | [Tempo Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |

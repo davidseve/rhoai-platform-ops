@@ -347,6 +347,16 @@ cleanup_observability_residual() {
   done
   run "$OC delete grafana --all -n observability --ignore-not-found"
 
+  # COO resources (UIPlugins, MonitoringStack in redhat-ods-monitoring)
+  log "Deleting COO UIPlugins..."
+  for plugin in monitoring troubleshooting-panel distributed-tracing; do
+    run "$OC delete uiplugin '$plugin' --ignore-not-found"
+  done
+
+  # COO Subscription in openshift-operators
+  run "$OC delete subscription cluster-observability-operator -n openshift-operators --ignore-not-found"
+  run "$OC delete csv -n openshift-operators -l operators.coreos.com/cluster-observability-operator.openshift-operators --ignore-not-found"
+
   # Operator subscriptions / CSVs in operator namespaces
   for ns in openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
     run "$OC delete subscription --all -n '$ns' --ignore-not-found"
@@ -359,10 +369,10 @@ cleanup_observability_residual() {
   run "$OC delete clusterrole grafana-proxy-observability --ignore-not-found"
 
   # Namespaces
-  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
+  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator redhat-ods-monitoring; do
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
-  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
+  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator redhat-ods-monitoring; do
     wait_ns_gone "$ns" 90 &
   done
   wait

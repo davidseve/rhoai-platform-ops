@@ -59,7 +59,7 @@ dashboard:
   modelAsService: true
   maasAuthPolicies: true
   vLLMDeploymentOnMaaS: true
-  observabilityDashboard: false  # TP: requires Cluster Observability Operator (COO)
+  observabilityDashboard: true   # TP: requires Cluster Observability Operator (COO) -- see ADR-0013
   mlflow: true                   # Dev Preview: shows MLflow tile on Applications → Explore
   disablePerformanceMetrics: false  # shows Endpoint Performance tab on Deployments page
   disableModelCatalog: false     # shows AI hub → Catalog menu item
@@ -137,8 +137,16 @@ tiers:
 # Helm (enabled: false): Makefile does `oc patch` after deploy instead.
 tenant:
   enabled: true
+  gatewayRef:
+    name: maas-default-gateway
+    namespace: openshift-ingress
   telemetry:
     enabled: true
+    metrics:
+      captureOrganization: true
+      captureUser: true
+      captureGroup: false
+      captureModelUsage: true
 
 # ServiceMonitor for Limitador metrics scraping
 monitoring:

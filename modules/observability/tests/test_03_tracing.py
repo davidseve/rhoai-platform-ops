@@ -10,9 +10,13 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+import os
+
 TEMPO_OPERATOR_NS = "openshift-tempo-operator"
 OTEL_OPERATOR_NS = "openshift-opentelemetry-operator"
 OBSERVABILITY_NS = "observability"
+COO_ENABLED = os.getenv("COO_ENABLED", "false").lower() == "true"
+TEMPO_NS = "redhat-ods-monitoring" if COO_ENABLED else OBSERVABILITY_NS
 
 
 def test_tempo_operator_csv_succeeded(oc):
@@ -36,9 +40,9 @@ def test_otel_operator_csv_succeeded(oc):
 
 
 def test_tempo_pod_running(oc):
-    """At least one TempoMonolithic pod is Running in observability namespace."""
+    """At least one Tempo pod is Running (observability or redhat-ods-monitoring with COO)."""
     phase = oc(
-        f"get pods -n {OBSERVABILITY_NS} "
+        f"get pods -n {TEMPO_NS} "
         "-l app.kubernetes.io/managed-by=tempo-operator "
         "-o jsonpath='{.items[0].status.phase}'"
     ).strip("'")
@@ -58,7 +62,7 @@ def test_collector_pod_running(oc):
 def test_tempo_pvc_bound(oc):
     """Tempo PVC exists and is Bound (persistent trace storage)."""
     phase = oc(
-        f"get pvc -n {OBSERVABILITY_NS} "
+        f"get pvc -n {TEMPO_NS} "
         "-l app.kubernetes.io/managed-by=tempo-operator "
         "-o jsonpath='{.items[0].status.phase}'"
     ).strip("'")
@@ -71,14 +75,37 @@ def test_tempo_datasource_exists(oc_json):
     assert ds["metadata"]["name"] == "tempo"
 
 
+_TEMPO_TENANT = "redhat-ods-monitoring"
+if COO_ENABLED:
+    _TEMPO_GATEWAY = f"https://tempo-data-science-tempomonolithic-gateway.{TEMPO_NS}.svc:8080"
+    _TEMPO_SEARCH = f"{_TEMPO_GATEWAY}/api/traces/v1/{_TEMPO_TENANT}/tempo/api/search"
+else:
+    _TEMPO_SEARCH = f"http://tempo-tempo.{OBSERVABILITY_NS}.svc:3200/api/search"
+
+
 def _query_tempo(oc, params="limit=5"):
     """Query Tempo search API via exec into the Grafana pod (has curl)."""
+    if COO_ENABLED:
+        token = oc(
+            f"get secret grafana-sa-token -n {OBSERVABILITY_NS} "
+            "-o jsonpath='{.data.token}'"
+        ).strip("'")
+        import base64
+        token = base64.b64decode(token).decode()
+        return oc(
+            f"exec -n {OBSERVABILITY_NS} "
+            "$(oc get pod -n observability -l app=grafana "
+            "-o jsonpath='{.items[0].metadata.name}') "
+            "-c grafana -- "
+            f"curl -sk -H 'Authorization: Bearer {token}' "
+            f"'{_TEMPO_SEARCH}?{params}'"
+        )
     return oc(
         f"exec -n {OBSERVABILITY_NS} "
         "$(oc get pod -n observability -l app=grafana "
         "-o jsonpath='{.items[0].metadata.name}') "
         "-c grafana -- "
-        f"curl -s 'http://tempo-tempo.{OBSERVABILITY_NS}.svc:3200/api/search?{params}'"
+        f"curl -s '{_TEMPO_SEARCH}?{params}'"
     )
 
 
@@ -157,13 +184,29 @@ def test_trace_spans_cover_full_stack(
         assert len(traces) > 0, "No traces found to inspect for span coverage"
 
         trace_id = traces[0].get("traceID", "")
-        trace_detail = oc(
-            f"exec -n {OBSERVABILITY_NS} "
-            "$(oc get pod -n observability -l app=grafana "
-            "-o jsonpath='{.items[0].metadata.name}') "
-            "-c grafana -- "
-            f"curl -s 'http://tempo-tempo.{OBSERVABILITY_NS}.svc:3200/api/traces/{trace_id}'"
-        )
+        if COO_ENABLED:
+            trace_url = f"{_TEMPO_GATEWAY}/api/traces/v1/{_TEMPO_TENANT}/tempo/api/traces/{trace_id}"
+            token = oc(
+                f"get secret grafana-sa-token -n {OBSERVABILITY_NS} "
+                "-o jsonpath='{.data.token}'"
+            ).strip("'")
+            import base64
+            token = base64.b64decode(token).decode()
+            trace_detail = oc(
+                f"exec -n {OBSERVABILITY_NS} "
+                "$(oc get pod -n observability -l app=grafana "
+                "-o jsonpath='{.items[0].metadata.name}') "
+                "-c grafana -- "
+                f"curl -sk -H 'Authorization: Bearer {token}' '{trace_url}'"
+            )
+        else:
+            trace_detail = oc(
+                f"exec -n {OBSERVABILITY_NS} "
+                "$(oc get pod -n observability -l app=grafana "
+                "-o jsonpath='{.items[0].metadata.name}') "
+                "-c grafana -- "
+                f"curl -s 'http://tempo-tempo.{OBSERVABILITY_NS}.svc:3200/api/traces/{trace_id}'"
+            )
         service_names = set()
         detail_data = json.loads(trace_detail)
         for batch in detail_data.get("batches", []):

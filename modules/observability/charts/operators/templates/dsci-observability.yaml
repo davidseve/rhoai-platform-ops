@@ -1,0 +1,23 @@
+{{- if and .Values.coo.enabled (ne (.Values.coo.dsciHelmManaged | toString) "false") }}
+apiVersion: dscinitialization.opendatahub.io/v1
+kind: DSCInitialization
+metadata:
+  name: default-dsci
+  annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true,SkipDryRunOnMissingResource=true
+spec:
+  monitoring:
+    managementState: Managed
+    namespace: {{ .Values.coo.monitoring.namespace }}
+    alerting: {}
+    metrics:
+      replicas: {{ .Values.coo.monitoring.metrics.replicas }}
+      storage:
+        size: {{ .Values.coo.monitoring.metrics.storageSize }}
+        retention: {{ .Values.coo.monitoring.metrics.retention }}
+    traces:
+      sampleRatio: {{ .Values.coo.monitoring.traces.sampleRatio | quote }}
+      storage:
+        backend: {{ .Values.coo.monitoring.traces.storageBackend }}
+        retention: {{ .Values.coo.monitoring.traces.retention }}
+{{- end }}

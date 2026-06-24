@@ -82,9 +82,9 @@ modules/
     charts/
       database/           # Deployment, Service, Secret (maas-db in redhat-ods-applications)
 
-  observability/          # Grafana, Tracing (OTel + Tempo), UWM, dashboards
+  observability/          # Grafana, Tracing (OTel + Tempo), UWM, COO, dashboards
     charts/
-      operators/          # Grafana, OTel, Tempo Operator subscriptions, UWM ConfigMap
+      operators/          # Grafana, OTel, Tempo, COO Operator subscriptions, UWM ConfigMap, DSCI monitoring, UIPlugins
       grafana/            # Grafana CR, SA, RBAC, Thanos + Tempo datasources, dashboards
       tracing/            # TempoMonolithic CR, OpenTelemetryCollector CR, ServiceMonitor
     tests/                # E2E tests (Grafana, datasource, metrics, tracing)
@@ -165,8 +165,9 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - **Auth:** Kuadrant AuthPolicy with KubernetesTokenReview (RHOAI 3.4+) — PostSync self-healing for Istio race condition (see [ADR-0011](docs/adr/0011-kuadrant-istio-race-condition.md)). Production hardened: Limitador 2 replicas with resource limits, PDBs for Authorino and Limitador, auth timeout alerts (see [Gateway docs](modules/maas/docs/GATEWAY-AND-ROUTE.md#production-hardening)). Authorino sizing pending CRD support.
 - **Rate Limiting:** MaaSSubscription + controller-managed TokenRateLimitPolicy (see [ADR-0005](docs/adr/0005-maas-subscription-model.md))
 - **Monitoring:** OpenShift User Workload Monitoring (Prometheus, ServiceMonitor, PodMonitor)
-- **Tracing:** Red Hat build of OpenTelemetry + Tempo with persistent PV storage + trace-based SLO alerts (see [ADR-0004](docs/adr/0004-tracing-stack.md))
-- **Dashboards:** Grafana Operator with OpenShift OAuth proxy (see [ADR-0003](docs/adr/0003-grafana-operator.md))
+- **RHOAI Observability (COO):** Cluster Observability Operator with DSCI `spec.monitoring: Managed` deploys Prometheus, Alertmanager, Tempo, OTel Collector, Thanos in `redhat-ods-monitoring`. UIPlugins for Perses dashboards, Korrel8r troubleshooting, distributed tracing. Gated behind `coo.enabled` (TP in RHOAI 3.4). See [ADR-0013](docs/adr/0013-coo-observability-migration.md)
+- **Tracing:** Red Hat build of OpenTelemetry + Tempo with persistent PV storage + trace-based SLO alerts (see [ADR-0004](docs/adr/0004-tracing-stack.md)). When COO enabled, OTel Collector exports to RHOAI Tempo; our custom collector retained for spanmetrics
+- **Dashboards:** Grafana Operator with OpenShift OAuth proxy for custom MaaS dashboards (see [ADR-0003](docs/adr/0003-grafana-operator.md)). COO/Perses available alongside for native RHOAI dashboards
 - **Database:** Shared PostgreSQL 16 in redhat-ods-applications with dedicated databases per consumer (mlflow, evalhub, model_registry, maas)
 - **Model Registry:** RHOAI Model Registry (Kubeflow) with PostgreSQL backend + declarative ConfigMap catalog (see [ADR-0010](docs/adr/0010-model-registry-postgresql.md))
 - **Evaluation:** EvalHub (TrustyAI) as orchestrator via REST API — manages lm-eval, GuideLLM, Garak, Lighteval jobs and logs to MLflow automatically (see [ADR-0008](docs/adr/0008-evalhub-orchestrator.md))

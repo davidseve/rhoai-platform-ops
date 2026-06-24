@@ -9,3 +9,24 @@ opentelemetry:
 
 tempo:
   enabled: true
+
+# Cluster Observability Operator (COO) -- enables RHOAI-managed observability
+# stack in redhat-ods-monitoring (Prometheus, Alertmanager, OTel Collector,
+# Tempo, Thanos Querier) plus UIPlugins (Perses, Korrel8r, DistributedTracing).
+# Technology Preview in RHOAI 3.4. See ADR-0013.
+coo:
+  enabled: false
+  # Set to false for Helm direct installs where DSCI is managed by another
+  # release (maas-platform). ArgoCD uses SSA to merge spec.monitoring into
+  # the existing DSCI, so this should be true (default) for ArgoCD deployments.
+  dsciHelmManaged: true
+  monitoring:
+    namespace: redhat-ods-monitoring
+    metrics:
+      replicas: 1
+      storageSize: 5Gi
+      retention: 90d
+    traces:
+      sampleRatio: "0.1"
+      storageBackend: pv
+      retention: 2160h0m0s

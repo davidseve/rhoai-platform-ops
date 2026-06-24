@@ -1,82 +1,107 @@
 # Cluster Observability Operator (COO) Integration
 
-Implementation guide for deploying COO to enable native RHOAI observability dashboards and showback metrics.
+Deployment guide for the RHOAI-managed observability stack via COO. See [ADR-0013](../../../docs/adr/0013-coo-observability-migration.md) for the migration decision.
 
-**When to implement**: When the RHOAI observability stack moves to GA (estimated 3.5+).
+**Status**: Implemented (gated behind `coo.enabled: false` by default -- Technology Preview in RHOAI 3.4).
 
-**Impact**: Enables `observabilityDashboard: true` in OdhDashboardConfig, providing built-in token consumption panels in the RHOAI Dashboard without requiring Grafana.
+## What COO Provides
 
-## Prerequisites
+When `coo.enabled: true` is set in the operators chart:
 
-Three things must be in place before COO adds value:
+1. **COO Subscription** -- installs the Cluster Observability Operator in `openshift-operators`
+2. **DSCI monitoring** -- patches `default-dsci` with `spec.monitoring.managementState: Managed`, which deploys in `redhat-ods-monitoring`:
+   - Prometheus + Alertmanager (via COO MonitoringStack)
+   - OTel Collector (RHOAI-managed)
+   - Tempo (trace storage)
+   - Thanos Querier (federated query)
+3. **UIPlugins** -- OpenShift Console extensions:
+   - `monitoring` (Perses dashboards -- Dev Preview)
+   - `troubleshooting-panel` (Korrel8r signal correlation -- GA)
+   - `distributed-tracing` (native trace UI -- GA)
 
-1. **User Workload Monitoring enabled** — already done (declarative ConfigMap in `modules/observability/charts/operators/`)
-2. **Kuadrant observability enabled** — `spec.observability.enable: true` on the Kuadrant CR (currently NOT set)
-3. **COO + OpenTelemetry Operator installed** — COO provides PersesDashboard, UIPlugins, Korrel8r. OpenTelemetry Operator already deployed via `modules/observability/charts/operators/`.
+## Architecture
 
-## Configuration Steps
-
-### 1. Install Cluster Observability Operator
-
-```yaml
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: cluster-observability-operator
-  namespace: openshift-operators
-spec:
-  channel: stable
-  name: cluster-observability-operator
-  source: redhat-operators
-  sourceNamespace: openshift-marketplace
-  installPlanApproval: Automatic
+```
+┌─────────────────────────────────────────────────┐
+│ RHOAI-managed (redhat-ods-monitoring)           │
+│  Prometheus + Alertmanager + Thanos Querier     │
+│  Tempo (replaces our TempoMonolithic)           │
+│  OTel Collector (RHOAI, not configurable)       │
+└─────────────────────────────────────────────────┘
+         ▲                          ▲
+         │ traces                   │ query
+┌────────┴────────┐         ┌──────┴───────┐
+│ Our OTel        │         │ Our Grafana  │
+│ Collector       │         │ (6 dashboards│
+│ (spanmetrics)   │         │  + Thanos)   │
+└─────────────────┘         └──────────────┘
 ```
 
-Add to `modules/observability/charts/operators/templates/`.
+**What we keep:**
+- Grafana Operator + instance + 6 dashboards (4 MaaS + 2 tracing)
+- OTel Collector with spanmetrics connector (RHOAI collector is not configurable)
+- PrometheusRule `tracing-slo` (3 alerts from spanmetrics)
+- ServiceMonitor for OTel Collector
+- OTel and Tempo Operator Subscriptions (prerequisites for RHOAI)
 
-### 2. Enable Kuadrant Observability
+**What we replaced:**
+- TempoMonolithic CR (now gated behind `{{- if not .Values.coo.enabled }}`)
+- OTel Collector exports to RHOAI Tempo instead of local Tempo
+- Grafana Tempo datasource points to RHOAI Tempo query-frontend
 
-Patch the Kuadrant CR in `kuadrant-system`:
+## Enabling COO
 
-```yaml
-apiVersion: kuadrant.io/v1beta1
-kind: Kuadrant
-metadata:
-  name: kuadrant
-  namespace: kuadrant-system
-spec:
-  observability:
-    enable: true
+### Operators chart
+
+```bash
+helm upgrade obs-operators modules/observability/charts/operators/ \
+  --set coo.enabled=true
 ```
 
-This enables the MaaS-specific metrics from the gateway (authorized_hits, authorized_calls, limited_calls).
+Or in ArgoCD `apps/values.yaml`, override the operators chart values.
 
-### 3. Enable OdhDashboardConfig flag
+### Tracing chart
 
-In `modules/maas/charts/maas-platform/values.yaml`:
-
-```yaml
-dashboard:
-  observabilityDashboard: true  # currently false
+```bash
+helm upgrade obs-tracing modules/observability/charts/tracing/ \
+  --set coo.enabled=true
 ```
 
-This activates the Observability tab in the RHOAI Dashboard.
+### Grafana chart
 
-### 4. Enable Tenant Telemetry
-
-The Tenant CR (`default-tenant` in `models-as-a-service`) must have:
-
-```yaml
-spec:
-  telemetry:
-    enabled: true
+```bash
+helm upgrade obs-grafana modules/observability/charts/grafana/ \
+  --set coo.enabled=true
 ```
 
-The maas-controller then auto-creates:
-- `TelemetryPolicy` — defines metrics labels for gateway traffic
-- `Istio Telemetry` — configures metric collection on the data plane
+### Verify
 
-Already enabled via Helm template (ArgoCD SSA).
+After enabling, verify RHOAI creates resources in `redhat-ods-monitoring`:
+
+```bash
+oc get pods -n redhat-ods-monitoring
+# Expected: prometheus-*, alertmanager-*, thanos-querier-*, collector-*, tempo-*
+```
+
+The Tempo service is `tempo-data-science-tempomonolithic-gateway` in `redhat-ods-monitoring`, exposing both OTLP gRPC (`:4317`) and HTTP query (`:3200`).
+
+## Running Tests
+
+```bash
+# With COO enabled
+COO_ENABLED=true make test-observability
+```
+
+The `COO_ENABLED` env var adjusts test assertions for Tempo pod location and datasource URLs.
+
+## Rollback
+
+To revert to the standalone stack:
+
+1. Set `coo.enabled: false` in all three charts
+2. The TempoMonolithic CR will be re-deployed
+3. OTel Collector reverts to the local Tempo endpoint
+4. Grafana datasource reverts to local Tempo URL
 
 ## Key Metrics (available once enabled)
 
@@ -84,68 +109,23 @@ Already enabled via Helm template (ArgoCD SSA).
 
 | Metric | Type | Labels | Use Case |
 |--------|------|--------|----------|
-| `authorized_hits` | counter | user, subscription, model | **Billing/cost** — total tokens consumed (input + output) |
-| `authorized_calls` | counter | user, subscription | Capacity planning — number of API calls allowed |
-| `limited_calls` | counter | user, subscription | Rate limit monitoring — requests denied |
-| `istio_request_duration_milliseconds_bucket` | histogram | subscription | SLA tracking — per-subscription gateway latency (P50/P95/P99) |
+| `authorized_hits` | counter | user, subscription, model | Billing/cost -- total tokens consumed |
+| `authorized_calls` | counter | user, subscription | Capacity planning -- API calls allowed |
+| `limited_calls` | counter | user, subscription | Rate limit monitoring -- requests denied |
 
-### vLLM inference metrics (already collected via PodMonitor)
+### RHOAI Dashboard
 
-| Metric | Use Case |
-|--------|----------|
-| `vllm:e2e_request_latency_seconds` | End-to-end inference latency |
-| `vllm:time_to_first_token_seconds` | TTFT for streaming quality |
-| `vllm:kv_cache_usage_perc` | Memory pressure indicator |
-| `vllm:num_requests_running` / `waiting` | Queue depth / saturation |
-
-### Chargeback
-
-For billing/cost attribution, focus on `authorized_hits`:
-- Per-user, per-model token counts
-- Feed into pricing pipeline with custom $/token logic
-- Labels provide `user`, `subscription`, `model` dimensions
-
-## Compatibility with Existing Stack
-
-COO does NOT conflict with the current observability infrastructure:
-
-| Component | Current | With COO | Conflict? |
-|-----------|---------|----------|-----------|
-| Grafana Operator | Community v5 | Unchanged | No |
-| OpenTelemetry Operator | Red Hat build | Unchanged | No |
-| Tempo Operator | Red Hat build | Unchanged | No |
-| User Workload Monitoring | Enabled | Required by COO | No |
-| PersesDashboard | N/A | Provided by COO | No |
-| UIPlugins (tracing, troubleshooting) | N/A | Provided by COO | No |
-| Korrel8r (incident detection) | N/A | Provided by COO | No |
-
-COO adds native OpenShift Console dashboards alongside Grafana (complementary, not replacement).
-
-## Implementation Checklist
-
-When ready to implement:
-
-- [ ] Verify COO is GA in the target RHOAI version (check release notes)
-- [ ] Add COO Subscription to `modules/observability/charts/operators/`
-- [ ] Add `spec.observability.enable: true` to Kuadrant CR in `modules/maas/charts/operators/`
-- [ ] Set `observabilityDashboard: true` in `maas-platform/values.yaml`
-- [ ] Verify TelemetryPolicy CEL incompatibility is resolved (per-model labels)
-- [ ] Validate `authorized_hits` metric is populated in Prometheus
-- [ ] Create showback dashboard (tokens per user per model per day)
-- [ ] Add E2E tests: COO operator health, UIPlugin availability, metric existence
-- [ ] Update `scripts/cluster-cleanup.sh` (COO Subscription removal)
-- [ ] Consider EvalHub OTel logs — COO may provide a log backend (UIPlugin for logging)
+With `observabilityDashboard: true` in OdhDashboardConfig, the RHOAI Dashboard shows an **Observe and Monitor** tab with built-in token consumption panels.
 
 ## Known Issues
 
-- **TelemetryPolicy CEL incompatibility**: `responseBodyJSON("/model")` and `auth.identity.selected_subscription` are WASM expressions, not valid Authorino CEL. Limitador metrics lack `model`, `subscription`, `organization_id`, `cost_center` labels until Kuadrant separates WASM and Authorino expression evaluation. Re-evaluate in RHOAI 3.5+.
-- **EvalHub OTel logs**: No log backend today (Loki/Vector not deployed). COO with logging UIPlugin could provide this. `enableLogs: false` in EvalHub CR until backend is available.
+- **DSCI monitoring is Technology Preview** in RHOAI 3.4 -- API may change in 3.5
+- **TelemetryPolicy CEL incompatibility** -- `responseBodyJSON("/model")` and `auth.identity.selected_subscription` are WASM expressions, not valid Authorino CEL. Per-model metric labels unavailable until Kuadrant resolves this
+- **Tempo service name** -- not explicitly documented; must verify on cluster after enabling DSCI monitoring
 
 ## References
 
-- **Setup guide**: https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/observability/setup.md
-- **Metrics reference**: https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/observability/metrics-and-dashboards.md
-- **COO product docs**: https://docs.redhat.com/en/documentation/openshift_container_platform/4.17/html/cluster_observability_operator/
-- **RHOAI Observability**: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai
-- **ADR-0003**: Grafana Operator choice with COO migration path
-- **Roadmap Phase 6**: COO Native Showback Dashboards
+- [RHOAI 3.4 Managing Observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai)
+- [COO UIPlugins](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html/ui_plugins_for_red_hat_openshift_cluster_observability_operator/perses-dashboard)
+- [ADR-0013: COO Migration](../../../docs/adr/0013-coo-observability-migration.md)
+- [ADR-0003: Grafana Operator](../../../docs/adr/0003-grafana-operator.md)
