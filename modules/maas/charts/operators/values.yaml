@@ -20,8 +20,8 @@ connectivityLink:
   # Pin to 1.3.4 — RHCL 1.4.0 adds allow_on_headers_stop_iteration to the
   # Wasm plugin config, which Envoy 1.34.x (Service Mesh 3.3.x) does not
   # recognize, causing headers (incl. Authorization) to not be forwarded
-  # to Authorino. Remove startingCSV and set Automatic to upgrade.
-  startingCSV: rhcl-operator.v1.3.4
+  # to Authorino. Pin removed for 1.3.5 (verify auth still works).
+  startingCSV: rhcl-operator.v1.3.5
   installPlanApproval: Manual
 
 kuadrant:
