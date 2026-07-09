@@ -1,4 +1,17 @@
 {{- if .Values.coo.enabled }}
+# Empty TLS CA secret required by Prometheus StatefulSet init container.
+# COO references this secret in the Prometheus volume mounts but does not create it.
+# Verified: 2026-07-09 on RHOAI 3.4.2 / COO 1.5
+# Remove when: COO auto-creates this secret or removes the volume reference
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-web-tls-ca
+  namespace: {{ .Values.coo.monitoring.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+type: Opaque
+---
 # ClusterRole for RHOAI MonitoringStack Prometheus to discover and scrape pods
 # across namespaces (specifically models-as-a-service for vLLM metrics).
 # Required per RHOAI docs section 12.3 for cross-namespace metric collection.
