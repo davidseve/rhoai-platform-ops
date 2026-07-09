@@ -9,5 +9,8 @@ spec:
   channel: {{ .Values.connectivityLink.channel }}
   source: {{ .Values.connectivityLink.source }}
   sourceNamespace: {{ .Values.connectivityLink.sourceNamespace }}
-  installPlanApproval: Automatic
+  installPlanApproval: {{ .Values.connectivityLink.installPlanApproval | default "Automatic" }}
+  {{- if .Values.connectivityLink.startingCSV }}
+  startingCSV: {{ .Values.connectivityLink.startingCSV }}
+  {{- end }}
 {{- end }}

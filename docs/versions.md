@@ -2,7 +2,7 @@
 
 Versions used in this project, aligned with RHOAI 3.4 GA.
 
-**Note:** RHOAI is pinned to 3.4.0 (`installPlanApproval: Manual`, `startingCSV: rhods-operator.3.4.0`) to avoid 3.4.1 regressions. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md) for the Wasm plugin auth issue affecting both versions.
+**Note:** RHOAI is pinned to 3.4.0 (`installPlanApproval: Manual`, `startingCSV: rhods-operator.3.4.0`) to avoid 3.4.1 regressions. RHCL is pinned to 1.3.4 (`startingCSV: rhcl-operator.v1.3.4`) because RHCL 1.4.0 adds `allow_on_headers_stop_iteration` to the Wasm plugin config, which Envoy 1.34.x (Service Mesh 3.3.x) does not recognize, causing the Authorization header to not be forwarded to Authorino. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md).
 
 ## RHOAI Core
 
@@ -18,7 +18,7 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
-| RHCL Operator (Kuadrant) | 1.3+ | `stable` | [RHCL Docs](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1) |
+| RHCL Operator (Kuadrant) | 1.3.4 (pinned) | `stable` | [RHCL Docs](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1) |
 | LeaderWorkerSet | 1.0 | `stable-v1.0` | Required for llm-d |
 
 ## Observability

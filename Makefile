@@ -365,6 +365,10 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned 3.4.0)"; \
 					continue; \
 				fi; \
+				if [ "$$ns" = "redhat-connectivity-link" ] && echo "$$ip_csv" | grep -q "rhcl-operator" && ! echo "$$ip_csv" | grep -qF "v1.3.4"; then \
+					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned v1.3.4)"; \
+					continue; \
+				fi; \
 				echo "  Auto-approving InstallPlan $$ip in $$ns ($$ip_csv)..."; \
 				$(OC) patch installplan "$$ip" -n $$ns --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true; \
 			done; \
