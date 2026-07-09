@@ -20,8 +20,13 @@ coo:
   # release (maas-platform). ArgoCD uses SSA to merge spec.monitoring into
   # the existing DSCI, so this should be true (default) for ArgoCD deployments.
   dsciHelmManaged: true
+  # Workarounds for COO 1.5 bugs. Disable when fixed upstream.
+  workarounds:
+    networkPolicies: true
   monitoring:
     namespace: redhat-ods-monitoring
+    # Namespace where model pods run (for PodMonitor cross-namespace scraping)
+    modelNamespace: models-as-a-service
     metrics:
       replicas: 1
       storageSize: 5Gi

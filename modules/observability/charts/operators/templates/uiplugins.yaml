@@ -7,6 +7,9 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   type: Monitoring
+  monitoring:
+    perses:
+      enabled: true
 ---
 apiVersion: observability.openshift.io/v1alpha1
 kind: UIPlugin

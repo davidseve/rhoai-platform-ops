@@ -1,0 +1,42 @@
+{{- if (ne (.Values.dsci.managed | toString) "false") }}
+# WORKAROUND: client.kubernetesAuth.enable does not inject bearer token into Perses secret (COO 1.5)
+# The operator overwrites the secret on each reconciliation, removing any manual auth config.
+# Verified: 2026-07-09 — operator creates secret with only tlsConfig, no authorization field.
+# Remove when: COO implements kubernetesAuth or adds credentialsFile support to the CRD client spec.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: perses-auth-fix
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: fix
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          PERSES=http://data-science-perses.redhat-ods-monitoring.svc:8080
+          echo "Waiting for Perses API..."
+          for i in $(seq 1 60); do curl -sf $PERSES/api/v1/health >/dev/null 2>&1 && break; sleep 5; done
+          echo "Patching global secret with credentialsFile auth..."
+          curl -sf -X PUT "$PERSES/api/v1/globalsecrets/thanos-querier-global-datasource-secret" \
+            -H "Content-Type: application/json" \
+            -d '{"kind":"GlobalSecret","metadata":{"name":"thanos-querier-global-datasource-secret"},"spec":{"authorization":{"type":"Bearer","credentialsFile":"/var/run/secrets/kubernetes.io/serviceaccount/token"},"tlsConfig":{"caFile":"/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"}}}'
+          echo ""
+          echo "Verifying proxy connectivity..."
+          RESULT=$(curl -sf "$PERSES/proxy/globaldatasources/thanos-querier-global-datasource/api/v1/query?query=count(up)" 2>/dev/null)
+          if echo "$RESULT" | grep -q '"success"'; then
+            echo "OK: Perses proxy to platform Thanos is working"
+          else
+            echo "WARN: Proxy query returned: $RESULT"
+            exit 1
+          fi
+{{- end }}

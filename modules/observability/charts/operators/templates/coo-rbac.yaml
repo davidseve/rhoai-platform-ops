@@ -1,0 +1,50 @@
+{{- if .Values.coo.enabled }}
+# ClusterRole for RHOAI MonitoringStack Prometheus to discover and scrape pods
+# across namespaces (specifically models-as-a-service for vLLM metrics).
+# Required per RHOAI docs section 12.3 for cross-namespace metric collection.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-rhoai-scrape
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+rules:
+- apiGroups: [""]
+  resources: ["pods", "endpoints", "services", "nodes", "nodes/metrics"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-rhoai-cluster-reader
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+subjects:
+- kind: ServiceAccount
+  name: data-science-monitoringstack-prometheus
+  namespace: {{ .Values.coo.monitoring.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-rhoai-scrape
+---
+# Grant Perses SA access to platform Thanos Querier metrics.
+# Required for Perses datasource to query platform Prometheus via Thanos.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: perses-cluster-monitoring-view
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: {{ .Values.coo.monitoring.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+{{- end }}

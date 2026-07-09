@@ -1,0 +1,61 @@
+{{- if .Values.coo.enabled }}
+{{- if .Values.coo.workarounds.networkPolicies }}
+# WORKAROUND: COO creates data-science-prometheus-instance-ingress that blocks gRPC port 10901
+# from Thanos Querier to Prometheus sidecar. Without this, Thanos shows 0 metrics.
+# Verified: 2026-07-09 on RHOAI 3.4.2 / COO 1.5
+# Remove when: COO fixes the ingress policy to include port 10901
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: thanos-querier-to-sidecar
+  namespace: {{ .Values.coo.monitoring.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: data-science-monitoringstack
+      app.kubernetes.io/name: prometheus
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/managed-by: observability-operator
+          app.kubernetes.io/part-of: ThanosQuerier
+    ports:
+    - port: 10901
+      protocol: TCP
+  policyTypes:
+  - Ingress
+---
+# WORKAROUND: COO creates perses-operator-access pointing to namespace
+# openshift-cluster-observability-operator, but the Perses operator runs in openshift-operators.
+# Without this, the operator cannot reconcile dashboards/datasources into Perses.
+# Verified: 2026-07-09 on RHOAI 3.4.2 / COO 1.5
+# Remove when: COO fixes the namespace selector in perses-operator-access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perses-operator-access-fix
+  namespace: {{ .Values.coo.monitoring.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: perses-operator
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openshift-operators
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: perses-operator
+    ports:
+    - port: 8080
+      protocol: TCP
+  policyTypes:
+  - Ingress
+{{- end }}
+{{- end }}

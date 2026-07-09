@@ -1,0 +1,26 @@
+{{- if .Values.coo.enabled }}
+# PodMonitor to collect vLLM metrics into RHOAI MonitoringStack Prometheus.
+# Must use monitoring.rhobs/v1 API (not monitoring.coreos.com/v1) for COO.
+# vLLM exposes metrics on port 8000 over HTTPS with KServe TLS certificates.
+apiVersion: monitoring.rhobs/v1
+kind: PodMonitor
+metadata:
+  name: vllm-model-pods
+  namespace: {{ .Values.coo.monitoring.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  namespaceSelector:
+    matchNames:
+    - {{ .Values.coo.monitoring.modelNamespace }}
+  selector:
+    matchLabels:
+      monitoring.opendatahub.io/scrape: "true"
+  podMetricsEndpoints:
+  - targetPort: 8000
+    path: /metrics
+    interval: 30s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
+{{- end }}

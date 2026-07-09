@@ -67,6 +67,43 @@ The TP risk is acceptable because:
 - Tempo service name for RHOAI stack not explicitly documented (must verify on cluster)
 - Spanmetrics remain on our custom OTel Collector (RHOAI collector not configurable)
 
+## Known COO Bugs (verified 2026-07-09 on RHOAI 3.4.2 / COO 1.5)
+
+The following workarounds are deployed via `coo.workarounds.*` flags and annotated templates.
+
+### Bug 1: NetworkPolicy blocks Thanos gRPC (port 10901)
+
+COO creates `data-science-prometheus-instance-ingress` in `redhat-ods-monitoring` but does not
+include port 10901 (gRPC) for Thanos Querier to reach Prometheus sidecar. Result: Thanos
+shows 0 metrics. Workaround: additional NetworkPolicy `thanos-querier-to-sidecar`.
+
+### Bug 2: Perses Operator NetworkPolicy wrong namespace
+
+COO creates `perses-operator-access` pointing to namespace `openshift-cluster-observability-operator`,
+but the Perses Operator actually runs in `openshift-operators`. Result: operator cannot reconcile
+dashboards/datasources. Workaround: additional NetworkPolicy `perses-operator-access-fix`.
+
+### Bug 3: Perses CA volume not mounted
+
+PersesGlobalDatasource CRD documentation specifies `certPath: /ca/service-ca.crt` for TLS.
+However, COO does not mount a CA volume at `/ca/` in the Perses StatefulSet pod. Only the
+projected SA volume at `/var/run/secrets/kubernetes.io/serviceaccount/` is available.
+Workaround: use `certPath: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt`.
+
+### Bug 4: client.kubernetesAuth.enable does not inject bearer token
+
+The PersesGlobalDatasource CRD has a `client.kubernetesAuth.enable` field but setting it to
+`true` has no effect — the operator creates the Perses secret with only `tlsConfig`, no
+`authorization` field. The operator also overwrites any manual patches on reconciliation.
+Workaround: PostSync Job that patches the Perses global secret with
+`authorization.credentialsFile: /var/run/secrets/kubernetes.io/serviceaccount/token`.
+
+### Expected resolution
+
+These bugs should be fixed in COO 1.6+ or RHOAI 3.5. Monitor release notes and remove
+workarounds when upstream fixes land. All workaround templates have inline comments with
+verification dates and removal conditions.
+
 ## References
 
 - [RHOAI 3.4 Managing Observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai)

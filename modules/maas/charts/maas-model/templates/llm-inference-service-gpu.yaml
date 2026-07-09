@@ -7,6 +7,7 @@ metadata:
   labels:
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
+    monitoring.opendatahub.io/scrape: "true"
   annotations:
     security.opendatahub.io/enable-auth: "true"
 spec:
