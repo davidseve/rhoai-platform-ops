@@ -4,10 +4,9 @@ rhoai:
   channel: stable-3.4
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  # Testing 3.4.1 to validate COO regressions are fixed.
-  # Revert to 3.4.0 if regressions persist.
-  startingCSV: rhods-operator.3.4.1
-  installPlanApproval: Manual
+  # Testing latest 3.4.x (3.4.2 currently in catalog) to validate
+  # COO regressions are fixed. Remove startingCSV to get latest available.
+  installPlanApproval: Automatic
 
 connectivityLink:
   enabled: true
