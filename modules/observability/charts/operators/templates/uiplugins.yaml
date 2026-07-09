@@ -2,6 +2,15 @@
 apiVersion: observability.openshift.io/v1alpha1
 kind: UIPlugin
 metadata:
+  name: monitoring
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  type: Monitoring
+---
+apiVersion: observability.openshift.io/v1alpha1
+kind: UIPlugin
+metadata:
   name: troubleshooting-panel
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
