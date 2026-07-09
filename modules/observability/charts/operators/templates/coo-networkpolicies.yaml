@@ -57,5 +57,27 @@ spec:
       protocol: TCP
   policyTypes:
   - Ingress
+---
+# Allow perses-auth-fix Job (and any pod in the namespace) to reach Perses API.
+# COO's default NetworkPolicies block intra-namespace traffic to Perses.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perses-intra-namespace-access
+  namespace: {{ .Values.coo.monitoring.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perses
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - port: 8080
+      protocol: TCP
+  policyTypes:
+  - Ingress
 {{- end }}
 {{- end }}
