@@ -15,7 +15,7 @@ spec:
     - {{ .Values.coo.monitoring.modelNamespace }}
   selector:
     matchLabels:
-      monitoring.opendatahub.io/scrape: "true"
+      app.kubernetes.io/part-of: llminferenceservice
   podMetricsEndpoints:
   - targetPort: 8000
     path: /metrics
