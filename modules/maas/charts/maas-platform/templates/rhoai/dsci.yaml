@@ -4,7 +4,7 @@ kind: DSCInitialization
 metadata:
   name: default-dsci
   annotations:
-    argocd.argoproj.io/sync-options: ServerSideApply=true
+    argocd.argoproj.io/sync-options: ServerSideApply=true,Force=true
 spec:
   applicationsNamespace: redhat-ods-applications
   monitoring:
