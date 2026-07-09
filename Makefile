@@ -361,8 +361,8 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		for ns in openshift-operators redhat-ods-operator redhat-connectivity-link leader-worker-set; do \
 			for ip in $$($(OC) get installplan -n $$ns -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do \
 				ip_csv=$$($(OC) get installplan "$$ip" -n $$ns -o jsonpath='{.spec.clusterServiceVersionNames[0]}' 2>/dev/null || echo ""); \
-				if [ "$$ns" = "redhat-ods-operator" ] && echo "$$ip_csv" | grep -q "rhods-operator" && ! echo "$$ip_csv" | grep -qF "3.4.0"; then \
-					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned 3.4.0)"; \
+				if [ "$$ns" = "redhat-ods-operator" ] && echo "$$ip_csv" | grep -q "rhods-operator" && ! echo "$$ip_csv" | grep -qF "3.4.1"; then \
+					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned 3.4.1)"; \
 					continue; \
 				fi; \
 				if [ "$$ns" = "redhat-connectivity-link" ] && echo "$$ip_csv" | grep -q "rhcl-operator" && ! echo "$$ip_csv" | grep -qF "v1.3.4"; then \

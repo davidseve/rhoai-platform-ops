@@ -15,7 +15,7 @@ tempo:
 # Tempo, Thanos Querier) plus UIPlugins (Perses, Korrel8r, DistributedTracing).
 # Technology Preview in RHOAI 3.4. See ADR-0013.
 coo:
-  enabled: false
+  enabled: true
   # Set to false for Helm direct installs where DSCI is managed by another
   # release (maas-platform). ArgoCD uses SSA to merge spec.monitoring into
   # the existing DSCI, so this should be true (default) for ArgoCD deployments.

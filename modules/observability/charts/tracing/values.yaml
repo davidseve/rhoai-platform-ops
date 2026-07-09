@@ -2,7 +2,7 @@
 # in redhat-ods-monitoring). The OTel Collector redirects to the RHOAI Tempo
 # endpoint instead. See ADR-0013.
 coo:
-  enabled: false
+  enabled: true
   # RHOAI Tempo OTLP gRPC endpoint (verified on cluster: the gateway service
   # exposes both OTLP :4317 and query :3200)
   tempoEndpoint: "tempo-data-science-tempomonolithic-gateway.redhat-ods-monitoring.svc:4317"

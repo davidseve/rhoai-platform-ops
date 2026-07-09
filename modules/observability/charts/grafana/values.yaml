@@ -9,7 +9,7 @@ tempo:
 # When COO is enabled, Grafana queries RHOAI Tempo in redhat-ods-monitoring
 # instead of the local TempoMonolithic. Verify service name on cluster.
 coo:
-  enabled: false
+  enabled: true
   # The gateway requires HTTPS + Bearer auth + tenant path prefix
   tempoUrl: "https://tempo-data-science-tempomonolithic-gateway.redhat-ods-monitoring.svc:8080"
   tempoNamespace: redhat-ods-monitoring

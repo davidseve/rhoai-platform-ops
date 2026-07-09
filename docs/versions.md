@@ -2,13 +2,13 @@
 
 Versions used in this project, aligned with RHOAI 3.4 GA.
 
-**Note:** RHOAI is pinned to 3.4.0 (`installPlanApproval: Manual`, `startingCSV: rhods-operator.3.4.0`) to avoid 3.4.1 regressions. RHCL is pinned to 1.3.4 (`startingCSV: rhcl-operator.v1.3.4`) because RHCL 1.4.0 adds `allow_on_headers_stop_iteration` to the Wasm plugin config, which Envoy 1.34.x (Service Mesh 3.3.x) does not recognize, causing the Authorization header to not be forwarded to Authorino. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md).
+**Note:** RHOAI is set to 3.4.1 (`installPlanApproval: Manual`, `startingCSV: rhods-operator.3.4.1`) to validate 3.4.1 regression fixes (Perses TLS, Prometheus secret, Gateway OOM). COO is enabled (`coo.enabled: true`). RHCL is pinned to 1.3.4 (`startingCSV: rhcl-operator.v1.3.4`) because RHCL 1.4.0 adds `allow_on_headers_stop_iteration` to the Wasm plugin config, which Envoy 1.34.x (Service Mesh 3.3.x) does not recognize, causing the Authorization header to not be forwarded to Authorino. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md).
 
 ## RHOAI Core
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
-| RHOAI Operator | 3.4.0 (pinned) | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
+| RHOAI Operator | 3.4.1 | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
 | KServe | 0.17.0 | -- | Managed by RHOAI operator |
 | MaaS (Models-as-a-Service) | 0.1.1 (GA) | -- | Managed by RHOAI operator |
 | llm-d (distributed inference) | 0.7.1 (GA) | -- | Used via LLMInferenceService (single-replica CPU, no disaggregation) |
