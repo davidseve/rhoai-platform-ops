@@ -361,13 +361,14 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		echo "  [$$((elapsed / 60))m] $$healthy/$$total apps Synced+Healthy  pending: $$not_healthy"; \
 		for ns in openshift-operators redhat-ods-operator redhat-connectivity-link leader-worker-set; do \
 			for ip in $$($(OC) get installplan -n $$ns -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do \
-				ip_csv=$$($(OC) get installplan "$$ip" -n $$ns -o jsonpath='{.spec.clusterServiceVersionNames[0]}' 2>/dev/null || echo ""); \
-				if [ "$$ns" = "redhat-ods-operator" ] && echo "$$ip_csv" | grep -q "rhods-operator" && ! echo "$$ip_csv" | grep -qF "3.4."; then \
+				ip_csvs=$$($(OC) get installplan "$$ip" -n $$ns -o jsonpath='{.spec.clusterServiceVersionNames[*]}' 2>/dev/null || echo ""); \
+				ip_csv=$$(echo "$$ip_csvs" | tr ' ' '\n' | head -1); \
+				if [ "$$ns" = "redhat-ods-operator" ] && echo "$$ip_csvs" | grep -q "rhods-operator" && ! echo "$$ip_csvs" | grep -qF "3.4."; then \
 					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned 3.4.x)"; \
 					continue; \
 				fi; \
-				if [ "$$ns" = "redhat-connectivity-link" ] && echo "$$ip_csv" | grep -q "rhcl-operator" && ! echo "$$ip_csv" | grep -qF "v1.3.4"; then \
-					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned v1.3.4)"; \
+				if [ "$$ns" = "redhat-connectivity-link" ] && echo "$$ip_csvs" | grep -q "rhcl-operator" && ! echo "$$ip_csvs" | grep -qF "rhcl-operator.v1.3."; then \
+					echo "  Skipping InstallPlan $$ip in $$ns (contains rhcl-operator beyond v1.3.x pin)"; \
 					continue; \
 				fi; \
 				echo "  Auto-approving InstallPlan $$ip in $$ns ($$ip_csv)..."; \
