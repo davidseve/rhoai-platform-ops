@@ -26,7 +26,8 @@ deploy-observability: ## Deploy observability (operators + Grafana + tracing)
 test-observability: ## Run Observability E2E tests
 	$(PYTHON) -m venv modules/observability/tests/.venv
 	modules/observability/tests/.venv/bin/pip install -q -r modules/observability/tests/requirements.txt
-	modules/observability/tests/.venv/bin/pytest modules/observability/tests/ -v; \
+	COO_ENABLED=$$(oc get dsci default-dsci -o jsonpath='{.spec.monitoring.managementState}' 2>/dev/null | grep -qi managed && echo true || echo false) \
+	  modules/observability/tests/.venv/bin/pytest modules/observability/tests/ -v; \
 	  rc=$$?; rm -rf modules/observability/tests/.venv; exit $$rc
 
 .PHONY: undeploy-observability
