@@ -62,6 +62,57 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 | OpenShift Service Mesh 3 | 3.3.1 (Istio 1.28.5) | Managed by RHOAI operator; Envoy 1.36.6-dev ([ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md) — resolved) |
 | PostgreSQL | 16 | `registry.redhat.io/rhel9/postgresql-16` (shared DB for maas-api and EvalHub) |
 
+## Operator Version Pinning
+
+All operators are pinned via `startingCSV` in their respective `values.yaml`.
+This ensures reproducible installs on fresh clusters while `installPlanApproval: Automatic`
+still allows z-stream security patches within the channel.
+
+### Pinned versions (single source of truth)
+
+| Operator | `startingCSV` | Values file |
+|---|---|---|
+| RHOAI | `rhods-operator.3.4.4` | `modules/maas/charts/operators/values.yaml` |
+| RHCL (Kuadrant) | `rhcl-operator.v1.4.3` | `modules/maas/charts/operators/values.yaml` |
+| LeaderWorkerSet | `leader-worker-set.v1.0.1` | `modules/maas/charts/operators/values.yaml` |
+| COO | `cluster-observability-operator.v1.5.2` | `modules/observability/charts/operators/values.yaml` |
+| Grafana | `grafana-operator.v5.24.0` | `modules/observability/charts/operators/values.yaml` |
+| OpenTelemetry | `opentelemetry-operator.v0.158.0-2` | `modules/observability/charts/operators/values.yaml` |
+| Tempo | `tempo-operator.v0.22.0-2` | `modules/observability/charts/operators/values.yaml` |
+
+### How to upgrade an operator
+
+1. **Check available versions** in the catalog:
+   ```bash
+   oc get packagemanifest <package> -o jsonpath='{.status.channels[?(@.name=="<channel>")].currentCSV}'
+   ```
+   Example:
+   ```bash
+   oc get packagemanifest rhods-operator -o jsonpath='{.status.channels[?(@.name=="stable-3.4")].currentCSV}'
+   ```
+
+2. **Update `startingCSV`** in the corresponding `values.yaml` (see table above).
+
+3. **Update this document** — bump the version in the tables above and add a row to the upgrade history below.
+
+4. **Test on a non-production cluster first**:
+   ```bash
+   make deploy-argocd CLUSTER_DOMAIN=apps.ocp.example.com
+   make wait-healthy
+   make test-all
+   ```
+
+5. **Verify the running CSV** matches your pin:
+   ```bash
+   oc get csv -A --no-headers | grep -v Copied | sort -u -k2
+   ```
+
+### Upgrade history
+
+| Date | Operator | From | To | Notes |
+|---|---|---|---|---|
+| 2026-09-30 | All | (unpinned) | See table above | Initial pinning of all operators |
+
 ## Version Bump Summary (3.3 -> 3.4 GA)
 
 | Component | 3.3 | 3.4 GA |
