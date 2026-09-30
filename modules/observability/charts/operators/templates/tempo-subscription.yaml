@@ -26,4 +26,7 @@ spec:
   name: tempo-product
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  {{- if .Values.tempo.startingCSV }}
+  startingCSV: {{ .Values.tempo.startingCSV }}
+  {{- end }}
 {{- end }}

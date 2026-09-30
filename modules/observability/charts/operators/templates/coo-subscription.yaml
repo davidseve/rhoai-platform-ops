@@ -10,4 +10,7 @@ spec:
   name: cluster-observability-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  {{- if .Values.coo.startingCSV }}
+  startingCSV: {{ .Values.coo.startingCSV }}
+  {{- end }}
 {{- end }}

@@ -2,13 +2,13 @@
 
 Versions used in this project, aligned with RHOAI 3.4 GA.
 
-**Note:** RHOAI is set to latest 3.4.x (`installPlanApproval: Automatic`, currently 3.4.4 in catalog). COO is enabled (`coo.enabled: true`). RHCL uses 1.4.3 (`startingCSV: rhcl-operator.v1.4.3`) which requires Envoy 1.35+ for `allow_on_headers_stop_iteration` support — resolved by Service Mesh 3.3.1 shipping Envoy 1.36.6-dev. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md).
+**Note:** All operators are pinned via `startingCSV` with `installPlanApproval: Automatic` (auto-upgrade within the channel, but the initial install targets the pinned version). COO is enabled (`coo.enabled: true`). RHCL 1.4.3 requires Envoy 1.35+ — resolved by Service Mesh 3.3.1 shipping Envoy 1.36.6-dev. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md).
 
 ## RHOAI Core
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
-| RHOAI Operator | 3.4.4 (latest) | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
+| RHOAI Operator | 3.4.4 | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
 | KServe | 0.17.0 | -- | Managed by RHOAI operator |
 | MaaS (Models-as-a-Service) | 0.1.1 (GA) | -- | Managed by RHOAI operator |
 | llm-d (distributed inference) | 0.7.1 (GA) | -- | Used via LLMInferenceService (single-replica CPU, no disaggregation) |
@@ -19,16 +19,16 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 | Component | Version | Channel | Reference |
 |---|---|---|---|
 | RHCL Operator (Kuadrant) | 1.4.3 | `stable` | [RHCL Docs](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1) |
-| LeaderWorkerSet | 1.0 | `stable-v1.0` | Required for llm-d |
+| LeaderWorkerSet | 1.0.1 | `stable-v1.0` | Required for llm-d |
 
 ## Observability
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
 | Cluster Observability Operator (COO) | 1.5.2 | `stable` | [COO Docs](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/) ([ADR-0013](adr/0013-coo-observability-migration.md)) |
-| Grafana Operator | 5.x | `v5` | Community operator ([ADR-0003](adr/0003-grafana-operator.md)) |
-| Red Hat build of OpenTelemetry | -- | `stable` | [OTel Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
-| Red Hat build of Tempo | -- | `stable` | [Tempo Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
+| Grafana Operator | 5.24.0 | `v5` | Community operator ([ADR-0003](adr/0003-grafana-operator.md)) |
+| Red Hat build of OpenTelemetry | 0.158.0-2 | `stable` | [OTel Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
+| Red Hat build of Tempo | 0.22.0-2 | `stable` | [Tempo Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
 
 ## Model Serving
 

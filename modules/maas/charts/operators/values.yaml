@@ -4,8 +4,7 @@ rhoai:
   channel: stable-3.4
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  # Testing latest 3.4.x (3.4.2 currently in catalog) to validate
-  # COO regressions are fixed. Remove startingCSV to get latest available.
+  startingCSV: rhods-operator.3.4.4
   installPlanApproval: Automatic
 
 connectivityLink:
@@ -17,9 +16,6 @@ connectivityLink:
   package: rhcl-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  # Catalog no longer ships 1.3.x on fresh clusters (only 1.4.x).
-  # Prefer 1.4.3 over a dead pin; known risk: allow_on_headers_stop_iteration
-  # vs Envoy 1.34.x (ADR-0014) — GET auth may fail; POST inference usually works.
   startingCSV: rhcl-operator.v1.4.3
   installPlanApproval: Automatic
 
@@ -36,3 +32,5 @@ leaderWorkerSet:
   channel: stable-v1.0
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: leader-worker-set.v1.0.1
+  installPlanApproval: Automatic

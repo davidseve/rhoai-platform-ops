@@ -26,4 +26,7 @@ spec:
   name: opentelemetry-product
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  {{- if .Values.opentelemetry.startingCSV }}
+  startingCSV: {{ .Values.opentelemetry.startingCSV }}
+  {{- end }}
 {{- end }}

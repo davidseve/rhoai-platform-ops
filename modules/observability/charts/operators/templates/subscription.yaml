@@ -26,4 +26,7 @@ spec:
   name: grafana-operator
   source: community-operators
   sourceNamespace: openshift-marketplace
+  {{- if .Values.grafana.startingCSV }}
+  startingCSV: {{ .Values.grafana.startingCSV }}
+  {{- end }}
 {{- end }}
