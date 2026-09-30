@@ -1,7 +1,7 @@
 {
   "title": "MaaS Subscription Usage",
   "uid": "maas-subscription-usage",
-  "description": "Per-subscription request and token breakdown using Limitador native metrics (authorized_calls, authorized_hits, limited_calls). Per-user metrics require upstream maas-api /metrics support.",
+  "description": "Per-subscription and per-user request and token breakdown using Limitador native metrics (authorized_calls, authorized_hits, limited_calls).",
   "tags": ["maas", "subscriptions", "kuadrant", "usage", "rate-limiting"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -34,6 +34,19 @@
         "refresh": 2,
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      },
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "label": "User",
+        "multi": true,
+        "name": "user",
+        "options": [],
+        "query": "label_values(authorized_calls, user)",
+        "refresh": 2,
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
       }
     ]
   },
@@ -45,7 +58,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(authorized_calls{subscription=~\"$subscription\"}[5m]))", "legendFormat": "Authorized", "instant": true }
+        { "refId": "A", "expr": "sum(rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "Authorized", "instant": true }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "blue" } } }
     },
@@ -56,7 +69,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(limited_calls{subscription=~\"$subscription\"}[5m]))", "legendFormat": "Limited", "instant": true }
+        { "refId": "A", "expr": "sum(rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "Limited", "instant": true }
       ],
       "fieldConfig": {
         "defaults": {
@@ -73,7 +86,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(authorized_hits{subscription=~\"$subscription\"}[5m]))", "legendFormat": "Tokens/sec", "instant": true }
+        { "refId": "A", "expr": "sum(rate(authorized_hits{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "Tokens/sec", "instant": true }
       ],
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "color": { "mode": "fixed", "fixedColor": "green" } } }
     },
@@ -84,7 +97,7 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(limited_calls{subscription=~\"$subscription\"}[5m])) / (sum(rate(authorized_calls{subscription=~\"$subscription\"}[5m])) + sum(rate(limited_calls{subscription=~\"$subscription\"}[5m])))", "legendFormat": "Rejection %", "instant": true }
+        { "refId": "A", "expr": "sum(rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])) / (sum(rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])) + sum(rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])))", "legendFormat": "Rejection %", "instant": true }
       ],
       "fieldConfig": {
         "defaults": {
@@ -101,8 +114,8 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "targets": [
-        { "refId": "A", "expr": "sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\"}[5m]))", "legendFormat": "{{subscription}} authorized" },
-        { "refId": "B", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\"}[5m]))", "legendFormat": "{{subscription}} limited" }
+        { "refId": "A", "expr": "sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "{{subscription}} authorized" },
+        { "refId": "B", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "{{subscription}} limited" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
@@ -121,14 +134,91 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
     },
     {
+      "id": 13,
+      "type": "row",
+      "title": "Per-User Breakdown",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
+      "collapsed": false
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Requests by User",
+      "description": "Authorized requests per user across all subscriptions",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        { "refId": "A", "expr": "sum by(user) (rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "{{user}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth" } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Token Consumption by User",
+      "description": "Tokens consumed per user across all subscriptions",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "refId": "A", "expr": "sum by(user) (rate(authorized_hits{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "{{user}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "smooth" } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "User Usage Summary",
+      "description": "Per-user breakdown: requests, tokens, and subscriptions used",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "sum by(user, subscription) (rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" },
+        { "refId": "B", "expr": "sum by(user, subscription) (rate(authorized_hits{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" },
+        { "refId": "C", "expr": "sum by(user, subscription) (rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": {
+              "user": "User",
+              "subscription": "Subscription",
+              "Value #A": "Requests/s",
+              "Value #B": "Tokens/s",
+              "Value #C": "Limited/s"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Requests/s" }, "properties": [{ "id": "unit", "value": "reqps" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "Tokens/s" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "Limited/s" }, "properties": [{ "id": "unit", "value": "reqps" }, { "id": "decimals", "value": 2 }] }
+        ]
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Subscription Details",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "collapsed": false
+    },
+    {
       "id": 9,
       "type": "timeseries",
       "title": "Rejection Rate by Subscription",
       "description": "Percentage of requests rate-limited per subscription (limited_calls / total calls)",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
       "targets": [
-        { "refId": "A", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\"}[5m])) / (sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\"}[5m])) + sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\"}[5m])))", "legendFormat": "{{subscription}}" }
+        { "refId": "A", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])) / (sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])) + sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])))", "legendFormat": "{{subscription}}" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -146,9 +236,9 @@
       "title": "Token Consumption by Subscription",
       "description": "Tokens consumed per subscription (authorized_hits from Limitador). Tracks token usage against tier budgets.",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
       "targets": [
-        { "refId": "A", "expr": "sum by(subscription) (rate(authorized_hits{subscription=~\"$subscription\"}[5m]))", "legendFormat": "{{subscription}}" }
+        { "refId": "A", "expr": "sum by(subscription) (rate(authorized_hits{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "{{subscription}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
@@ -159,7 +249,7 @@
       "title": "Token Throughput by Model (vLLM)",
       "description": "Generation and prompt tokens per model",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
       "targets": [
         { "refId": "A", "expr": "sum by(model_name) (rate(kserve_vllm:generation_tokens_total[5m]))", "legendFormat": "{{model_name}} gen tokens/s" },
         { "refId": "B", "expr": "sum by(model_name) (rate(kserve_vllm:prompt_tokens_total[5m]))", "legendFormat": "{{model_name}} prompt tokens/s" }
@@ -173,7 +263,7 @@
       "title": "Gateway Latency by Model (P50/P99)",
       "description": "Request duration percentiles at the gateway, grouped by model",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
       "targets": [
         { "refId": "A", "expr": "label_replace(histogram_quantile(0.50, sum by(le, destination_service_name) (rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m]))), \"model\", \"$1\", \"destination_service_name\", \"(.*)-kserve-workload-svc\")", "legendFormat": "{{model}} P50" },
         { "refId": "B", "expr": "label_replace(histogram_quantile(0.99, sum by(le, destination_service_name) (rate(istio_request_duration_milliseconds_bucket{source_workload=~\"maas-default-gateway.*\"}[5m]))), \"model\", \"$1\", \"destination_service_name\", \"(.*)-kserve-workload-svc\")", "legendFormat": "{{model}} P99" }
@@ -187,7 +277,7 @@
       "title": "Errors by Model and Status Code",
       "description": "Non-success HTTP responses per model (401, 429, 500, 503)",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
       "targets": [
         { "refId": "A", "expr": "label_replace(sum by(destination_service_name) (rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"401\"}[5m])), \"model\", \"$1\", \"destination_service_name\", \"(.*)-kserve-workload-svc\")", "legendFormat": "{{model}} 401" },
         { "refId": "B", "expr": "label_replace(sum by(destination_service_name) (rate(istio_requests_total{source_workload=~\"maas-default-gateway.*\", response_code=\"429\"}[5m])), \"model\", \"$1\", \"destination_service_name\", \"(.*)-kserve-workload-svc\")", "legendFormat": "{{model}} 429" },
@@ -211,12 +301,12 @@
       "title": "Subscription Summary",
       "description": "Per-subscription summary: authorized requests/sec, rate-limited/sec, rejection %, token consumption/sec",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
       "targets": [
-        { "refId": "A", "expr": "sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" },
-        { "refId": "B", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" },
-        { "refId": "C", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\"}[5m])) / (sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\"}[5m])) + sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\"}[5m])))", "legendFormat": "", "instant": true, "format": "table" },
-        { "refId": "D", "expr": "sum by(subscription) (rate(authorized_hits{subscription=~\"$subscription\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" }
+        { "refId": "A", "expr": "sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" },
+        { "refId": "B", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" },
+        { "refId": "C", "expr": "sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])) / (sum by(subscription) (rate(authorized_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])) + sum by(subscription) (rate(limited_calls{subscription=~\"$subscription\", user=~\"$user\"}[5m])))", "legendFormat": "", "instant": true, "format": "table" },
+        { "refId": "D", "expr": "sum by(subscription) (rate(authorized_hits{subscription=~\"$subscription\", user=~\"$user\"}[5m]))", "legendFormat": "", "instant": true, "format": "table" }
       ],
       "transformations": [
         { "id": "merge", "options": {} },
