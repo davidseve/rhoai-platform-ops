@@ -9,7 +9,7 @@ The `authorino-tls-job.yaml` ArgoCD PostSync Job configures Authorino with two T
 
 Without this setup, Gateway requests fail with **HTTP 500** (listener TLS) or **HTTP 403** (outbound CA trust).
 
-## How it works (8 steps)
+## How it works (6 steps)
 
 The PostSync Job in `modules/maas/charts/maas-platform/templates/gateway/authorino-tls-job.yaml` runs after every ArgoCD sync:
 
@@ -18,32 +18,30 @@ The PostSync Job in `modules/maas/charts/maas-platform/templates/gateway/authori
 | 1 | Annotate Authorino service with `serving-cert-secret-name` | Triggers OpenShift service-ca to generate a TLS cert |
 | 2 | Wait for cert secret | The annotation is async; cert appears after ~5s |
 | 3 | Patch Authorino CR `listener.tls.enabled: true` | Authorino starts accepting TLS on its gRPC listener |
-| 4 | Create `openshift-service-ca.crt` ConfigMap | Injected with cluster CA bundle by service-ca operator |
-| 5 | Mount ConfigMap as volume on Authorino deployment | Makes the CA cert file available to the container |
-| 6 | Set `SSL_CERT_FILE` env var | Go's `crypto/tls` uses this for outbound verification |
-| 7 | Wait for Authorino readiness | Steps 5-6 trigger a rollout; wait for all replicas ready |
-| 8 | Trigger Gateway EnvoyFilter reconciliation | Annotate Gateway to create `*-authn-ssl` EnvoyFilter |
+| 4 | Create `openshift-service-ca.crt` ConfigMap + mount volume | Makes the cluster CA cert available to the Authorino container |
+| 5 | Set `SSL_CERT_FILE` env var + `oc rollout status` | Go's `crypto/tls` uses this for outbound verification; waits for rollout |
+| 6 | Trigger Gateway EnvoyFilter reconciliation | Annotate Gateway to create `*-authn-ssl` EnvoyFilter |
 
-Steps 1-3 solve listener TLS. Steps 4-6 solve outbound CA trust. Step 8 ensures the Gateway data plane is updated.
+Steps 1-3 solve listener TLS. Steps 4-5 solve outbound CA trust. Step 6 ensures the Gateway data plane is updated.
+
+All steps are **idempotent** — running the Job on an already-configured cluster completes in ~3s with no changes.
 
 ## RBAC
 
-The Job creates two Roles (not ClusterRoles) with minimal permissions:
+The Job creates two namespace-scoped Roles (no ClusterRoles):
 
 **`authorino-tls-setup`** in `kuadrant-system`:
-- `services`: get, update, patch (annotate service)
+- `services`: get, patch (annotate service)
 - `secrets`: get (read cert secret)
-- `configmaps`: get, create, update, patch (service-ca ConfigMap)
-- `deployments`: get, update, patch (volume mount, env var)
+- `configmaps`: get, create, patch (service-ca ConfigMap)
+- `deployments`: get, patch (volume mount, env var)
 - `authorinos`: get, patch (enable listener TLS)
 
 **`authorino-tls-gateway`** in `openshift-ingress`:
-- `gateways`: get, update, patch (annotate for EnvoyFilter)
+- `gateways`: get, patch (annotate for EnvoyFilter)
 - `envoyfilters`: get, list (check if already created)
 
 All hook resources use `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation`.
-
-> **Note on `patch` verb**: `oc annotate`, `oc set volume`, and `oc set env` use the HTTP PATCH method internally. RBAC rules must include `patch`, not just `update`.
 
 ## Manual deployment (without ArgoCD)
 
@@ -51,52 +49,37 @@ When deploying with `helm install` (no PostSync hooks), run the equivalent steps
 
 ```bash
 NS=kuadrant-system
-GATEWAY_NS=openshift-ingress
-GATEWAY_NAME=maas-default-gateway
+GW_NS=openshift-ingress
+GW_NAME=maas-default-gateway
 
 # Step 1: Annotate Authorino service for serving cert
 oc annotate service authorino-authorino-authorization -n $NS \
   service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert --overwrite
 
 # Step 2: Wait for cert secret
-oc wait --for=jsonpath='{.type}'=kubernetes.io/tls secret/authorino-server-cert \
-  -n $NS --timeout=60s 2>/dev/null || \
-  echo "Waiting for cert..." && sleep 10
+for i in $(seq 1 30); do oc get secret authorino-server-cert -n $NS &>/dev/null && break; sleep 2; done
 
 # Step 3: Enable listener TLS on Authorino
 oc patch authorino authorino -n $NS --type=merge -p '{
-  "spec": {
-    "listener": {
-      "tls": {
-        "enabled": true,
-        "certSecretRef": {"name": "authorino-server-cert"}
-      }
-    }
-  }
+  "spec":{"listener":{"tls":{"enabled":true,"certSecretRef":{"name":"authorino-server-cert"}}}}
 }'
 
-# Step 4: Create service-ca ConfigMap
+# Step 4: Create service-ca ConfigMap + mount
 oc create configmap openshift-service-ca.crt -n $NS 2>/dev/null || true
 oc annotate configmap openshift-service-ca.crt -n $NS \
   service.beta.openshift.io/inject-cabundle=true --overwrite
-
-# Step 5: Mount volume
 oc set volume deploy/authorino -n $NS --add \
-  --name=openshift-service-ca \
-  --type=configmap \
+  --name=openshift-service-ca --type=configmap \
   --configmap-name=openshift-service-ca.crt \
-  --mount-path=/etc/ssl/certs/openshift-service-ca \
-  --read-only
+  --mount-path=/etc/ssl/certs/openshift-service-ca --read-only
 
-# Step 6: Set SSL_CERT_FILE
+# Step 5: Set SSL_CERT_FILE + wait for rollout
 oc set env deploy/authorino -n $NS \
   SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca.crt
-
-# Step 7: Wait for readiness
 oc rollout status deploy/authorino -n $NS --timeout=120s
 
-# Step 8: Trigger EnvoyFilter
-oc annotate gateway $GATEWAY_NAME -n $GATEWAY_NS \
+# Step 6: Trigger EnvoyFilter
+oc annotate gateway $GW_NAME -n $GW_NS \
   security.opendatahub.io/authorino-tls-bootstrap="true" --overwrite
 ```
 
@@ -104,8 +87,7 @@ oc annotate gateway $GATEWAY_NAME -n $GATEWAY_NS \
 
 ```bash
 # Check listener TLS config
-oc get authorino authorino -n kuadrant-system \
-  -o jsonpath='{.spec.listener.tls}'
+oc get authorino authorino -n kuadrant-system -o jsonpath='{.spec.listener.tls}'
 
 # Check SSL_CERT_FILE env var
 oc get deploy authorino -n kuadrant-system \
@@ -145,5 +127,6 @@ MaaS API keys (`sk-oai-*`) are validated by Authorino calling `maas-api`'s `/int
 
 | RHOAI | Hook file | Notes |
 | ----- | --------- | ----- |
-| 3.1–3.3 | `kuadrant-readiness-hook.yaml` | Also handled Kuadrant MissingDependency recovery + Limitador/Envoy restarts |
-| 3.4 GA | `authorino-tls-job.yaml` | Simplified to TLS-only (MissingDependency no longer occurs in 3.4) |
+| 3.1–3.3 | `kuadrant-readiness-hook.yaml` | Handled Kuadrant MissingDependency recovery + Limitador/Envoy restarts + TLS |
+| 3.4 GA | `authorino-tls-job.yaml` (v1) | Simplified to TLS-only but kept Step 0 Istio race condition workaround (8 steps, ~360 lines) |
+| 3.4.4 | `authorino-tls-job.yaml` (v2) | Removed Step 0 and ClusterRole — 6 steps, ~160 lines. Istio race no longer occurs in 3.4.x |
