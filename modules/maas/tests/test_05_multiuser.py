@@ -210,22 +210,31 @@ class TestMultiUserInference:
 
     def test_user_inference_returns_200(self, maas_url, e2e_user_api_key):
         """E2E user can perform inference via gateway with their API key."""
-        resp = requests.post(
-            f"{maas_url}/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {e2e_user_api_key['key']}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": MODEL_NAME,
-                "messages": [{"role": "user", "content": "Say hello"}],
-                "max_tokens": 10,
-            },
-            verify=False,
-            timeout=30,
-        )
-        assert resp.status_code == 200, (
-            f"Inference failed with {resp.status_code}: {resp.text[:200]}"
+        last_status = None
+        for attempt in range(6):
+            resp = requests.post(
+                f"{maas_url}/{MODEL_NAMESPACE}/{MODEL_NAME}/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {e2e_user_api_key['key']}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": MODEL_NAME,
+                    "messages": [{"role": "user", "content": "Say hello"}],
+                    "max_tokens": 10,
+                },
+                verify=False,
+                timeout=30,
+            )
+            last_status = resp.status_code
+            if resp.status_code == 200:
+                break
+            if resp.status_code == 429:
+                time.sleep(10)
+                continue
+            break
+        assert last_status == 200, (
+            f"Inference failed with {last_status}: {resp.text[:200]}"
         )
         data = resp.json()
         assert data.get("choices"), "No choices in inference response"
