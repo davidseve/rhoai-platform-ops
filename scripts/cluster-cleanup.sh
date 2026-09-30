@@ -547,6 +547,7 @@ verify_cleanup() {
     "kuadrant-system"
     "leader-worker-set"
     "observability"
+    "openshift-grafana-operator"
     "openshift-opentelemetry-operator"
     "openshift-tempo-operator"
   )
@@ -625,12 +626,14 @@ cleanup_model_registry_residual() {
   local ns="rhoai-model-registries"
 
   if $OC get ns "$ns" &>/dev/null; then
-    # ModelRegistry CRs can have finalizers from the operator
-    log "Deleting ModelRegistry CRs..."
-    for mr in $($OC get modelregistry -n "$ns" -o name 2>/dev/null); do
+    # ModelRegistry instance CRs (modelregistry.opendatahub.io) can have finalizers.
+    # Must use fully-qualified name — short name 'modelregistry' is ambiguous with
+    # the cluster-scoped components.platform.opendatahub.io resource.
+    log "Deleting ModelRegistry instance CRs..."
+    for mr in $($OC get modelregistry.modelregistry.opendatahub.io -n "$ns" -o name 2>/dev/null); do
       run "$OC patch '$mr' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
-    run "$OC delete modelregistry --all -n '$ns' --timeout=60s --ignore-not-found"
+    run "$OC delete modelregistry.modelregistry.opendatahub.io --all -n '$ns' --timeout=60s --ignore-not-found"
 
     # Secrets and Jobs
     log "Deleting Secrets and Jobs..."
