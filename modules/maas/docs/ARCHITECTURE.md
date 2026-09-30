@@ -132,6 +132,6 @@ TokenRateLimitPolicy (token-based, per-tier)
 
 4. **vLLM CPU x86_64 not published by Red Hat** — Red Hat's `odh-vllm-cpu-rhel9` image only supports ppc64le/s390x. Custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` remains necessary for x86_64 CPU inference.
 
-5. **Gateway→Authorino listener TLS** — Upstream `setup-authorino-tls.sh` enables `listener.tls.enabled: true` on Authorino, but the Kuadrant EnvoyFilter does not include `transport_socket`. Internal Gateway→Authorino traffic stays plaintext (intra-cluster). See ROADMAP.md for details.
+5. **Gateway→Authorino listener TLS (RESOLVED)** — The `authorino-tls` PostSync Job now performs the full 8-step TLS setup: listener TLS enabled on Authorino, service-CA volume mounted, `SSL_CERT_FILE` set, and Gateway EnvoyFilter reconciliation triggered. Both inbound (Gateway→Authorino) and outbound (Authorino→maas-api) TLS are configured. See [ADR-0014](../../../docs/adr/0014-wasm-plugin-get-auth-failure.md).
 
 See [ADR-0005](../../../docs/adr/0005-maas-subscription-model.md) for the full MaaS Subscription decision record.

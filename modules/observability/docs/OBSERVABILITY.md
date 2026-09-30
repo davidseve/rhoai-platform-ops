@@ -18,7 +18,7 @@ The module has two parts:
 **Part B -- MaaS metric extensions** (`modules/maas/charts/maas-platform/`):
 - PodMonitor for vLLM pods (TLS-aware via service-ca CA bundle)
 - PrometheusRule with SLO alerts (latency, KV cache, error rate)
-- Three GrafanaDashboard CRs (platform overview, vLLM metrics, per-tier usage)
+- Four GrafanaDashboard CRs (platform overview, subscription usage with per-user panels, vLLM metrics, gateway infrastructure)
 
 Part B resources are split into two independent guards:
 - `monitoring.vllm.enabled` (default: `true`): PodMonitor + PrometheusRule -- always active, no Grafana dependency
@@ -186,9 +186,16 @@ The `generate-traffic.sh` script uses `oc port-forward` to reach the OTel Collec
 
 ## Cluster Observability Operator (COO)
 
-COO is planned for when the RHOAI native observability stack moves to GA. It enables native OpenShift Console dashboards (PersesDashboard), UIPlugins for tracing/troubleshooting, and the `observabilityDashboard: true` flag on OdhDashboardConfig.
+COO is deployed and validated (Technology Preview in RHOAI 3.4, COO 1.5.2). It provides:
 
-See [COO-INTEGRATION.md](COO-INTEGRATION.md) for the full implementation runbook: prerequisites, configuration steps, key metrics (including `authorized_hits` for billing), and compatibility matrix with the current stack.
+- **RHOAI Dashboard → Observe & Monitor** tab with native Usage dashboard (per-user, per-model token consumption)
+- **Perses dashboards** via UIPlugin `monitoring` in the OpenShift Console
+- **Distributed tracing** via UIPlugin `distributed-tracing` in the Console
+- **Korrel8r troubleshooting** via UIPlugin `troubleshooting-panel` (contextual, visible in pod detail views)
+
+The stack deploys Prometheus, Alertmanager, Tempo, OTel Collector, and Thanos in `redhat-ods-monitoring`. Our custom OTel Collector (for spanmetrics) and Grafana (for custom MaaS dashboards) are retained alongside COO. Gated behind `coo.enabled` (default `false`).
+
+See [COO-INTEGRATION.md](COO-INTEGRATION.md) for the full implementation runbook and [ADR-0013](../../../docs/adr/0013-coo-observability-migration.md) for the migration decision.
 
 ## Cleanup
 

@@ -48,7 +48,9 @@ The script automatically discovers the cluster domain, obtains a MaaS token, and
 
 ## Dashboard Inventory
 
-Four dashboards are deployed. Three live in the MaaS module (gated by `grafana.enabled`), one in the observability module (gated by `tempo.enabled`).
+Six dashboards are deployed. Four live in the MaaS module (gated by `grafana.enabled`), two in the observability module (gated by `tempo.enabled`).
+
+When COO is enabled, the RHOAI Dashboard also provides a native **Observe & Monitor → Usage** tab (Perses) with per-user and per-model token consumption.
 
 ### 1. MaaS Platform Overview
 
@@ -86,7 +88,45 @@ Deep dive into model serving performance -- latency, throughput, and resource ut
 | TTFT (Time To First Token) | Latency until first token is generated | Key metric for interactive responsiveness |
 | TPOT (Time Per Output Token) | Latency per generated token | Shows decoding efficiency |
 
-### 3. MaaS Per-Tier Usage
+### 3. MaaS Subscription Usage
+
+**Location**: Dashboards > MaaS Subscription Usage
+
+End-to-end subscription and usage dashboard with per-user filtering. Contains three sections:
+
+**Variables**: Datasource (Prometheus), Subscription (multi-select), User (multi-select — new)
+
+#### Overview Stats
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| Authorized Requests/sec | Successful requests through rate limiter | Should match traffic generation rate |
+| Rate-Limited Requests/sec | Requests rejected (429) | Non-zero after exceeding tier limits |
+| Token Consumption/sec | Tokens consumed per second | Correlates with model output length |
+| Rejection Ratio | Percentage of requests rate-limited | Higher for free tier under load |
+| Authorized vs Rate-Limited by Subscription | Time series per subscription | Shows when limits are hit |
+| Requests by Model | Per-model request breakdown | Both models should appear |
+
+#### Per-User Breakdown
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| Requests by User | `sum by(user) rate(authorized_calls)` per user | Each user appears as a separate series |
+| Token Consumption by User | `sum by(user) rate(authorized_hits)` per user | Token usage differentiation between users |
+| User Usage Summary | Table: user, subscription, requests/s, tokens/s, limited/s | All active users with their subscription and rates |
+
+#### Subscription Details
+
+| Panel | What it shows | What to look for |
+|-------|---------------|------------------|
+| Rejection Rate by Subscription | Percentage of requests rejected per subscription | Free tier should be higher |
+| Token Consumption by Subscription | Token throughput per subscription | Shows tier capacity usage |
+| Token Throughput by Model (vLLM) | Generation + prompt tokens/s from vLLM | Model-level throughput |
+| Gateway Latency by Model (P50/P99) | Latency percentiles from Istio | Shows model response times |
+| Errors by Model and Status Code | Error rate per model | Should be near zero |
+| Subscription Summary | Table: subscription, authorized/s, limited/s, rejection %, tokens/s | Per-subscription totals |
+
+### 4. MaaS Per-Tier Usage
 
 **Location**: Dashboards > MaaS Per-Tier Usage
 
@@ -102,7 +142,7 @@ Compares resource consumption between free and premium tiers -- useful for capac
 | Token Usage by Tier (vLLM) | Token consumption split by tier | Tracks actual resource consumption |
 | Calls by Tier and Model | Cross-reference tier and model | Shows which tier uses which model most |
 
-### 4. Trace Exploration
+### 5. Trace Exploration
 
 **Location**: Dashboards > Trace Exploration
 
@@ -116,6 +156,12 @@ Visualizes distributed traces collected by the OpenTelemetry Collector and store
 | Request Rate by Service (from spanmetrics) | Per-service request throughput from spans | Shows traffic split between `maas-gateway` and each model |
 
 **Note**: Until vLLM images include native OTEL packages (see [ROADMAP](ROADMAP.md)), the traffic generator produces the traces. Set `EMIT_TRACES=false` to disable trace emission.
+
+### 6. Gateway Infrastructure
+
+**Location**: Dashboards > MaaS Gateway Infrastructure
+
+Low-level gateway metrics from Istio/Envoy — useful for debugging auth timeouts, proxy resource usage, and connection patterns.
 
 ## Exploring Traces in Grafana
 

@@ -2,7 +2,7 @@
 
 Deployment guide for the RHOAI-managed observability stack via COO. See [ADR-0013](../../../docs/adr/0013-coo-observability-migration.md) for the migration decision.
 
-**Status**: Implemented (gated behind `coo.enabled: false` by default -- Technology Preview in RHOAI 3.4).
+**Status**: Implemented and validated on RHOAI 3.4.4 / COO 1.5.2 / OCP 4.22 (gated behind `coo.enabled: false` by default -- Technology Preview in RHOAI 3.4).
 
 ## What COO Provides
 
@@ -38,7 +38,7 @@ When `coo.enabled: true` is set in the operators chart:
 ```
 
 **What we keep:**
-- Grafana Operator + instance + 6 dashboards (4 MaaS + 2 tracing)
+- Grafana Operator + instance + 6 dashboards (4 MaaS + 2 tracing): platform-overview, subscription-usage (with per-user panels), vllm-metrics, gateway-infrastructure, trace-exploration, trace-search
 - OTel Collector with spanmetrics connector (RHOAI collector is not configurable)
 - PrometheusRule `tracing-slo` (3 alerts from spanmetrics)
 - ServiceMonitor for OTel Collector
@@ -121,7 +121,7 @@ With `observabilityDashboard: true` in OdhDashboardConfig, the RHOAI Dashboard s
 
 - **DSCI monitoring is Technology Preview** in RHOAI 3.4 -- API may change in 3.5
 - **TelemetryPolicy CEL incompatibility** -- `responseBodyJSON("/model")` and `auth.identity.selected_subscription` are WASM expressions, not valid Authorino CEL. Per-model metric labels unavailable until Kuadrant resolves this
-- **Tempo service name** -- not explicitly documented; must verify on cluster after enabling DSCI monitoring
+- **Tempo service name** -- verified: `tempo-data-science-tempomonolithic-gateway` in `redhat-ods-monitoring`, exposing OTLP gRPC (`:4317`) and HTTP query (`:3200`)
 
 ## References
 

@@ -67,7 +67,7 @@ The TP risk is acceptable because:
 - Tempo service name for RHOAI stack not explicitly documented (must verify on cluster)
 - Spanmetrics remain on our custom OTel Collector (RHOAI collector not configurable)
 
-## Known COO Bugs (verified 2026-07-09 on RHOAI 3.4.2 / COO 1.5)
+## Known COO Bugs (verified 2026-07-09 on RHOAI 3.4.2 / COO 1.5, re-validated 2026-09-30 on RHOAI 3.4.4 / COO 1.5.2 / OCP 4.22)
 
 The following workarounds are deployed via `coo.workarounds.*` flags and annotated templates.
 
