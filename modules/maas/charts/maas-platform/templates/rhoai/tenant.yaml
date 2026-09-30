@@ -7,6 +7,14 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,ServerSideApply=true
 spec:
+  gatewayRef:
+    name: {{ .Values.tenant.gatewayRef.name }}
+    namespace: {{ .Values.tenant.gatewayRef.namespace }}
   telemetry:
     enabled: {{ .Values.tenant.telemetry.enabled }}
+    metrics:
+      captureOrganization: {{ .Values.tenant.telemetry.metrics.captureOrganization }}
+      captureUser: {{ .Values.tenant.telemetry.metrics.captureUser }}
+      captureGroup: {{ .Values.tenant.telemetry.metrics.captureGroup }}
+      captureModelUsage: {{ .Values.tenant.telemetry.metrics.captureModelUsage }}
 {{- end }}

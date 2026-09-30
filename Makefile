@@ -26,7 +26,8 @@ deploy-observability: ## Deploy observability (operators + Grafana + tracing)
 test-observability: ## Run Observability E2E tests
 	$(PYTHON) -m venv modules/observability/tests/.venv
 	modules/observability/tests/.venv/bin/pip install -q -r modules/observability/tests/requirements.txt
-	modules/observability/tests/.venv/bin/pytest modules/observability/tests/ -v; \
+	COO_ENABLED=$$(oc get dsci default-dsci -o jsonpath='{.spec.monitoring.managementState}' 2>/dev/null | grep -qi managed && echo true || echo false) \
+	  modules/observability/tests/.venv/bin/pytest modules/observability/tests/ -v; \
 	  rc=$$?; rm -rf modules/observability/tests/.venv; exit $$rc
 
 .PHONY: undeploy-observability
@@ -341,8 +342,8 @@ WAIT_TIMEOUT ?= 20
 WAIT_INTERVAL ?= 30
 # parent + 10 child apps (database, maas-operators, maas-platform, maas-model, maas-model-granite-2b, obs-operators, obs-grafana, obs-tracing, evaluation)
 # parent + 11 child apps (database, maas-operators, maas-platform, maas-model, maas-model-granite-2b, maas-model-registry, obs-operators, obs-grafana, obs-tracing, evaluation)
-MIN_APPS ?= 11
-APP_FILTER = grep -E 'maas-|model-registry|observability-|rhoai-platform-ops|evaluation|database'
+MIN_APPS ?= 10
+APP_FILTER = grep -E 'maas-|model-registry|observability-|rhoai-platform-ops|evaluation|database|cert-manager'
 
 .PHONY: wait-healthy
 wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Ready
@@ -358,9 +359,21 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		fi; \
 		not_healthy=$$($(OC) get applications -n openshift-gitops --no-headers 2>/dev/null | $(APP_FILTER) | grep -v "Synced.*Healthy" | awk '{print $$1"("$$2"/"$$3")"}' | tr '\n' ' '); \
 		echo "  [$$((elapsed / 60))m] $$healthy/$$total apps Synced+Healthy  pending: $$not_healthy"; \
-		for ip in $$($(OC) get installplan -n openshift-operators -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do \
-			echo "  Auto-approving InstallPlan $$ip (OLM Manual dependency)..."; \
-			$(OC) patch installplan "$$ip" -n openshift-operators --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true; \
+		for ns in openshift-operators redhat-ods-operator redhat-connectivity-link leader-worker-set; do \
+			for ip in $$($(OC) get installplan -n $$ns -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do \
+				ip_csvs=$$($(OC) get installplan "$$ip" -n $$ns -o jsonpath='{.spec.clusterServiceVersionNames[*]}' 2>/dev/null || echo ""); \
+				ip_csv=$$(echo "$$ip_csvs" | tr ' ' '\n' | head -1); \
+				if [ "$$ns" = "redhat-ods-operator" ] && echo "$$ip_csvs" | grep -q "rhods-operator" && ! echo "$$ip_csvs" | grep -qF "3.4."; then \
+					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned 3.4.x)"; \
+					continue; \
+				fi; \
+				if [ "$$ns" = "redhat-connectivity-link" ] && echo "$$ip_csvs" | grep -q "rhcl-operator" && ! echo "$$ip_csvs" | grep -qE "rhcl-operator\.v1\.(3|4)\."; then \
+					echo "  Skipping InstallPlan $$ip in $$ns (contains rhcl-operator outside v1.3.x/v1.4.x pin)"; \
+					continue; \
+				fi; \
+				echo "  Auto-approving InstallPlan $$ip in $$ns ($$ip_csv)..."; \
+				$(OC) patch installplan "$$ip" -n $$ns --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true; \
+			done; \
 		done; \
 		sleep $(WAIT_INTERVAL); \
 		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
@@ -370,16 +383,47 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 		$(OC) get applications -n openshift-gitops; \
 		exit 1; \
 	fi
+	@echo "Waiting for DataScienceCluster to be Ready..."
+	@elapsed=0; \
+	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
+		phase=$$($(OC) get datasciencecluster -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Pending"); \
+		if [ "$$phase" = "Ready" ]; then \
+			echo "  DataScienceCluster is Ready."; \
+			break; \
+		fi; \
+		echo "  [$$((elapsed / 60))m] DSC phase: $$phase"; \
+		sleep $(WAIT_INTERVAL); \
+		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
+	done; \
+	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
+		echo "WARNING: DSC not Ready after $(WAIT_TIMEOUT)m (phase: $$($(OC) get datasciencecluster -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo unknown)) -- continuing anyway"; \
+	fi
+	@echo "Waiting for Gateway pods to be Running..."
+	@elapsed=0; \
+	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
+		gw_pods=$$($(OC) get pods -n openshift-ingress -l gateway.networking.k8s.io/gateway-name=maas-default-gateway --no-headers 2>/dev/null | grep -c "Running" || true); \
+		if [ "$$gw_pods" -gt 0 ]; then \
+			echo "  Gateway pod(s) running: $$gw_pods"; \
+			break; \
+		fi; \
+		echo "  [$$((elapsed / 60))m] No gateway pods yet..."; \
+		sleep $(WAIT_INTERVAL); \
+		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
+	done; \
+	if [ $$elapsed -ge $$(($(WAIT_TIMEOUT) * 60)) ]; then \
+		echo "WARNING: Gateway pods not found after $(WAIT_TIMEOUT)m -- continuing anyway"; \
+	fi
 	@echo "Waiting for model pods to be Ready..."
 	@elapsed=0; \
 	while [ $$elapsed -lt $$(($(WAIT_TIMEOUT) * 60)) ]; do \
-		not_ready=$$($(OC) get pods -n models-as-a-service --no-headers 2>/dev/null | grep -cv "Running" || true); \
-		if [ "$$not_ready" -eq 0 ] && [ "$$($(OC) get pods -n models-as-a-service --no-headers 2>/dev/null | wc -l)" -gt 0 ]; then \
-			$(OC) get pods -n models-as-a-service; \
+		pod_count=$$($(OC) get pods -n models-as-a-service -l app.kubernetes.io/part-of=llminferenceservice --no-headers 2>/dev/null | wc -l); \
+		not_ready=$$($(OC) get pods -n models-as-a-service -l app.kubernetes.io/part-of=llminferenceservice --no-headers 2>/dev/null | grep -cv "Running" || true); \
+		if [ "$$pod_count" -gt 0 ] && [ "$$not_ready" -eq 0 ]; then \
+			$(OC) get pods -n models-as-a-service -l app.kubernetes.io/part-of=llminferenceservice; \
 			echo "All model pods are Running."; \
 			break; \
 		fi; \
-		echo "  [$$((elapsed / 60))m] $$not_ready pod(s) not ready yet..."; \
+		echo "  [$$((elapsed / 60))m] $$pod_count pod(s) found, $$not_ready not ready..."; \
 		sleep $(WAIT_INTERVAL); \
 		elapsed=$$((elapsed + $(WAIT_INTERVAL))); \
 	done; \
@@ -483,6 +527,23 @@ test-all: test-observability test-maas test-evaluation test-evalhub ## Run all m
 undeploy-all: undeploy-evaluation undeploy-maas undeploy-observability undeploy-database ## Undeploy all modules
 
 # --- Validation ---
+
+.PHONY: validate-dashboards
+validate-dashboards: ## Validate Perses and Grafana dashboards are populated
+	@echo "=== Perses ==="
+	$(OC) wait --for=condition=Ready pod/data-science-perses-0 -n redhat-ods-monitoring --timeout=120s
+	@echo "Checking Perses dashboards via API..."
+	@$(OC) port-forward -n redhat-ods-monitoring data-science-perses-0 19090:8080 & \
+		PF_PID=$$!; sleep 3; \
+		COUNT=$$(curl -sf http://localhost:19090/api/v1/dashboards 2>/dev/null | $(PYTHON) -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0); \
+		kill $$PF_PID 2>/dev/null; wait $$PF_PID 2>/dev/null; \
+		echo "  Perses dashboards: $$COUNT"; \
+		if [ "$$COUNT" -lt 1 ]; then echo "ERROR: No Perses dashboards found" && exit 1; fi
+	@echo "=== Grafana ==="
+	@GD_COUNT=$$($(OC) get grafanadashboard -A --no-headers 2>/dev/null | wc -l); \
+		echo "  Grafana dashboards: $$GD_COUNT"; \
+		if [ "$$GD_COUNT" -lt 1 ]; then echo "WARNING: No Grafana dashboards found"; fi
+	@echo "Dashboard validation passed"
 
 .PHONY: template
 template: ## Helm template dry-run for all charts

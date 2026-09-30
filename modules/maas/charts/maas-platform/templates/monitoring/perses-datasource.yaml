@@ -1,0 +1,34 @@
+{{- if (ne (.Values.dsci.managed | toString) "false") }}
+# Declarative PersesGlobalDatasource pointing to platform Thanos Querier.
+# Red Hat documented approach: https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html/ui_plugins_for_red_hat_openshift_cluster_observability_operator/perses-dashboard#create-global-thanos-querier-datasource
+apiVersion: perses.dev/v1alpha2
+kind: PersesGlobalDatasource
+metadata:
+  name: thanos-querier-global-datasource
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  config:
+    display:
+      name: "Platform Thanos Querier"
+    default: true
+    plugin:
+      kind: "PrometheusDatasource"
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            url: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+            secret: thanos-querier-global-datasource-secret
+  client:
+    kubernetesAuth:
+      enable: true
+    tls:
+      enable: true
+      caCert:
+        type: file
+        # WORKAROUND: docs say /ca/service-ca.crt but COO does not mount that volume in Perses pod
+        # Verified: 2026-07-09 — /ca/ does not exist, SA projected path works
+        # Remove when: COO mounts CA volume in Perses StatefulSet
+        certPath: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+{{- end }}

@@ -23,5 +23,8 @@ spec:
   channel: {{ .Values.leaderWorkerSet.channel }}
   source: {{ .Values.leaderWorkerSet.source }}
   sourceNamespace: {{ .Values.leaderWorkerSet.sourceNamespace }}
-  installPlanApproval: Automatic
+  installPlanApproval: {{ .Values.leaderWorkerSet.installPlanApproval | default "Automatic" }}
+  {{- if .Values.leaderWorkerSet.startingCSV }}
+  startingCSV: {{ .Values.leaderWorkerSet.startingCSV }}
+  {{- end }}
 {{- end }}

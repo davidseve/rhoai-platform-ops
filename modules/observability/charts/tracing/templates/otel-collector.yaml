@@ -9,6 +9,11 @@ metadata:
 spec:
   mode: deployment
   config:
+{{- if .Values.coo.enabled }}
+    extensions:
+      bearertokenauth:
+        filename: /var/run/secrets/kubernetes.io/serviceaccount/token
+{{- end }}
     receivers:
       otlp:
         protocols:
@@ -39,14 +44,26 @@ spec:
         metrics_flush_interval: 15s
     exporters:
       otlp/tempo:
-        endpoint: {{ .Values.collector.tempoEndpoint | quote }}
+        endpoint: {{ if .Values.coo.enabled }}{{ .Values.coo.tempoEndpoint | quote }}{{ else }}{{ .Values.collector.tempoEndpoint | quote }}{{ end }}
         tls:
+{{- if .Values.coo.enabled }}
+          insecure: false
+          insecure_skip_verify: true
+        headers:
+          x-scope-orgid: {{ .Values.coo.tempoTenant }}
+        auth:
+          authenticator: bearertokenauth
+{{- else }}
           insecure: true
+{{- end }}
       prometheus:
         endpoint: "0.0.0.0:{{ .Values.collector.metricsPort }}"
         resource_to_telemetry_conversion:
           enabled: true
     service:
+{{- if .Values.coo.enabled }}
+      extensions: [bearertokenauth]
+{{- end }}
       pipelines:
         traces:
           receivers: [otlp]

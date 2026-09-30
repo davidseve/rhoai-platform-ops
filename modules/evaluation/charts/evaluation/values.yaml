@@ -39,6 +39,8 @@ mlflow:
 # The RHOAI dashboard Evaluations page requires the CR in redhat-ods-applications,
 # but that creates cross-namespace complexity with MLflow (which rejects its own
 # namespace as a workspace). We prioritize a working pipeline over dashboard UI.
+# Tracked upstream: https://redhat.atlassian.net/browse/RHOAIENG-66068
+# RFE: https://redhat.atlassian.net/browse/RHAIRFE-2289
 # GA review: when EvalHub moves to GA, re-test dashboard integration with a
 # dedicated namespace — the sidecar may support cross-namespace discovery.
 evalhub:
@@ -66,5 +68,6 @@ evalhub:
   otel:
     enabled: false
 
-# Image with oc/kubectl CLI for hook Jobs (model-auth-init)
-hookImage: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+# Image with oc/kubectl CLI for hook Jobs (model-auth-init).
+# registry.redhat.io ose-cli*:latest is unsupported; use cluster ImageStream.
+hookImage: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest

@@ -19,7 +19,9 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: register
-        image: registry.redhat.io/openshift4/ose-cli:latest
+        # registry.redhat.io/openshift4/ose-cli:latest is rejected (no latest tag).
+        # Prefer the cluster ImageStream, overridable via values.
+        image: {{ .Values.registry.cliImage | default "image-registry.openshift-image-registry.svc:5000/openshift/cli:latest" }}
         command:
         - /bin/bash
         - -c

@@ -4,6 +4,8 @@ rhoai:
   channel: stable-3.4
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: rhods-operator.3.4.4
+  installPlanApproval: Automatic
 
 connectivityLink:
   enabled: true
@@ -14,6 +16,8 @@ connectivityLink:
   package: rhcl-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: rhcl-operator.v1.4.3
+  installPlanApproval: Automatic
 
 kuadrant:
   # Namespace for Kuadrant CR and Limitador (not the operator subscription)
@@ -28,3 +32,5 @@ leaderWorkerSet:
   channel: stable-v1.0
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: leader-worker-set.v1.0.1
+  installPlanApproval: Automatic

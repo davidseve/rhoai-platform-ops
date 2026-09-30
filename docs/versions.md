@@ -2,30 +2,33 @@
 
 Versions used in this project, aligned with RHOAI 3.4 GA.
 
+**Note:** All operators are pinned via `startingCSV` with `installPlanApproval: Automatic` (auto-upgrade within the channel, but the initial install targets the pinned version). COO is enabled (`coo.enabled: true`). RHCL 1.4.3 requires Envoy 1.35+ — resolved by Service Mesh 3.3.1 shipping Envoy 1.36.6-dev. See [ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md).
+
 ## RHOAI Core
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
-| RHOAI Operator | 3.4 GA | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
+| RHOAI Operator | 3.4.4 | `stable-3.4` | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
 | KServe | 0.17.0 | -- | Managed by RHOAI operator |
 | MaaS (Models-as-a-Service) | 0.1.1 (GA) | -- | Managed by RHOAI operator |
-| llm-d (distributed inference) | 0.7.1 (GA) | -- | Not used (CPU deployment) |
+| llm-d (distributed inference) | 0.7.1 (GA) | -- | Used via LLMInferenceService (single-replica CPU, no disaggregation) |
 | Red Hat AI Inference Server | 3.4.0 (GA) | -- | Not used (custom vLLM CPU) |
 
 ## API Governance
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
-| RHCL Operator (Kuadrant) | 1.3+ | `stable` | [RHCL Docs](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1) |
-| LeaderWorkerSet | 1.0 | `stable-v1.0` | Required for llm-d |
+| RHCL Operator (Kuadrant) | 1.4.3 | `stable` | [RHCL Docs](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.1) |
+| LeaderWorkerSet | 1.0.1 | `stable-v1.0` | Required for llm-d |
 
 ## Observability
 
 | Component | Version | Channel | Reference |
 |---|---|---|---|
-| Grafana Operator | 5.x | `v5` | Community operator ([ADR-0003](adr/0003-grafana-operator.md)) |
-| Red Hat build of OpenTelemetry | -- | `stable` | [OTel Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
-| Red Hat build of Tempo | -- | `stable` | [Tempo Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
+| Cluster Observability Operator (COO) | 1.5.2 | `stable` | [COO Docs](https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/) ([ADR-0013](adr/0013-coo-observability-migration.md)) |
+| Grafana Operator | 5.24.0 | `v5` | Community operator ([ADR-0003](adr/0003-grafana-operator.md)) |
+| Red Hat build of OpenTelemetry | 0.158.0-2 | `stable` | [OTel Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
+| Red Hat build of Tempo | 0.22.0-2 | `stable` | [Tempo Docs](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/) |
 
 ## Model Serving
 
@@ -55,8 +58,60 @@ Versions used in this project, aligned with RHOAI 3.4 GA.
 
 | Component | Version | Notes |
 |---|---|---|
-| OpenShift Container Platform | 4.19.9+ / 4.20 / 4.21 | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
+| OpenShift Container Platform | 4.19.9+ / 4.20 / 4.21 / 4.22 | [Supported Configs](https://access.redhat.com/articles/rhoai-supported-configs-3.x) |
+| OpenShift Service Mesh 3 | 3.3.1 (Istio 1.28.5) | Managed by RHOAI operator; Envoy 1.36.6-dev ([ADR-0014](adr/0014-wasm-plugin-get-auth-failure.md) — resolved) |
 | PostgreSQL | 16 | `registry.redhat.io/rhel9/postgresql-16` (shared DB for maas-api and EvalHub) |
+
+## Operator Version Pinning
+
+All operators are pinned via `startingCSV` in their respective `values.yaml`.
+This ensures reproducible installs on fresh clusters while `installPlanApproval: Automatic`
+still allows z-stream security patches within the channel.
+
+### Pinned versions (single source of truth)
+
+| Operator | `startingCSV` | Values file |
+|---|---|---|
+| RHOAI | `rhods-operator.3.4.4` | `modules/maas/charts/operators/values.yaml` |
+| RHCL (Kuadrant) | `rhcl-operator.v1.4.3` | `modules/maas/charts/operators/values.yaml` |
+| LeaderWorkerSet | `leader-worker-set.v1.0.1` | `modules/maas/charts/operators/values.yaml` |
+| COO | `cluster-observability-operator.v1.5.2` | `modules/observability/charts/operators/values.yaml` |
+| Grafana | `grafana-operator.v5.24.0` | `modules/observability/charts/operators/values.yaml` |
+| OpenTelemetry | `opentelemetry-operator.v0.158.0-2` | `modules/observability/charts/operators/values.yaml` |
+| Tempo | `tempo-operator.v0.22.0-2` | `modules/observability/charts/operators/values.yaml` |
+
+### How to upgrade an operator
+
+1. **Check available versions** in the catalog:
+   ```bash
+   oc get packagemanifest <package> -o jsonpath='{.status.channels[?(@.name=="<channel>")].currentCSV}'
+   ```
+   Example:
+   ```bash
+   oc get packagemanifest rhods-operator -o jsonpath='{.status.channels[?(@.name=="stable-3.4")].currentCSV}'
+   ```
+
+2. **Update `startingCSV`** in the corresponding `values.yaml` (see table above).
+
+3. **Update this document** — bump the version in the tables above and add a row to the upgrade history below.
+
+4. **Test on a non-production cluster first**:
+   ```bash
+   make deploy-argocd CLUSTER_DOMAIN=apps.ocp.example.com
+   make wait-healthy
+   make test-all
+   ```
+
+5. **Verify the running CSV** matches your pin:
+   ```bash
+   oc get csv -A --no-headers | grep -v Copied | sort -u -k2
+   ```
+
+### Upgrade history
+
+| Date | Operator | From | To | Notes |
+|---|---|---|---|---|
+| 2026-09-30 | All | (unpinned) | See table above | Initial pinning of all operators |
 
 ## Version Bump Summary (3.3 -> 3.4 GA)
 

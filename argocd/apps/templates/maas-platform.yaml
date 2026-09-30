@@ -16,6 +16,12 @@ spec:
       parameters:
         - name: grafana.enabled
           value: "{{ .Values.modules.observability.enabled }}"
+        {{- if .Values.modules.maas.modelRegistry.enabled }}
+        - name: datasciencecluster.components.modelregistry.managementState
+          value: "Managed"
+        - name: dashboard.disableModelRegistry
+          value: "false"
+        {{- end }}
         {{- if .Values.clusterDomain }}
         - name: gateway.hostname
           value: "maas.{{ .Values.clusterDomain }}"

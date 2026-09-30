@@ -19,6 +19,11 @@ MODEL_NAMESPACE = os.getenv("MAAS_MODEL_NAMESPACE", "models-as-a-service")
 MAAS_MODEL_NAME = os.getenv("MAAS_MODEL_NAME", "tinyllama-test")
 MAAS_GATEWAY_NAME = os.getenv("MAAS_GATEWAY_NAME", "maas-default-gateway")
 MAAS_GATEWAY_NAMESPACE = os.getenv("MAAS_GATEWAY_NAMESPACE", "openshift-ingress")
+COO_ENABLED = os.getenv("COO_ENABLED", "false").lower() == "true"
+MONITORING_NAMESPACE = os.getenv(
+    "MONITORING_NAMESPACE",
+    "redhat-ods-monitoring" if COO_ENABLED else "observability",
+)
 
 
 def _run(cmd: str, *, check: bool = True) -> subprocess.CompletedProcess:
@@ -82,12 +87,25 @@ def thanos_url():
 
 @pytest.fixture(scope="session")
 def tempo_url():
+    if COO_ENABLED:
+        return "http://tempo-data-science-tempomonolithic-gateway.redhat-ods-monitoring.svc:3200"
     return "http://tempo-tempo:3200"
 
 
 @pytest.fixture(scope="session")
 def collector_namespace():
     return "observability"
+
+
+@pytest.fixture(scope="session")
+def tempo_namespace():
+    """Namespace where Tempo is deployed (observability or redhat-ods-monitoring with COO)."""
+    return MONITORING_NAMESPACE
+
+
+@pytest.fixture(scope="session")
+def coo_enabled():
+    return COO_ENABLED
 
 
 @pytest.fixture(scope="session")

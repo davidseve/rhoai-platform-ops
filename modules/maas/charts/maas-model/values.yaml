@@ -71,8 +71,11 @@ tracing:
 
 # Model Registry: registers the model in RHOAI Model Registry via REST API Job.
 # Creates RegisteredModel + ModelVersion + ModelArtifact (idempotent).
+# Requires Model Registry to be deployed (modelregistry: Managed in DSC).
 registry:
-  enabled: true
+  enabled: false
+  # ose-cli:latest is unsupported on registry.redhat.io; use cluster ImageStream
+  cliImage: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
 
 # MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
 modelRef:
@@ -93,6 +96,11 @@ authPolicy:
 # Groups must be Kubernetes groups (from TokenReview), not OpenShift Groups.
 subscription:
   enabled: true
+  # Required for Usage dashboard metrics (TelemetryPolicy labels).
+  # Without these, the Wasm plugin fails to evaluate CEL expressions.
+  tokenMetadata:
+    costCenter: "default"
+    organizationId: "rhoai-platform-ops"
   tiers:
     free:
       groups:

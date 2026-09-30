@@ -1,0 +1,41 @@
+{{- if .Values.coo.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tempo-traces-writer
+rules:
+- apiGroups:
+  - tempo.grafana.com
+  resources:
+  - "*"
+  verbs:
+  - get
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-tempo-writer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tempo-traces-writer
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.collector.name }}-collector
+  namespace: {{ .Values.collector.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: otel-collector-tempo-writer
+  namespace: {{ .Values.coo.tempoNamespace | default "redhat-ods-monitoring" }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tempo-traces-writer
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.collector.name }}-collector
+  namespace: {{ .Values.collector.namespace }}
+{{- end }}

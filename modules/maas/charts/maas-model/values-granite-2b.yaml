@@ -37,7 +37,7 @@ tracing:
   serviceName: ""
 
 registry:
-  enabled: true
+  enabled: false
 
 modelRef:
   enabled: true
@@ -51,6 +51,9 @@ authPolicy:
 
 subscription:
   enabled: true
+  tokenMetadata:
+    costCenter: "default"
+    organizationId: "rhoai-platform-ops"
   tiers:
     free:
       groups:

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (partially superseded by [ADR-0013](0013-coo-observability-migration.md) -- Grafana retained for custom MaaS dashboards; COO/Perses available alongside for native RHOAI observability)
 
 ## Context
 

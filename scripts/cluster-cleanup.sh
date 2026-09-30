@@ -96,7 +96,7 @@ force_delete_ns() {
   # Target CRDs from our operators first (fast path).
   local crds
   crds=$($OC get crd -o name 2>/dev/null \
-    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset|maas)' \
+    | grep -iE '(opendatahub|kuadrant|grafana|integreatly|opentelemetry|tempo|trustyai|kserve|modelmesh|leaderworkerset|maas|perses)' \
     | sed 's|customresourcedefinition.apiextensions.k8s.io/||' || true)
 
   for crd in $crds; do
@@ -347,6 +347,35 @@ cleanup_observability_residual() {
   done
   run "$OC delete grafana --all -n observability --ignore-not-found"
 
+  # Perses CRs (deployed by RHOAI in redhat-ods-monitoring; have perses.dev/finalizer)
+  log "Deleting Perses CRs..."
+  for ns in redhat-ods-monitoring observability; do
+    if $OC get ns "$ns" &>/dev/null; then
+      for perses in $($OC get perses -n "$ns" -o name 2>/dev/null); do
+        run "$OC patch '$perses' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete perses --all -n '$ns' --timeout=30s --ignore-not-found"
+      for pd in $($OC get persesdashboard -n "$ns" -o name 2>/dev/null); do
+        run "$OC patch '$pd' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete persesdashboard --all -n '$ns' --timeout=30s --ignore-not-found"
+      for pds in $($OC get persesdatasource -n "$ns" -o name 2>/dev/null); do
+        run "$OC patch '$pds' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
+      done
+      run "$OC delete persesdatasource --all -n '$ns' --timeout=30s --ignore-not-found"
+    fi
+  done
+
+  # COO resources (UIPlugins, MonitoringStack in redhat-ods-monitoring)
+  log "Deleting COO UIPlugins..."
+  for plugin in monitoring troubleshooting-panel distributed-tracing; do
+    run "$OC delete uiplugin '$plugin' --ignore-not-found"
+  done
+
+  # COO Subscription in openshift-operators
+  run "$OC delete subscription cluster-observability-operator -n openshift-operators --ignore-not-found"
+  run "$OC delete csv -n openshift-operators -l operators.coreos.com/cluster-observability-operator.openshift-operators --ignore-not-found"
+
   # Operator subscriptions / CSVs in operator namespaces
   for ns in openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
     run "$OC delete subscription --all -n '$ns' --ignore-not-found"
@@ -359,10 +388,10 @@ cleanup_observability_residual() {
   run "$OC delete clusterrole grafana-proxy-observability --ignore-not-found"
 
   # Namespaces
-  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
+  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator redhat-ods-monitoring; do
     run "$OC delete ns '$ns' --timeout=60s --ignore-not-found"
   done
-  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator; do
+  for ns in observability openshift-grafana-operator openshift-opentelemetry-operator openshift-tempo-operator redhat-ods-monitoring; do
     wait_ns_gone "$ns" 90 &
   done
   wait
@@ -518,6 +547,7 @@ verify_cleanup() {
     "kuadrant-system"
     "leader-worker-set"
     "observability"
+    "openshift-grafana-operator"
     "openshift-opentelemetry-operator"
     "openshift-tempo-operator"
   )
@@ -596,12 +626,14 @@ cleanup_model_registry_residual() {
   local ns="rhoai-model-registries"
 
   if $OC get ns "$ns" &>/dev/null; then
-    # ModelRegistry CRs can have finalizers from the operator
-    log "Deleting ModelRegistry CRs..."
-    for mr in $($OC get modelregistry -n "$ns" -o name 2>/dev/null); do
+    # ModelRegistry instance CRs (modelregistry.opendatahub.io) can have finalizers.
+    # Must use fully-qualified name — short name 'modelregistry' is ambiguous with
+    # the cluster-scoped components.platform.opendatahub.io resource.
+    log "Deleting ModelRegistry instance CRs..."
+    for mr in $($OC get modelregistry.modelregistry.opendatahub.io -n "$ns" -o name 2>/dev/null); do
       run "$OC patch '$mr' -n '$ns' --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"
     done
-    run "$OC delete modelregistry --all -n '$ns' --timeout=60s --ignore-not-found"
+    run "$OC delete modelregistry.modelregistry.opendatahub.io --all -n '$ns' --timeout=60s --ignore-not-found"
 
     # Secrets and Jobs
     log "Deleting Secrets and Jobs..."
