@@ -68,5 +68,6 @@ evalhub:
   otel:
     enabled: false
 
-# Image with oc/kubectl CLI for hook Jobs (model-auth-init)
-hookImage: registry.redhat.io/openshift4/ose-cli-rhel9:latest
+# Image with oc/kubectl CLI for hook Jobs (model-auth-init).
+# registry.redhat.io ose-cli*:latest is unsupported; use cluster ImageStream.
+hookImage: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest

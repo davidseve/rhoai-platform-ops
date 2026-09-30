@@ -13,6 +13,7 @@ Master plan for the RHOAI Platform Operations project. Each pillar is implemente
 | **Evaluation**     | `modules/evaluation/`                                        | Quality eval, MLflow tracking, GuideLLM benchmarks         | MaaS (models must be running)                    |
 | **Model Registry** | `modules/maas/charts/model-registry/` + `maas-model` catalog | Model governance catalog in RHOAI Dashboard                | MaaS (DSC modelregistry: Managed)                |
 | **Guardrails**     | `modules/guardrails/` (planned)                              | Runtime input/output safety via NeMo Guardrails (TrustyAI) | MaaS (models must be running), TrustyAI operator |
+| **Agent Governance** | `modules/agent-platform/` (planned)                        | Workload identity (SPIFFE/SPIRE) + MCP tool governance for agent workloads | MaaS (Kuadrant/Authorino base)  |
 
 
 ## Implementation Order
@@ -89,7 +90,8 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 - **ArgoCD PreDelete hooks for ordered cleanup**: ArgoCD sync-waves control creation order but NOT deletion order between child apps in app-of-apps (all children delete simultaneously). This causes stuck `models-as-a-service` namespace because operators (wave 0) are deleted before their CRs (wave 2) resolve finalizers. ArgoCD 3.3+ adds `argocd.argoproj.io/hook: PreDelete` — add a PreDelete Job to `maas-operators` that clears LLMInferenceService/DSC/DSCI finalizers before operators are removed. **Blocked on**: OpenShift GitOps shipping ArgoCD 3.3+ (current: GitOps 1.20.3 = ArgoCD 2.x). **Workaround**: `scripts/cluster-cleanup.sh` deletes apps in reverse wave order manually. See [ArgoCD 3.3 PreDelete](https://dev.to/x4nent/argocd-33-predelete-hook-making-gitops-deletion-a-safe-lifecycle-3f28).
 - **EvalHub OTel logs**: `enableLogs: false` in EvalHub CR because there is no log backend (Loki/Vector) in the observability stack. The OTel Collector only has trace and metric exporters. Re-evaluate when a log backend is added (e.g., COO with logging UIPlugin, or standalone Loki). Enabling without a backend would cause the collector to drop or reject log signals.
 - **Gateway production hardening** -- Limitador: resource limits (100m-500m CPU, 128-256Mi memory) via Limitador CR. PDBs for Authorino and Limitador (minAvailable: 1). Two new alerts: `MaaSAuthTimeoutRateHigh` (auth errors >1%) and `MaaSAuthorinoCPUSaturation` (CPU >80%). E2E tests for PDBs. Documentation in GATEWAY-AND-ROUTE.md. **Pending**: Authorino replicas and resource limits — CRD (`v1beta2`) does not expose `spec.resources`; re-evaluate when Authorino operator adds support.
-- **llm-d observability audit** -- LLMInferenceService IS the llm-d CRD; the KServe controller auto-creates `PodMonitor` (`kserve-llm-isvc-vllm-engine-*`) and `ServiceMonitor` (`kserve-llm-isvc-scheduler-*`) with label `app.kubernetes.io/component=llm-monitoring`. Current custom `vllm-metrics` PodMonitor may duplicate scraping. The EPP (Endpoint Picker) is auto-deployed and exposes `inference_objective_*`, `inference_extension_*`, and `inference_pool_*` metrics not captured in our dashboards or alerts. **Action items (require cluster access)**:
+- **Gateway HTTPRoute defense-in-depth (KCS Step 4, deferred)** -- Primary fix already applied: `allowedRoutes.namespaces.from: Selector` with explicit namespace list in `gateway.yaml` (not the insecure upstream default `from: All`). Optional additional hardening from [KCS 7145755](https://access.redhat.com/solutions/7145755) Step 4 not yet implemented: (1) `ValidatingAdmissionPolicy` restricting HTTPRoute creation to authorized namespaces, (2) RBAC review of `system:openshift:gateway-api:aggregate-to-admin` (default allows any namespace `edit`/`admin` to create HTTPRoutes). Defense-in-depth only — not required given current Selector configuration.
+- **llm-d observability audit** -- LLMInferenceService IS the llm-d CRD; the KServe controller auto-creates `PodMonitor` (`kserve-llm-isvc-vllm-engine-*`) and `ServiceMonitor` (`kserve-llm-isvc-scheduler-*`) with label `app.kubernetes.io/component=llm-monitoring`. Current custom `vllm-metrics` PodMonitor may duplicate scraping. The EPP (Endpoint Picker) is auto-deployed and exposes `inference_objective_*`, `inference_extension_*`, and `inference_pool_*` metrics not captured in our dashboards or alerts. **Blueprint context**: this is "Tier 3" of the three-tier inference routing model described in [Architect an open blueprint for cloud-native AI agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents) (Tier 1 = sandbox egress/privacy routing, Tier 2 = semantic/cost routing — see [Phase 8.3](#83-semantic-routing-tier-2--watch-item), Tier 3 = replica/KV-cache efficiency routing, which is exactly what the EPP does here) — no new work from this framing, just context for why this item matters architecturally. **Action items (require cluster access)**:
   1. Verify auto-created PodMonitor/ServiceMonitor exist (`oc get podmonitors,servicemonitors -n models-as-a-service -l app.kubernetes.io/component=llm-monitoring`)
   2. Check if EPP pod is running (`oc get pods -n models-as-a-service | grep epp`)
   3. Determine metric prefix in use (`vllm:` vs `kserve_vllm:`) — dashboards and alerts must match
@@ -185,7 +187,7 @@ Stretch goals deferred from Phase 2. See [ADR-0004](adr/0004-tracing-stack.md) f
 >
 > **GatewayClassName:** Upstream docs use `openshift-default`, we use `data-science-gateway-class` (created by RHOAI when KServe Managed). Keeping current value — validate on cluster.
 >
-> **Gateway listener config:** Upstream defines HTTP(80)+HTTPS(443) with hostname and `from: All`. We have HTTPS-only, no hostname, `from: Selector`. More restrictive = better security. Validate HTTPRoutes are accepted.
+> **Gateway listener config:** Upstream defines HTTP(80)+HTTPS(443) with hostname and `from: All`. We have HTTPS-only, no hostname, `from: Selector`. More restrictive = better security. Validate HTTPRoutes are accepted. See also deferred Step 4 hardening in Phase 2 (ValidatingAdmissionPolicy + HTTPRoute RBAC, [KCS 7145755](https://access.redhat.com/solutions/7145755)).
 >
 > **vLLM CPU x86_64:** Red Hat does NOT publish an x86_64 CPU image (`odh-vllm-cpu-rhel9` only has ppc64le/s390x). Custom image `quay.io/dseveria/vllm-cpu-openai-ubi9:0.3-otel` remains in use today. Base community image (`quay.io/rh-aiservices-bu/vllm-cpu-openai-ubi9`) has no newer versions than 0.3. **Roadmap**: evaluate upstream `docker.io/vllm/vllm-openai-cpu:v0.22.0` as a replacement (see Phase 2b pending).
 >
@@ -369,6 +371,7 @@ Identified from [Red Hat blog: Scaling enterprise AI — MaaS with RHOAI 3.4](ht
 - **External Model Routing** (`ExternalModel` CRD) -- Route external cloud LLM providers (AWS Bedrock, Azure OpenAI, Anthropic) through the same gateway with the same governance (auth, rate limits, showback). OpenAI-compatible `/v1/chat/completions` endpoint, applications don't need to know where the model runs. Requires: new Helm templates for `ExternalModel` CRs, Secrets for provider API keys. Reference: [upstream MaaS docs — ExternalModel](https://opendatahub-io.github.io/models-as-a-service/latest/).
 - **Enterprise OIDC Authentication** -- Configure Authorino OIDC identity source alongside KubernetesTokenReview. Allows external IdP users (Azure AD, Okta, Keycloak) to obtain API keys without needing an OpenShift account. Needs ADR to decide scope (inference only, or management API too).
 - **COO Native Showback Dashboards (DONE)** -- `observabilityDashboard: true` enabled. COO deployed with UIPlugins. See [ADR-0013](adr/0013-coo-observability-migration.md). **Remaining when GA**: remove `coo.enabled` gate (make default), verify DSCI monitoring API stability.
+- **Agent-as-a-Service (OGX)** -- RHOAI 3.5 ships OGX (formerly Llama Stack) as Early Access: a shared agentic loop runtime behind the OpenAI-compatible Responses API, contrasted with the "Agent-as-a-Workload" pattern `open-claw-in-openshell` already implements (loop inside the sandboxed pod). Per the [open blueprint article](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents), the two patterns compose: a sandboxed agent pod can delegate tool execution to a shared loop while keeping its own workload identity. **Evaluate once GA**: OGX Operator deployment, whether it fits better as a `rhoai-platform-ops` module (shared runtime, multi-tenant) or stays a per-agent-project choice, and caller-identity propagation gaps (no SPIFFE/WIMSE story yet for this pattern). Track alongside [Phase 8](#phase-8-agentic-platform-foundations-planned).
 
 #### Blocked on upstream
 
@@ -383,6 +386,8 @@ Identified from [Red Hat blog: Scaling enterprise AI — MaaS with RHOAI 3.4](ht
 ### Phase 7: Guardrails — NeMo Guardrails via TrustyAI (PLANNED)
 
 Goal: add runtime input/output safety to MaaS-served models using [NVIDIA NeMo Guardrails](https://docs.nvidia.com/nemo/guardrails/latest/index.html), deployed and managed by the [TrustyAI Service Operator](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/enabling_ai_safety_with_guardrails/index) (same ecosystem as EvalHub). NeMo Guardrails is **fully supported in RHOAI 3.4**; the legacy FMS Guardrails Orchestrator is deprecated — do not adopt it for new work.
+
+**Blueprint alignment**: this module is the concrete implementation of the "Inference guardrails" cross-cutting security control (input/output screening at the inference boundary) described in [Architect an open blueprint for cloud-native AI agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents)'s defense-in-depth model — one of four controls that apply across all three isolation rings, alongside workload identity, tool authorization, and pre-production testing (see [Phase 8](#phase-8-agentic-platform-foundations-planned)). Once this ships, any agent project calling MaaS-served models as an inference backend — starting with `open-claw-in-openshell` — should route its model traffic through the guardrailed endpoint rather than the raw model endpoint, so agent prompts and tool-injected content get the same input/output screening as direct API consumers.
 
 **Scope**: programmable guardrails (input, dialog, output, retrieval, execution rails) between clients and LLM endpoints — content safety, jailbreak detection, topic control, PII masking, and custom Colang flows. Complements offline security scanning via Garak in the evaluation module; guardrails enforce policy at inference time.
 
@@ -428,6 +433,43 @@ Engineering guidance: NeMo Guardrails configs fall into four tiers of increasing
 **Red Hat products**: TrustyAI Operator (`NemoGuardrails` CR, `trustyai.opendatahub.io`), RHOAI model serving (LLMInferenceService as backend LLM).
 
 **Status note**: TrustyAI operator is GA; NeMo Guardrails moved from Tech Preview to fully supported in RHOAI 3.4 ([release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/new-features-and-enhancements_relnotes)). Reconcile any remaining TP warnings in upstream chapter headers against release notes before production use.
+
+### Phase 8: Agentic Platform Foundations (PLANNED)
+
+Goal: provide shared, platform-level building blocks for governed agent workloads — workload identity and tool-call authorization — so that agent projects (starting with [open-claw-in-openshell](https://github.com/dseveria/open-claw-in-openshell), which currently authenticates only human/browser access and has no cryptographic identity for the agent pod itself) don't each have to solve these problems independently.
+
+Source: [Architect an open blueprint for cloud-native AI agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents) (Red Hat Developer, 2026-07-20). This phase implements the article's control-plane band (workload identity service) and the MCP Gateway checkpoint between the agent pod and skill backends, reusing the Kuadrant/Authorino stack this project already runs for the MaaS gateway.
+
+**Module scope**: new `modules/agent-platform/` (or extend `modules/maas/charts/operators/` if the Kuadrant/Authorino reuse makes a standalone module unnecessary — decide via ADR when work starts).
+
+#### 8.1 Workload Identity — SPIFFE/SPIRE
+
+- Deploy SPIRE server + agent (DaemonSet) on OCP, scoped identities per namespace/ServiceAccount (JWT-SVID)
+- Authentication sidecar pattern: exchange the SPIFFE identity for short-lived access tokens via token exchange (RFC 8693) or JWT bearer grant (RFC 7523) against an OIDC provider (Keycloak or OCP's own OAuth server)
+- Goal: no static, long-lived API key anywhere in an agent's request path — a leaked prompt or workspace file has nothing durable to steal
+- **Directly fixes a known gap**: `open-claw-in-openshell`'s ROADMAP item 13.4 documents a plaintext MaaS API key that must currently be injected onto sandbox disk (Node `fetch()`/`undici` limitation blocks placeholder-based credential injection). A SPIFFE-issued, auto-rotated credential removes the need for that static key entirely, rather than requiring the interim mitigations (secret registry, path denylist) tracked there today.
+- Maturity note (per the article): SPIFFE/SPIRE + JWT-SVID is **mature today**; agent-specific identity injection (e.g. Kagenti) and identity chaining (IETF WIMSE) are still emerging — don't block on those.
+- E2E tests: SPIRE server/agent healthy, a test workload obtains a valid JWT-SVID, token exchange against the configured OIDC provider succeeds and returns a short-lived, correctly-scoped access token
+
+#### 8.2 Tool Governance — MCP Gateway
+
+- Deploy [Kuadrant/mcp-gateway](https://github.com/Kuadrant/mcp-gateway) (Envoy + Kuadrant/Authorino for policy — the same components already backing the MaaS AI gateway) as a single checkpoint in front of every MCP tool/skill backend
+- Aggregated tool catalog behind one `MCP_URL`; agent pods only need that single endpoint configured, never individual skill-backend addresses
+- Authorization by token claims minted during the 8.1 workload-identity exchange — the gateway never reads the prompt, so a prompt-injection attack that tries to force an unauthorized tool call fails at the infrastructure layer, not by relying on the model's judgment
+- Same claims-based check applies uniformly to any tool backend type: a CUDA/optimization service, a database query tool, or a SaaS endpoint
+- Maturity note (per the article): this is explicitly listed as **emerging/preview** — MCP Gateway and claims-filtered tool catalogs are not yet GA; pin versions and gate behind a feature flag
+- E2E tests: gateway routes an allowed tool call end-to-end, denies a tool call outside the caller's granted claims, aggregated catalog reflects all registered backends
+
+#### 8.3 Semantic Routing (Tier 2) — watch item
+
+- vLLM Semantic Router (upstream) or the Red Hat AI gateway's own semantic routing (still roadmap, not shipped, per the article's maturity table) — a lightweight classifier that picks the cheapest model able to handle a given request, escalating to a more capable model on low-confidence signals
+- **Not scheduled**: re-evaluate once either upstream option reaches a supportable maturity level. This is Tier 2 of the article's three-tier inference routing model (Tier 1 = sandbox/client-side egress and privacy routing, owned by the agent's sandbox supervisor, not this project; Tier 3 = llm-d Router/EPP, already effectively covered by `LLMInferenceService` — see the existing "llm-d observability audit" item in Phase 2b)
+
+#### 8.4 Confidential Computing for inference nodes — watch item
+
+- Confidential containers extend the trust boundary into silicon for GPU/accelerator worker pods, protecting model memory at runtime even if the node or a neighboring workload is compromised, with attestation proving the workload runs the code it claims before secrets are released
+- Per the article, this is **generally available on current accelerators but carries runtime overhead** (concentrated in host-to-device transfers) — treat as a ring to plan for, not to start with
+- **Not scheduled**: cross-reference the sandbox-side Kata/OSC work tracked in `open-claw-in-openshell`'s ROADMAP (Phase 15.3) — that project is closer to needing Ring 3 first (agent pod isolation) than this project's GPU inference workers are today
 
 ## Decision Log
 

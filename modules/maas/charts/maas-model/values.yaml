@@ -74,6 +74,8 @@ tracing:
 # Requires Model Registry to be deployed (modelregistry: Managed in DSC).
 registry:
   enabled: false
+  # ose-cli:latest is unsupported on registry.redhat.io; use cluster ImageStream
+  cliImage: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
 
 # MaaSModelRef: registers the model in the MaaS catalog (/v1/models).
 modelRef:

@@ -367,8 +367,8 @@ wait-healthy: ## Wait for all ArgoCD apps to be Synced+Healthy and model pods Re
 					echo "  Skipping InstallPlan $$ip in $$ns ($$ip_csv != pinned 3.4.x)"; \
 					continue; \
 				fi; \
-				if [ "$$ns" = "redhat-connectivity-link" ] && echo "$$ip_csvs" | grep -q "rhcl-operator" && ! echo "$$ip_csvs" | grep -qF "rhcl-operator.v1.3."; then \
-					echo "  Skipping InstallPlan $$ip in $$ns (contains rhcl-operator beyond v1.3.x pin)"; \
+				if [ "$$ns" = "redhat-connectivity-link" ] && echo "$$ip_csvs" | grep -q "rhcl-operator" && ! echo "$$ip_csvs" | grep -qE "rhcl-operator\.v1\.(3|4)\."; then \
+					echo "  Skipping InstallPlan $$ip in $$ns (contains rhcl-operator outside v1.3.x/v1.4.x pin)"; \
 					continue; \
 				fi; \
 				echo "  Auto-approving InstallPlan $$ip in $$ns ($$ip_csv)..."; \
