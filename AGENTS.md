@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents (Cursor, Claude Code, etc.) when working with this repository.
+This file provides guidance to AI coding agents (Claude Code, Codex, Cursor, etc.) when working with this repository.
 
 ## Project Overview
 
@@ -197,3 +197,104 @@ Tiers (`free`, `premium`) are defined as a map in `modules/maas/charts/maas-mode
 - [Evaluation](docs/EVALUATION.md)
 - [Benchmarks](docs/BENCHMARKS.md)
 - [ADRs](docs/adr/)
+
+## Always-on rules
+
+> Folded from tool-specific rule files so every agent applies them.
+
+### project-conventions (formerly `.cursor/rules/project-conventions.mdc`)
+
+### Project Conventions
+
+#### Module Structure
+
+Each module lives in `modules/<name>/` with three subdirectories:
+- `charts/` -- Helm charts (one or more per module)
+- `tests/` -- pytest test suite with `conftest.py`, `requirements.txt`, `pytest.ini`
+- `docs/` -- Module-specific documentation
+
+ArgoCD Application templates go in `argocd/apps/templates/` with a module enable guard:
+```yaml
+{{- if .Values.modules.<name>.enabled }}
+```
+
+#### Helm-First Workflow
+
+Every chart must be testable with `helm template` before adding it to ArgoCD.
+
+1. Develop and validate with `helm template modules/<name>/charts/<chart>`
+2. Test on-cluster with `helm install` directly
+3. Once stable, add ArgoCD Application template and enable in `argocd/apps/values.yaml`
+
+#### Red Hat Priority
+
+Always prioritize Red Hat products and official Red Hat documentation:
+- RHOAI (Red Hat OpenShift AI) for model serving
+- Kuadrant / RHCL (Red Hat Connectivity Link) for API governance
+- Red Hat build of OpenTelemetry for tracing
+- Red Hat build of Tempo for trace storage
+- Cluster Observability Operator for monitoring
+
+Use community projects only when Red Hat does not cover the need.
+
+#### Reference Implementations
+
+When designing or implementing **new features**, also review the [RHOAI BU Cluster](https://github.com/rh-aiservices-bu/rhoaibu-cluster) GitOps repository. It is Red Hat's internal reference architecture for a fully GitOps-managed RHOAI platform (MaaS with 15+ models, operators, observability, GPU serving). Use it for proven patterns — not as a source of truth over Red Hat product docs.
+
+- **Repo:** https://github.com/rh-aiservices-bu/rhoaibu-cluster (`dev` branch for development cluster, `main` for production)
+- **Use for:** LLMInferenceService configs, MaaS/Gateway setup, model deployment patterns, observability integration, GitOps layout
+- **Do NOT copy blindly:** adapt to this repo's Helm-first module structure, ADRs, and test requirements; upstream choices may differ from our supported RHOAI version
+
+#### Testing
+
+Every change needs tests. Tests must be:
+- **Idempotent**: runnable N times without cleanup between runs
+- **Robust**: no dependency on execution order between modules
+- **Easy to execute**: `make test-<module>` from the repo root
+
+#### Architecture Decision Records
+
+Non-obvious decisions get an ADR in `docs/adr/NNNN-<title>.md`. Use the `/adr` skill to create them.
+
+#### YAML Style
+
+- 2-space indentation for all YAML files
+- Helm templates use `{{ .Values. }}` (not `{{ $.Values. }}` unless inside a range)
+- Include comments for non-obvious values in `values.yaml`
+
+#### AGENTS.md Is Source of Truth
+
+`AGENTS.md` provides project context for AI agents. It MUST be updated whenever:
+- A new skill is created or removed
+- A new module is added
+- A new Makefile target is added
+- Key conventions change
+
+#### Cluster Cleanup Script
+
+`scripts/cluster-cleanup.sh` removes all deployed resources from the cluster. It MUST be updated whenever:
+- A new module is added (add a `cleanup_<module>` function)
+- A module creates new namespaces or CRDs
+- A module adds resources with finalizers
+- Operator subscriptions change
+
+#### Naming
+
+- Module directories: lowercase, hyphen-separated (e.g., `maas`, `observability`)
+- Helm chart directories: lowercase, hyphen-separated
+- Test files: `test_NN_<description>.py` (numeric prefix for ordering)
+- ArgoCD app templates: `<module>-<component>.yaml`
+
+
+## Path-scoped rules
+
+Before editing files matching these paths, read and follow the rule file (Cursor attaches them automatically; other agents must open them):
+
+| Paths | Rule file | About |
+|---|---|---|
+| `docs/**/*.md,**/README.md,AGENTS.md` | `.cursor/rules/documentation.mdc` | Documentation conventions: short READMEs, detailed docs, ADRs. |
+| `modules/evaluation/**,docs/EVALUATION.md,docs/BENCHMARKS.md,docs/adr/*evalhub*,docs/adr/*evaluation*` | `.cursor/rules/evalhub-reference.mdc` | EvalHub authoritative reference: validate all decisions against official docs. |
+| `modules/**/charts/**/*.yaml,modules/**/charts/**/*.tpl,argocd/**/*.yaml` | `.cursor/rules/helm-conventions.mdc` | Helm chart conventions for modules and ArgoCD applications. |
+| `modules/maas/**,argocd/apps/templates/maas-*,docs/adr/*maas*,docs/adr/*kuadrant*` | `.cursor/rules/maas-reference.mdc` | MaaS authoritative reference: validate all decisions against official docs. |
+| `modules/evaluation/**/*mlflow*,modules/evaluation/charts/evaluation/**,modules/maas/charts/maas-platform/templates/rhoai/**,docs/EVALUATION.md` | `.cursor/rules/mlflow-reference.mdc` | MLflow authoritative reference: validate all decisions against official docs. |
+| `modules/**/tests/**/*.py` | `.cursor/rules/python-testing.mdc` | Python test conventions for module test suites. |

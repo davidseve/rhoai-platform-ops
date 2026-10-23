@@ -132,7 +132,7 @@ Deployment complete:
 
 ## Token-efficient execution
 
-For long deploys (`helm upgrade --wait`, multi-step Makefile), follow skill **`long-running-scripts`** (`~/.cursor/skills/long-running-scripts/`):
+For long deploys (`helm upgrade --wait`, multi-step Makefile), follow skill **`long-running-scripts`** (`~/.agents/skills/long-running-scripts/`):
 
 - One Bash call per phase; no polling or repeated log reads
 - Read `.agent-status/*.json` before log files
